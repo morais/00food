@@ -1,0 +1,52 @@
+name = "00food-api"
+main = "src/index.ts"
+compatibility_date = "2026-09-27"
+workers_dev = false
+preview_urls = false
+
+[vars]
+APP_NAME = "00Food"
+PUBLIC_ORIGIN = "https://api.example.com"
+APPLE_APP_CLIENT_ID = "com.example.zerozerofood"
+APPLE_WEB_CLIENT_ID = "com.example.zerozerofood.signin"
+APPLE_WEB_REDIRECT_URI = "https://api.example.com/auth/apple/callback"
+APPLE_TEAM_ID = "REPLACE_WITH_APPLE_TEAM_ID"
+APPLE_KEY_ID = "REPLACE_WITH_SIGN_IN_WITH_APPLE_KEY_ID"
+
+[[routes]]
+pattern = "api.example.com"
+custom_domain = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "00food"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "PHOTOS"
+bucket_name = "00food-photos"
+
+[[ratelimits]]
+name = "SOURCE_LIMITER"
+namespace_id = "20101"
+  [ratelimits.simple]
+  limit = 600
+  period = 60
+
+[[ratelimits]]
+name = "SIGN_IN_LIMITER"
+namespace_id = "20102"
+  [ratelimits.simple]
+  limit = 20
+  period = 60
+
+[[ratelimits]]
+name = "TENANT_LIMITER"
+namespace_id = "20103"
+  [ratelimits.simple]
+  limit = 300
+  period = 60
+
+[observability]
+enabled = true
