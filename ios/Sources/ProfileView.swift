@@ -9,7 +9,6 @@ struct ProfileView: View {
     @State private var weightKg = 70.0
     @State private var estimateProfile = "neutral"
     @State private var deficitKcal = 300
-    @State private var connectHealth = true
     @State private var busy = false
     @State private var errorText: String?
 
@@ -44,12 +43,28 @@ struct ProfileView: View {
                     Text("Rough baseline: \(preview.roughDailyTarget) kcal/day before Apple Health active energy.")
                         .font(.subheadline).foregroundStyle(.secondary)
                 }
-                if isOnboarding {
-                    Section {
-                        Toggle("Connect Apple Health", isOn: $connectHealth)
-                    } footer: {
-                        Text("Only active energy is read. It stays on this device and adds to the daily allowance.")
+                Section {
+                    if let weight = health.latestWeightKg, let date = health.latestWeightDate {
+                        Button("Use latest weight: \(weight.formatted(.number.precision(.fractionLength(1)))) kg") {
+                            if (25...400).contains(weight) { weightKg = weight }
+                            else { errorText = "The Health weight is outside the supported range." }
+                        }
+                        Text("Recorded \(date.formatted(date: .abbreviated, time: .omitted)). You can edit the weight above before saving.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    } else {
+                        Button(health.requested ? "Refresh Apple Health weight" : "Connect Apple Health and get weight") {
+                            Task { if health.requested { await health.refresh() } else { await health.connect() } }
+                        }
+                        if health.requested {
+                            Text("No readable weight entry was found. You can enter your weight above.")
+                                .font(.footnote).foregroundStyle(.secondary)
+                        }
                     }
+                    if let error = health.errorMessage {
+                        Text(error).font(.footnote).foregroundStyle(.red)
+                    }
+                } header: { Text("Apple Health") } footer: {
+                    Text("00Food reads weight and active energy. A weight you choose to use is saved in your 00Food profile; active energy stays on this device.")
                 }
                 Section {
                     Button(isOnboarding ? "Start logging" : "Save details") { save() }
@@ -72,6 +87,7 @@ struct ProfileView: View {
                     deficitKcal = profile.deficitKcal
                 }
             }
+            .task { if health.requested { await health.refresh() } }
             .alert("Could not save details", isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: { Text(errorText ?? "") }
@@ -89,7 +105,6 @@ struct ProfileView: View {
             defer { busy = false }
             do {
                 try await store.saveProfile(preview)
-                if isOnboarding && connectHealth { await health.connect() }
                 if !isOnboarding { dismiss() }
             } catch { errorText = error.localizedDescription }
         }

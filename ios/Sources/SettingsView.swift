@@ -25,6 +25,16 @@ struct SettingsView: View {
                         Spacer()
                         Text("\(health.activeKcal) kcal").foregroundStyle(.secondary)
                     }
+                    if let weight = health.latestWeightKg {
+                        HStack {
+                            Text("Latest recorded weight")
+                            Spacer()
+                            Text("\(weight.formatted(.number.precision(.fractionLength(1)))) kg")
+                                .foregroundStyle(.secondary)
+                        }
+                        Text("Open Your details & target to use this weight in your daily target.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
                     Button(health.requested ? "Refresh Health data" : "Connect Apple Health") {
                         Task {
                             if health.requested { await health.refresh() }
@@ -32,7 +42,7 @@ struct SettingsView: View {
                         }
                     }
                     if let error = health.errorMessage { Text(error).font(.footnote).foregroundStyle(.red) }
-                    Text("Health data is read on this device and is not sent to 00Food.")
+                    Text("Active energy stays on this device. A Health weight is saved to your account only when you choose to use it in Your details & target.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("AI agent connection") {

@@ -2,7 +2,7 @@
 
 00Food is a small iOS calorie log built as a sibling to [00Todo](https://github.com/morais/00todo). It favors directional values and fast repeat logging: a previously logged food takes one tap to add again. New foods can be entered manually or sent as text or a photo to a connected MCP agent. The agent proposes an estimate; the person reviews it before it becomes a reusable food and a log entry.
 
-The iOS app is SwiftUI. The backend is a Cloudflare Worker with D1 for account and food data and a private R2 bucket for photos awaiting review. Native Sign in with Apple connects to the Worker. Apple Health active energy is read on device and is not uploaded. The rough daily balance is a weight-loss target derived from height, weight, and an estimate setting, plus today's active energy, minus logged food. This is a simple guide, not a clinical calculation.
+The iOS app is SwiftUI. The backend is a Cloudflare Worker with D1 for account and food data and a private R2 bucket for photos awaiting review. Native Sign in with Apple connects to the Worker. Apple Health active energy is read on device and is not uploaded. The latest Health weight can be reviewed and imported into the account profile. The rough daily balance is a weight-loss target derived from height, weight, and an estimate setting, plus today's active energy, minus logged food. This is a simple guide, not a clinical calculation.
 
 ## Development
 

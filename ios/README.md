@@ -9,7 +9,7 @@ xcodegen generate --spec project.yml
 open ZeroZeroFood.xcodeproj
 ```
 
-The app App ID needs Sign in with Apple and HealthKit. It reads only `activeEnergyBurned` from Apple Health. It stores no Health samples in Cloudflare. The target in `project.yml.sample` uses example identifiers; the real project file is ignored.
+The app App ID needs Sign in with Apple and HealthKit. It reads `activeEnergyBurned` and the latest `bodyMass` sample from Apple Health. Active energy stays on device. The user can choose to import the displayed weight into their 00Food profile, which is stored in Cloudflare. The target in `project.yml.sample` uses example identifiers; the real project file is ignored.
 
 For a simulator compile without signing:
 
