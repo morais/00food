@@ -52,10 +52,10 @@ struct ProfileView: View {
                         Text("Recorded \(date.formatted(date: .abbreviated, time: .omitted)). You can edit the weight above before saving.")
                             .font(.footnote).foregroundStyle(.secondary)
                     } else {
-                        Button(health.requested ? "Refresh Apple Health weight" : "Connect Apple Health and get weight") {
-                            Task { if health.requested { await health.refresh() } else { await health.connect() } }
+                        Button(health.weightRequested ? "Refresh Apple Health weight" : "Connect Apple Health and get weight") {
+                            Task { if health.weightRequested { await health.refresh() } else { await health.connect() } }
                         }
-                        if health.requested {
+                        if health.weightRequested {
                             Text("No readable weight entry was found. You can enter your weight above.")
                                 .font(.footnote).foregroundStyle(.secondary)
                         }

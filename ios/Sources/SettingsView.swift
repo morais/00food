@@ -35,9 +35,9 @@ struct SettingsView: View {
                         Text("Open Your details & target to use this weight in your daily target.")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
-                    Button(health.requested ? "Refresh Health data" : "Connect Apple Health") {
+                    Button(health.weightRequested ? "Refresh Health data" : "Connect Apple Health") {
                         Task {
-                            if health.requested { await health.refresh() }
+                            if health.weightRequested { await health.refresh() }
                             else { await health.connect() }
                         }
                     }
