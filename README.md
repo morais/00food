@@ -12,6 +12,10 @@ The iOS app is SwiftUI. The backend is a Cloudflare Worker with D1 for account a
 
 Production identifiers, signing settings, database IDs, and credentials live in ignored `ios/project.yml` and `server/wrangler.toml`. The committed `.sample` files are examples.
 
+## Production
+
+The API is deployed at `https://api.00food.com` as the `00food-api` Cloudflare Worker. The iOS app uses `com.00food.app` and its native Sign in with Apple capability; MCP web sign-in uses the `com.00food.app.signin` Services ID. Internal TestFlight builds are distributed from App Store Connect app `6818843517` to the `Internal` group. Cloudflare and Apple credentials are provisioned outside this repository.
+
 ## Privacy and data
 
 The Worker stores an Apple account identifier, optional relay email, profile measurements, foods, logs, and pending estimates. A submitted photo is private in R2 and is deleted when the estimate is accepted or discarded, or when the account is deleted. MCP agents can see saved foods and pending food text/photos only after Apple OAuth consent. They can propose estimates but cannot directly log food or read Health data. App and MCP credentials are separate opaque tokens stored as hashes in D1. The iOS app keeps its app credential in Keychain.
