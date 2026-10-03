@@ -20,4 +20,4 @@ xcodebuild -project ZeroZeroFood.xcodeproj -scheme ZeroZeroFood \
   -derivedDataPath "$PWD/DerivedData" CODE_SIGNING_ALLOWED=NO build
 ```
 
-For TestFlight, create the app record in App Store Connect, use an App Store distribution provisioning profile with both capabilities, archive the release scheme, export an IPA, upload it to App Store Connect, and assign the processed build to an internal beta group.
+For TestFlight, create the app record in App Store Connect, use an App Store distribution provisioning profile with both capabilities, archive the release scheme, export an IPA, and upload it to App Store Connect. Once Apple finishes processing, `scripts/assign-testflight.py --app-id APP_ID --group-name Internal --tester-id TESTER_ID --build BUILD_NUMBER` creates or finds the app's internal group, adds an existing internal tester, assigns the build, and verifies both relationships. Set `ASC_KEY_PATH` to the App Store Connect API key when `~/.appstoreconnect/private_keys` contains more than one key; the Sign in with Apple key is separate.
