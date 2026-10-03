@@ -40,6 +40,7 @@ struct HomeView: View {
     @State private var reviewing: PendingEstimation?
     @State private var errorText: String?
     @State private var loggingID: String?
+    @State private var deletingLogID: String?
 
     private var remaining: Int {
         (store.profile?.roughDailyTarget ?? 0) + health.activeKcal - store.consumedToday
@@ -179,15 +180,20 @@ struct HomeView: View {
                     }
                     Spacer()
                     Text("\(log.kcal) kcal").font(.subheadline.monospacedDigit())
+                    Button(role: .destructive) { delete(log) } label: {
+                        if deletingLogID == log.id { ProgressView() }
+                        else { Image(systemName: "trash") }
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.red)
+                    .frame(width: 44, height: 44)
+                    .disabled(deletingLogID != nil)
+                    .accessibilityLabel("Remove \(log.foodName) from today's log")
                 }
                 .padding(.vertical, 4)
                 .contextMenu {
-                    Button("Delete log", role: .destructive) {
-                        Task {
-                            do { try await store.deleteLog(log) }
-                            catch { errorText = error.localizedDescription }
-                        }
-                    }
+                    Button("Delete log", role: .destructive) { delete(log) }
+                        .disabled(deletingLogID != nil)
                 }
             }
         }
@@ -198,6 +204,16 @@ struct HomeView: View {
         Task {
             defer { loggingID = nil }
             do { try await store.log(food, quantity: quantity) }
+            catch { errorText = error.localizedDescription }
+        }
+    }
+
+    private func delete(_ log: FoodLog) {
+        guard deletingLogID == nil else { return }
+        deletingLogID = log.id
+        Task {
+            defer { deletingLogID = nil }
+            do { try await store.deleteLog(log) }
             catch { errorText = error.localizedDescription }
         }
     }
