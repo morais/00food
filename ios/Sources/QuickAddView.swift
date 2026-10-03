@@ -84,7 +84,7 @@ struct QuickAddView: View {
             .navigationTitle("Log food")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
-            .sheet(isPresented: $showingCamera) { CameraPicker { image in photoData = Self.jpeg(image) } }
+            .sheet(isPresented: $showingCamera) { CameraPicker { image in setPhoto(image) } }
             .sheet(isPresented: $showingManual) {
                 ManualFoodView(initialName: query) { dismiss() }
             }
@@ -93,7 +93,7 @@ struct QuickAddView: View {
                 Task {
                     do {
                         if let data = try await item.loadTransferable(type: Data.self),
-                           let image = UIImage(data: data) { photoData = Self.jpeg(image) }
+                           let image = UIImage(data: data) { setPhoto(image) }
                     } catch { errorText = error.localizedDescription }
                 }
             }
@@ -149,14 +149,26 @@ struct QuickAddView: View {
         }
     }
 
+    private func setPhoto(_ image: UIImage) {
+        if let data = Self.jpeg(image) { photoData = data }
+        else { errorText = "This photo could not be prepared. Try a different image." }
+    }
+
     private static func jpeg(_ image: UIImage) -> Data? {
-        let width = min(image.size.width, 1200)
-        let height = image.size.height * width / image.size.width
-        let resized = UIGraphicsImageRenderer(size: CGSize(width: width, height: height)).image { _ in
-            image.draw(in: CGRect(x: 0, y: 0, width: width, height: height))
+        guard image.size.width > 0, image.size.height > 0 else { return nil }
+        for maxWidth: CGFloat in [1200, 900, 650] {
+            let width = min(image.size.width, maxWidth)
+            let height = image.size.height * width / image.size.width
+            let resized = UIGraphicsImageRenderer(size: CGSize(width: width, height: height)).image { _ in
+                image.draw(in: CGRect(x: 0, y: 0, width: width, height: height))
+            }
+            for quality in [0.65, 0.4, 0.25] {
+                if let data = resized.jpegData(compressionQuality: quality), data.count <= 2_000_000 {
+                    return data
+                }
+            }
         }
-        let first = resized.jpegData(compressionQuality: 0.65)
-        return (first?.count ?? 0) <= 2_000_000 ? first : resized.jpegData(compressionQuality: 0.35)
+        return nil
     }
 }
 
