@@ -3,7 +3,7 @@
 
 Reads the App Store Connect API key and issuer ID from ~/.appstoreconnect.
 Pass --app-id, --build, and either --group-id or --group-name explicitly.
-The optional --tester-id adds an existing internal tester. No account IDs are committed.
+Add internal testers in App Store Connect's group page. No account IDs are committed.
 """
 
 import argparse
@@ -86,7 +86,6 @@ def main():
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--group-id")
     group.add_argument("--group-name")
-    parser.add_argument("--tester-id")
     parser.add_argument("--build", required=True)
     args = parser.parse_args()
     group_id = args.group_id
@@ -110,18 +109,6 @@ def main():
             require_ok(status, result, "Creating internal beta group")
             group_id = result["data"]["id"]
     print(f"Internal group: {group_id}")
-    if args.tester_id:
-        tester_path = f"/v1/betaGroups/{group_id}/relationships/betaTesters"
-        status, relationship = request("GET", tester_path + "?limit=200")
-        require_ok(status, relationship, "Reading beta testers")
-        if not any(item["id"] == args.tester_id for item in relationship.get("data", [])):
-            status, result = request("POST", tester_path,
-                                     {"data": [{"type": "betaTesters", "id": args.tester_id}]})
-            require_ok(status, result, "Adding internal tester")
-        status, relationship = request("GET", tester_path + "?limit=200")
-        require_ok(status, relationship, "Verifying beta tester")
-        if not any(item["id"] == args.tester_id for item in relationship.get("data", [])):
-            sys.exit("Internal tester was not visible on verification")
     # App Store Connect's filter[version] selects the marketing version (for
     # example 1.0), not the CFBundleVersion build number supplied here.
     query = urllib.parse.urlencode({"filter[app]": args.app_id, "sort": "-uploadedDate",
