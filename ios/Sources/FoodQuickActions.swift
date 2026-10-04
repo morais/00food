@@ -7,6 +7,18 @@ enum FoodQuickLaunch: String, Identifiable {
     case camera
 
     var id: String { rawValue }
+
+    init?(url: URL) {
+        guard let parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              parts.scheme == "zerozerofood", parts.host == "log",
+              parts.user == nil, parts.password == nil, parts.port == nil,
+              parts.query == nil, parts.fragment == nil else { return nil }
+        switch parts.path {
+        case "/food": self = .log
+        case "/camera": self = .camera
+        default: return nil
+        }
+    }
 }
 
 @MainActor @Observable final class FoodQuickActions {

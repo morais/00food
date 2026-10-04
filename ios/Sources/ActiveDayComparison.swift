@@ -18,7 +18,6 @@ struct ActiveDayComparison: View {
             let foodPercent = Int((foodRatio * 100).rounded())
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("Time and calories").font(.caption.weight(.semibold))
                 GeometryReader { geometry in
                     let inset: CGFloat = 10
                     let travel = max(0, geometry.size.width - 2 * inset)
@@ -53,26 +52,5 @@ struct ActiveDayComparison: View {
             .accessibilityElement(children: .combine)
             .accessibilityHint("The active-day marker uses the hours set in Settings. The food marker uses the base target plus Apple Health active calories earned so far.")
         }
-    }
-}
-
-private enum ActiveDayProgress {
-    static func fraction(at date: Date, startMinutes: Int, endMinutes: Int) -> Double {
-        let clock = Calendar.current.dateComponents([.hour, .minute], from: date)
-        let minute = (clock.hour ?? 0) * 60 + (clock.minute ?? 0)
-        let start = min(1439, max(0, startMinutes))
-        let end = min(1439, max(0, endMinutes))
-
-        if start == end {
-            return Double((minute - start + 1440) % 1440) / 1440
-        }
-        if start < end {
-            return min(1, max(0, Double(minute - start) / Double(end - start)))
-        }
-        // A configured day may cross midnight. The marker stays at 100%
-        // between its end and the next start.
-        if minute >= end && minute < start { return 1 }
-        let elapsed = minute >= start ? minute - start : minute + 1440 - start
-        return min(1, Double(elapsed) / Double(end + 1440 - start))
     }
 }

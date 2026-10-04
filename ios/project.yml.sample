@@ -17,6 +17,8 @@ targets:
     platform: iOS
     sources:
       - path: Sources
+        excludes:
+          - Widgets/**
       - path: Resources/App/Assets.xcassets
       - path: Resources/App/PrivacyInfo.xcprivacy
     info:
@@ -25,6 +27,12 @@ targets:
         CFBundleDisplayName: 00Food
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        FoodAppGroup: group.com.00food.app
+        CFBundleURLTypes:
+          - CFBundleTypeRole: Editor
+            CFBundleURLName: zerozerofood.log
+            CFBundleURLSchemes:
+              - zerozerofood
         FoodServerBaseURL: https://api.example.com
         NSCameraUsageDescription: "00Food uses the camera to capture a meal for an estimate you review."
         NSHealthShareUsageDescription: "00Food reads active energy, weight, and body-fat percentage to show your daily balance and progress. Health history stays on this device; a weight is saved to your account only when you choose to use it."
@@ -49,11 +57,44 @@ targets:
         com.apple.developer.applesignin:
           - Default
         com.apple.developer.healthkit: true
+        com.apple.security.application-groups:
+          - group.com.00food.app
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.zerozerofood
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        TARGETED_DEVICE_FAMILY: "1,2"
+    dependencies:
+      - target: ZeroZeroFoodWidgets
+        embed: true
+
+  ZeroZeroFoodWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Sources/Widgets
+      - path: Sources/ActiveDayProgress.swift
+      - path: Sources/FoodLogIntent.swift
+      - path: Sources/FoodWidgetSnapshot.swift
+    info:
+      path: Resources/Widgets/Info.plist
+      properties:
+        CFBundleDisplayName: 00Food
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        FoodAppGroup: group.com.00food.app
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: Resources/Widgets/ZeroZeroFoodWidgets.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.00food.app
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.00food.app.widgets
+        APPLICATION_EXTENSION_API_ONLY: YES
         TARGETED_DEVICE_FAMILY: "1,2"
 schemes:
   ZeroZeroFood:

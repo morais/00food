@@ -4,7 +4,19 @@ struct RootView: View {
     @Environment(FoodStore.self) private var store
     @Environment(HealthEnergy.self) private var health
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage("activeDayStartMinutes") private var activeDayStartMinutes = 7 * 60
+    @AppStorage("activeDayEndMinutes") private var activeDayEndMinutes = 23 * 60
+    @AppStorage(FoodWidgetSnapshotStore.pendingLaunchKey, store: FoodWidgetSnapshotStore.sharedDefaults)
+    private var pendingWidgetLaunch = ""
     @State private var errorText: String?
+
+    private var widgetSnapshot: FoodWidgetSnapshot? {
+        guard store.signedIn, let profile = store.profile else { return nil }
+        return FoodWidgetSnapshot(localDate: FoodDates.today(), targetKcal: profile.roughDailyTarget,
+                                  consumedKcal: store.consumedToday, activeKcal: health.activeKcal,
+                                  pendingCount: store.estimations.count, startMinutes: activeDayStartMinutes,
+                                  endMinutes: activeDayEndMinutes)
+    }
 
     var body: some View {
         Group {
@@ -13,6 +25,7 @@ struct RootView: View {
             else { HomeView() }
         }
         .task {
+            openPendingWidgetLaunch()
             if store.signedIn {
                 do { try await store.refresh() } catch { errorText = error.localizedDescription }
                 health.setHistoryStart(store.accountStartedAt)
@@ -20,6 +33,9 @@ struct RootView: View {
             }
         }
         .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                openPendingWidgetLaunch()
+            }
             if phase == .active && store.signedIn {
                 Task {
                     try? await store.refresh()
@@ -28,9 +44,23 @@ struct RootView: View {
                 }
             }
         }
+        .onOpenURL { url in
+            if let launch = FoodQuickLaunch(url: url) { FoodQuickActions.shared.pendingLaunch = launch }
+        }
+        .onChange(of: pendingWidgetLaunch) { _, _ in openPendingWidgetLaunch() }
+        .onChange(of: widgetSnapshot, initial: true) { _, snapshot in
+            if let snapshot { FoodWidgetSnapshotStore.save(snapshot) }
+            else { FoodWidgetSnapshotStore.clear() }
+        }
         .alert("Could not refresh", isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(errorText ?? "") }
+    }
+
+    private func openPendingWidgetLaunch() {
+        guard let launch = FoodQuickLaunch(rawValue: pendingWidgetLaunch) else { return }
+        pendingWidgetLaunch = ""
+        FoodQuickActions.shared.pendingLaunch = launch
     }
 }
 
@@ -45,6 +75,7 @@ struct HomeView: View {
     @State private var errorText: String?
     @State private var deletingLogID: String?
     @State private var selectedLogDate = Calendar.current.startOfDay(for: Date())
+    @State private var showingBalanceDetails = false
 
     private var remaining: Int {
         (store.profile?.roughDailyTarget ?? 0) + health.activeKcal - store.consumedToday
@@ -124,11 +155,20 @@ struct HomeView: View {
 
     private var balanceCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Today’s rough balance").font(.subheadline).foregroundStyle(.secondary)
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text("\(remaining)").font(.system(size: 48, weight: .bold, design: .rounded))
-                Text("kcal left").font(.headline).foregroundStyle(.secondary)
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { showingBalanceDetails.toggle() }
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("\(remaining)").font(.system(size: 48, weight: .bold, design: .rounded))
+                    Text("kcal left").font(.headline).foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                    Image(systemName: showingBalanceDetails ? "chevron.down" : "chevron.right")
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                }
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(remaining) calories left")
+            .accessibilityHint(showingBalanceDetails ? "Hide calculation" : "Show calculation")
             HStack(spacing: 16) {
                 Label("\(store.consumedToday) eaten", systemImage: "fork.knife")
                 Label("\(health.activeKcal) active", systemImage: "figure.walk")
@@ -137,12 +177,14 @@ struct HomeView: View {
             if let profile = store.profile {
                 ActiveDayComparison(allowanceKcal: profile.roughDailyTarget + health.activeKcal,
                                     eatenKcal: store.consumedToday)
-                if profile.restingKcal < 1200 {
-                    Text("Resting estimate (\(profile.restingKcal) kcal); calorie gap (0 kcal). Minimum food target (1,200 kcal) + Health active energy − food.")
-                        .font(.caption).foregroundStyle(.secondary)
-                } else {
-                    Text("Resting estimate (\(profile.restingKcal) kcal) − calorie gap (\(profile.effectiveDeficit(for: profile.deficitKcal)) kcal) + Health active energy − food.")
-                        .font(.caption).foregroundStyle(.secondary)
+                if showingBalanceDetails {
+                    if profile.restingKcal < 1200 {
+                        Text("Resting estimate (\(profile.restingKcal) kcal); calorie gap (0 kcal). Minimum food target (1,200 kcal) + Health active energy − food.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        Text("Resting estimate (\(profile.restingKcal) kcal) − calorie gap (\(profile.effectiveDeficit(for: profile.deficitKcal)) kcal) + Health active energy − food.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
             }
             if !store.estimations.isEmpty {
