@@ -84,4 +84,20 @@ await request(`/v1/estimations/${estimate.id}/accept`, "POST");
 const final = await request("/v1/snapshot");
 assert(final.foods.length === 2 && final.logs.length === 2 && final.estimations.length === 0,
   "review did not save food and log");
-console.log("00Food local smoke passed: profile, repeat log, tenant isolation, credential separation, photo, MCP proposal, review");
+const combinedDescription = "Toast with butter, one slice";
+const combined = (await request("/v1/estimations", "POST", {
+  id: randomUUID(), description: combinedDescription,
+  photoBase64: jpeg.toString("base64"), localDate: "2026-10-03",
+})).estimation;
+assert(combined.description === combinedDescription && combined.hasPhoto,
+  "combined photo and description were not saved together");
+const combinedFood = await request("/mcp", "POST", { jsonrpc: "2.0", id: 4, method: "tools/call",
+  params: { name: "get_pending_food", arguments: { id: combined.id } } }, mcpToken);
+const combinedForAgent = JSON.parse(combinedFood.result?.content?.[0]?.text ?? "{}").food;
+assert(combinedForAgent?.description === combinedDescription && combinedForAgent?.hasPhoto === true,
+  "agent did not receive the combined text/photo item");
+const combinedImage = await request("/mcp", "POST", { jsonrpc: "2.0", id: 5, method: "tools/call",
+  params: { name: "view_food_photo", arguments: { id: combined.id } } }, mcpToken);
+assert(combinedImage.result?.content?.[0]?.type === "image", "agent could not inspect the combined photo");
+await request(`/v1/estimations/${combined.id}`, "DELETE");
+console.log("00Food local smoke passed: profile, repeat log, isolation, separate and combined photo/text, MCP review");

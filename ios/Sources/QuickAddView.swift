@@ -6,8 +6,12 @@ struct QuickAddView: View {
     @Environment(FoodStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
+    @State private var descriptionText = ""
     @State private var photoItem: PhotosPickerItem?
     @State private var photoData: Data?
+    @State private var loadingPhoto = false
+    @State private var photoLoadID = UUID()
+    @State private var showingSeeds = false
     @State private var showingCamera = false
     @State private var showingManual = false
     @State private var busy = false
@@ -32,16 +36,9 @@ struct QuickAddView: View {
         NavigationStack {
             List {
                 Section {
-                    TextField("Search foods or describe your photo", text: $query, axis: .vertical)
+                    TextField("Search your foods", text: $query)
                         .focused($searchFocused)
                         .submitLabel(.search)
-                }
-                if let photoData, let image = UIImage(data: photoData) {
-                    Section("Photo to estimate") {
-                        Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 180)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                        Button("Remove photo", role: .destructive) { self.photoData = nil }
-                    }
                 }
                 if !matches.isEmpty {
                     Section("Your foods · one tap to log") {
@@ -52,31 +49,45 @@ struct QuickAddView: View {
                     }
                 }
                 if !seeds.isEmpty {
-                    Section("Common starting points") {
-                        ForEach(seeds) { seed in
-                            Button { logSeed(seed) } label: { foodRow(seed.name, seed.serving, seed.kcal) }
-                                .disabled(busy)
+                    Section {
+                        DisclosureGroup("Common starting points", isExpanded: $showingSeeds) {
+                            ForEach(seeds) { seed in
+                                Button { logSeed(seed) } label: { foodRow(seed.name, seed.serving, seed.kcal) }
+                                    .disabled(busy)
+                            }
                         }
                     }
                 }
-                Section("Something new") {
+                Section("New food for your agent") {
+                    TextField("Describe the food, ingredients, and portion", text: $descriptionText, axis: .vertical)
+                        .lineLimit(2...4)
                     PhotosPicker(selection: $photoItem, matching: .images) {
                         Label("Choose from Photos", systemImage: "photo.on.rectangle")
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .buttonStyle(.borderless)
                     if UIImagePickerController.isSourceTypeAvailable(.camera) {
-                        Button { showingCamera = true } label: {
+                        Button { photoItem = nil; showingCamera = true } label: {
                             Label("Take photo", systemImage: "camera")
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .buttonStyle(.borderless)
                     }
-                    Button { requestEstimate() } label: {
-                        Label("Ask my agent to estimate", systemImage: "sparkles")
+                    if let photoData, let image = UIImage(data: photoData) {
+                        Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 180)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .accessibilityLabel("Photo attached to this food")
+                        Button("Remove photo", role: .destructive) {
+                            self.photoData = nil
+                            photoItem = nil
+                        }
                     }
-                    .disabled(busy || (query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && photoData == nil))
-                    Text("Add a photo and description together. Your connected agent checks both as one food; you review the estimate before it is saved and logged.")
+                    if loadingPhoto { ProgressView("Preparing photo…") }
+                    Button { requestEstimate() } label: {
+                        Label(estimateButtonTitle, systemImage: "sparkles")
+                    }
+                    .disabled(busy || loadingPhoto || (descriptionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && photoData == nil))
+                    Text("Your agent receives the description and attached photo together, then you review its estimate before logging.")
                         .font(.footnote).foregroundStyle(.secondary)
                     Button { showingManual = true } label: {
                         Label("Enter calories myself", systemImage: "pencil")
@@ -89,21 +100,35 @@ struct QuickAddView: View {
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
             .sheet(isPresented: $showingCamera) { CameraPicker { image in setPhoto(image) } }
             .sheet(isPresented: $showingManual) {
-                ManualFoodView(initialName: query) { dismiss() }
+                ManualFoodView(initialName: descriptionText.isEmpty ? query : descriptionText) { dismiss() }
             }
             .onChange(of: photoItem) { _, item in
-                guard let item else { return }
+                let loadID = UUID()
+                photoLoadID = loadID
+                guard let item else { loadingPhoto = false; return }
+                loadingPhoto = true
                 Task {
                     do {
-                        if let data = try await item.loadTransferable(type: Data.self),
-                           let image = UIImage(data: data) { setPhoto(image) }
-                    } catch { errorText = error.localizedDescription }
+                        guard let data = try await item.loadTransferable(type: Data.self),
+                              let image = UIImage(data: data) else {
+                            throw FoodServiceError(message: "This photo could not be opened. Try another one.")
+                        }
+                        if photoLoadID == loadID { setPhoto(image) }
+                    } catch { if photoLoadID == loadID { errorText = error.localizedDescription } }
+                    if photoLoadID == loadID { loadingPhoto = false }
                 }
             }
             .alert("Could not log food", isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: { Text(errorText ?? "") }
         }
+    }
+
+    private var estimateButtonTitle: String {
+        if photoData != nil && !descriptionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "Estimate photo + description"
+        }
+        return "Ask my agent to estimate"
     }
 
     private func foodRow(_ name: String, _ serving: String, _ kcal: Int) -> some View {
@@ -145,7 +170,7 @@ struct QuickAddView: View {
         Task {
             defer { busy = false }
             do {
-                try await store.requestEstimate(description: query.trimmingCharacters(in: .whitespacesAndNewlines),
+                try await store.requestEstimate(description: descriptionText.trimmingCharacters(in: .whitespacesAndNewlines),
                                                 photo: photoData)
                 dismiss()
             } catch { errorText = error.localizedDescription }

@@ -45,6 +45,7 @@ const logInput = z.strictObject({
 });
 const estimationInput = z.strictObject({
   id: id.optional(), description: z.string().trim().max(500), localDate: day,
+  photoBase64: z.string().min(1).max(2_666_668).optional(),
 });
 export const proposalInput = z.strictObject({
   name: z.string().trim().min(1).max(120),
@@ -111,6 +112,14 @@ export const seedFoods = [
 
 class APIError extends Error { constructor(public status: number, message: string) { super(message); } }
 const fail = (status: number, message: string): never => { throw new APIError(status, message); };
+
+function validateJpeg(bytes: Uint8Array): void {
+  if (!bytes.byteLength || bytes.byteLength > 2_000_000) fail(413, "Photo must be under 2 MB");
+  if (bytes[0] !== 0xff || bytes[1] !== 0xd8 ||
+      bytes[bytes.length - 2] !== 0xff || bytes[bytes.length - 1] !== 0xd9) {
+    fail(415, "Invalid JPEG photo");
+  }
+}
 
 async function body(req: Request, limit = 16000): Promise<unknown> {
   if (Number(req.headers.get("content-length") || 0) > limit) fail(413, "Request too large");
@@ -235,7 +244,7 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     return json({ ok: true });
   }
   if (path === "/v1/estimations" && method === "POST") {
-    const input = estimationInput.parse(await body(req));
+    const input = estimationInput.parse(await body(req, 2_700_000));
     const estimationId = input.id || crypto.randomUUID();
     const existing = await findEstimation(env, tenantId, estimationId);
     if (existing) return json({ estimation: estimationView(existing) }, 201);
@@ -243,13 +252,28 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
       .bind(tenantId).first<{ n: number }>();
     if ((count?.n ?? 0) >= 100) throw new APIError(403, "Review queue is full");
     const now = new Date().toISOString();
-    await env.DB.prepare(`INSERT OR IGNORE INTO pending_estimations
-      (id, tenant_id, description, state, local_date, created_at, updated_at)
-      VALUES (?, ?, ?, 'pending', ?, ?, ?)`).bind(estimationId, tenantId, input.description,
-        input.localDate, now, now).run();
-    const row = await findEstimation(env, tenantId, estimationId);
-    if (!row) throw new APIError(409, "Estimation ID is already in use");
-    return json({ estimation: estimationView(row) }, 201);
+    let photoKey: string | null = null;
+    if (input.photoBase64) {
+      if (!env.PHOTOS) throw new APIError(503, "Photo storage is unavailable");
+      let bytes: Uint8Array;
+      try { bytes = Uint8Array.from(atob(input.photoBase64), character => character.charCodeAt(0)); }
+      catch { throw new APIError(415, "Invalid JPEG photo"); }
+      validateJpeg(bytes);
+      photoKey = `${tenantId}/${estimationId}.jpg`;
+      await env.PHOTOS.put(photoKey, bytes, { httpMetadata: { contentType: "image/jpeg" } });
+    }
+    try {
+      await env.DB.prepare(`INSERT OR IGNORE INTO pending_estimations
+        (id, tenant_id, description, photo_key, state, local_date, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)`).bind(estimationId, tenantId, input.description,
+          photoKey, input.localDate, now, now).run();
+      const row = await findEstimation(env, tenantId, estimationId);
+      if (!row) throw new APIError(409, "Estimation ID is already in use");
+      return json({ estimation: estimationView(row) }, 201);
+    } catch (error) {
+      if (photoKey) await env.PHOTOS?.delete(photoKey);
+      throw error;
+    }
   }
   const photoMatch = /^\/v1\/estimations\/([a-f0-9-]{36})\/photo$/.exec(path);
   if (photoMatch && method === "PUT") {
@@ -258,11 +282,7 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     if (!row || row.state !== "pending") throw new APIError(404, "Pending estimation not found");
     if (req.headers.get("content-type") !== "image/jpeg") fail(415, "Use a JPEG photo");
     const bytes = await req.arrayBuffer();
-    if (!bytes.byteLength || bytes.byteLength > 2_000_000) fail(413, "Photo must be under 2 MB");
-    const sample = new Uint8Array(bytes);
-    if (sample[0] !== 0xff || sample[1] !== 0xd8 || sample[sample.length - 2] !== 0xff || sample[sample.length - 1] !== 0xd9) {
-      throw new APIError(415, "Invalid JPEG photo");
-    }
+    validateJpeg(new Uint8Array(bytes));
     const key = `${tenantId}/${row.id}.jpg`;
     await env.PHOTOS.put(key, bytes, { httpMetadata: { contentType: "image/jpeg" } });
     await env.DB.prepare("UPDATE pending_estimations SET photo_key = ?, updated_at = ? WHERE id = ? AND tenant_id = ?")

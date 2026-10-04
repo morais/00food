@@ -1,6 +1,6 @@
 # 00Food for iOS
 
-SwiftUI app for iPhone and iPad, built with Xcode 27 and XcodeGen. The main screen shows today's rough balance, frequent foods for one-tap logging, pending agent estimates, and today's entries. Add searches saved foods first, then a short starter list. Unfamiliar foods can be saved with a manual estimate or sent with a description, a photo, or both to a remote MCP agent for review. The agent sees the description and photo under the same pending-food ID.
+SwiftUI app for iPhone and iPad, built with Xcode 27 and XcodeGen. The main screen shows today's rough balance, frequent foods for one-tap logging, pending agent estimates, and today's entries. Add searches saved foods first, then a collapsed starter list. Unfamiliar foods can be saved with a manual estimate or sent with a description, a photo, or both to a remote MCP agent for review. The new-food form keeps its description field and attached-photo preview in one section. The description and photo are submitted atomically under the same pending-food ID so the agent can consider both.
 
 ```sh
 cp project.yml.sample project.yml
@@ -9,7 +9,7 @@ xcodegen generate --spec project.yml
 open ZeroZeroFood.xcodeproj
 ```
 
-The app App ID needs Sign in with Apple and HealthKit. It reads `activeEnergyBurned`, `bodyMass`, and `bodyFatPercentage` from Apple Health. Active energy and historical measurements stay on device. The user can choose to import the displayed weight into their 00Food profile, which is stored in Cloudflare. The progress screen compares gentle (300), steady (450), and faster (600 kcal/day) gaps, with illustrative weight lines and actual weight/body-fat history since account creation. Its weight axis starts at the weight corresponding to adult BMI 18.5; a shaded band reaches BMI 24.9, and the body-fat chart includes a 25% reference line. BMI is a screening measure, and the forecasts are directional. The allowance adds Health active energy once; exercise minutes are not converted to calories. The target in `project.yml.sample` uses example identifiers; the real project file is ignored.
+The app App ID needs Sign in with Apple and HealthKit. It reads `activeEnergyBurned`, `bodyMass`, and `bodyFatPercentage` from Apple Health. Active energy and historical measurements stay on device. The user can choose to import the displayed weight into their 00Food profile, which is stored in Cloudflare. The progress screen compares gentle (300), steady (450), and faster (600 kcal/day) gaps over six calendar months, with illustrative weight lines and actual weight/body-fat history since account creation. Its weight axis starts at the weight corresponding to adult BMI 18.5; a shaded band reaches BMI 24.9, and a date appears when an estimate enters that band. The body-fat chart marks ACE's 25% male classification boundary. BMI is a screening measure, and the forecasts are directional. The allowance adds Health active energy once; exercise minutes are not converted to calories. The target in `project.yml.sample` uses example identifiers; the real project file is ignored.
 
 The home screen's food log date control and arrows show previous days and allow deleting an individual entry. The snapshot currently supplies the last 90 days of logs. In Add, "Choose from Photos" and "Take photo" occupy separate rows so they open the intended library or camera control.
 

@@ -125,18 +125,12 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     }
 
     func requestEstimate(description: String, photo: Data?) async throws {
-        let response: EstimationResponse = try await call("/v1/estimations", method: "POST", body: [
+        var payload: [String: Any] = [
             "id": UUID().uuidString.lowercased(), "description": description,
             "localDate": FoodDates.today(),
-        ])
-        if let photo {
-            do { try await uploadPhoto(photo, for: response.estimation.id) }
-            catch {
-                // Keep the text request visible if the photo upload fails.
-                estimations.insert(response.estimation, at: 0)
-                throw error
-            }
-        }
+        ]
+        if let photo { payload["photoBase64"] = photo.base64EncodedString() }
+        let _: EstimationResponse = try await call("/v1/estimations", method: "POST", body: payload)
         try await refresh()
     }
 
@@ -194,19 +188,6 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         logs = []
         estimations = []
         connections = []
-    }
-
-    private func uploadPhoto(_ data: Data, for id: String) async throws {
-        guard let url = URL(string: baseURL + "/v1/estimations/\(id)/photo") else {
-            throw FoodServiceError(message: "Server address is missing")
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "PUT"
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
-        request.httpBody = data
-        let (result, response) = try await URLSession.shared.data(for: request)
-        try check(response, data: result)
     }
 
     private func call<T: Decodable>(_ path: String, method: String = "GET", body: [String: Any]? = nil,

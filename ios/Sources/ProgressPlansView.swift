@@ -60,8 +60,14 @@ struct ProgressPlansView: View {
     private func planCard(_ level: DeficitLevel, profile: FoodProfile) -> some View {
         let gap = profile.effectiveDeficit(for: level.rawValue)
         let healthyRange = healthyWeightRange(for: profile.heightCm)
-        let projection = projectedWeight(from: health.weightHistory.last?.value ?? profile.weightKg,
-                                         gap: gap, minimum: healthyRange.lowerBound)
+        let startingWeight = health.weightHistory.last?.value ?? profile.weightKg
+        let today = Calendar.current.startOfDay(for: Date())
+        let sixMonths = Calendar.current.date(byAdding: .month, value: 6, to: today) ?? today
+        let projection = projectedWeight(from: startingWeight, gap: gap,
+                                         minimum: healthyRange.lowerBound, until: sixMonths)
+        let bmiEntryDate = estimatedBMIEntryDate(from: startingWeight, gap: gap,
+                                                 upperBound: healthyRange.upperBound, until: sixMonths)
+        let fullProjection = projection.last?.date == sixMonths
         let chartTop = max(healthyRange.upperBound, profile.weightKg,
                            health.weightHistory.map(\.value).max() ?? 0,
                            projection.map(\.value).max() ?? 0) + 4
@@ -80,7 +86,7 @@ struct ProgressPlansView: View {
                     .font(.footnote).foregroundStyle(.secondary)
             }
             if projection.count > 1 {
-                Text("Illustrative \(projection.count == 9 ? "8-week" : "shown") change: about \(shownChange.formatted(.number.precision(.fractionLength(1)))) kg")
+                Text("Illustrative \(fullProjection ? "6-month" : "shown") change: about \(shownChange.formatted(.number.precision(.fractionLength(1)))) kg")
                     .font(.footnote).foregroundStyle(.secondary)
             }
             Text("Adult BMI 18.5–24.9 at your height: \(healthyRange.lowerBound.formatted(.number.precision(.fractionLength(1))))–\(healthyRange.upperBound.formatted(.number.precision(.fractionLength(1)))) kg")
@@ -89,7 +95,7 @@ struct ProgressPlansView: View {
                 Text("No Health weight readings since you joined. The dashed line starts from your saved weight.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
-            if projection.count < 9 {
+            if !fullProjection {
                 Text("The illustration stops at the BMI 18.5 chart floor.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
@@ -99,7 +105,7 @@ struct ProgressPlansView: View {
             }
             Chart {
                 RectangleMark(xStart: .value("Account start", firstDay),
-                              xEnd: .value("Eight weeks", Calendar.current.date(byAdding: .day, value: 56, to: Date()) ?? Date()),
+                              xEnd: .value("Six months", sixMonths),
                               yStart: .value("Healthy BMI minimum", healthyRange.lowerBound),
                               yEnd: .value("Healthy BMI maximum", healthyRange.upperBound))
                     .foregroundStyle(.green.opacity(0.12))
@@ -124,6 +130,10 @@ struct ProgressPlansView: View {
                 Label("BMI range", systemImage: "rectangle.fill").foregroundStyle(.green)
             }
             .font(.caption)
+            if let bmiEntryDate {
+                Text("Estimated entry into the adult BMI range: \(bmiEntryDate.formatted(date: .abbreviated, time: .omitted))")
+                    .font(.subheadline.weight(.medium))
+            }
             Button(isSelected ? "Current plan" : "Use this plan") { select(level, profile: profile) }
                 .buttonStyle(.borderedProminent)
                 .disabled(saving || isSelected)
@@ -139,11 +149,11 @@ struct ProgressPlansView: View {
             Text("From \(firstDay.formatted(date: .abbreviated, time: .omitted)) · Apple Health body-fat percentage")
                 .font(.caption).foregroundStyle(.secondary)
             Chart {
-                RuleMark(y: .value("25% reference", 25))
+                RuleMark(y: .value("ACE 25%", 25))
                     .foregroundStyle(.orange)
                     .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
                     .annotation(position: .top, alignment: .trailing) {
-                        Text("25% reference").font(.caption2).foregroundStyle(.orange)
+                        Text("ACE 25%").font(.caption2).foregroundStyle(.orange)
                     }
                 ForEach(health.bodyFatHistory) { point in
                     LineMark(x: .value("Date", point.date), y: .value("Body fat", point.value))
@@ -159,7 +169,7 @@ struct ProgressPlansView: View {
                 Text("No body-fat readings are available for this period.")
                     .foregroundStyle(.secondary)
             }
-            Text("The 25% line is a reference you requested, not a universal target.")
+            Text("ACE classifies 25% body fat and above as obesity for men; its categories differ by sex.")
                 .font(.footnote).foregroundStyle(.secondary)
         }
         .padding(16)
@@ -172,13 +182,26 @@ struct ProgressPlansView: View {
         return max(0, min(values.min() ?? 25, 25) - 5)...(max(values.max() ?? 25, 25) + 5)
     }
 
-    private func projectedWeight(from weight: Double, gap: Int, minimum: Double) -> [HealthMeasurePoint] {
+    private func projectedWeight(from weight: Double, gap: Int, minimum: Double, until end: Date) -> [HealthMeasurePoint] {
         let today = Calendar.current.startOfDay(for: Date())
-        return (0...8).compactMap { week in
-            guard let date = Calendar.current.date(byAdding: .day, value: week * 7, to: today) else { return nil }
-            return HealthMeasurePoint(date: date, value: weight - Double(gap * week * 7) / 7700)
+        let totalDays = max(0, Calendar.current.dateComponents([.day], from: today, to: end).day ?? 0)
+        var days = Array(stride(from: 0, through: totalDays, by: 7))
+        if days.last != totalDays { days.append(totalDays) }
+        return days.compactMap { day in
+            guard let date = Calendar.current.date(byAdding: .day, value: day, to: today) else { return nil }
+            return HealthMeasurePoint(date: date, value: weight - Double(gap * day) / 7700)
         }.prefix { $0.value >= minimum }
          .map { $0 }
+    }
+
+    private func estimatedBMIEntryDate(from weight: Double, gap: Int,
+                                       upperBound: Double, until end: Date) -> Date? {
+        guard weight > upperBound, gap > 0 else { return nil }
+        let today = Calendar.current.startOfDay(for: Date())
+        let daysToEntry = Int(ceil((weight - upperBound) * 7700 / Double(gap)))
+        guard let entry = Calendar.current.date(byAdding: .day, value: daysToEntry, to: today),
+              entry <= end else { return nil }
+        return entry
     }
 
     private func select(_ level: DeficitLevel, profile: FoodProfile) {
