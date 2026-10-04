@@ -28,7 +28,7 @@ App routes use `Authorization: Bearer <app token>`:
 | --- | --- |
 | `POST /v1/auth/apple` | Exchange a native Apple sign-in for an app session |
 | `GET /v1/snapshot` | Account creation date, profile, reusable foods, recent logs, and pending estimates |
-| `PUT /v1/profile` | Height, weight, estimate setting, weight-loss adjustment |
+| `PUT /v1/profile` | Height, weight, estimate setting, weight-loss adjustment, optional birth year |
 | `POST /v1/foods` | Save a reusable food |
 | `POST /v1/foods/:id/dismiss` | Hide a food from the frequent list until it is logged again |
 | `POST /v1/logs` | Log a serving, using a client UUID for retry safety |

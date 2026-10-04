@@ -37,13 +37,12 @@ struct RootView: View {
 struct HomeView: View {
     @Environment(FoodStore.self) private var store
     @Environment(HealthEnergy.self) private var health
-    @State private var showingAdd = false
+    @State private var shortcuts = FoodQuickActions.shared
+    @State private var addLaunch: FoodQuickLaunch?
     @State private var showingSettings = false
     @State private var showingProgress = false
     @State private var reviewing: PendingEstimation?
     @State private var errorText: String?
-    @State private var loggingID: String?
-    @State private var dismissingFoodID: String?
     @State private var deletingLogID: String?
     @State private var selectedLogDate = Calendar.current.startOfDay(for: Date())
 
@@ -61,14 +60,13 @@ struct HomeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     balanceCard
-                    Button { showingAdd = true } label: {
+                    Button { addLaunch = .log } label: {
                         Label("Log food", systemImage: "plus.circle.fill")
                             .font(.headline).frame(maxWidth: .infinity).frame(height: 48)
                     }
                     .buttonStyle(.borderedProminent)
 
                     if !store.estimations.isEmpty { estimatesSection }
-                    recentSection
                     foodLogSection
                 }
                 .padding(.horizontal, 20).padding(.bottom, 28)
@@ -83,7 +81,9 @@ struct HomeView: View {
                         .accessibilityLabel("Settings")
                 }
             }
-            .sheet(isPresented: $showingAdd) { QuickAddView() }
+            .sheet(item: $addLaunch) { launch in
+                QuickAddView(openCameraOnAppear: launch == .camera)
+            }
             .sheet(isPresented: $showingSettings) { SettingsView() }
             .sheet(isPresented: $showingProgress) { ProgressPlansView() }
             .sheet(item: $reviewing) { ReviewEstimationView(estimation: $0) }
@@ -99,7 +99,15 @@ struct HomeView: View {
                 health.setHistoryStart(store.accountStartedAt)
                 await health.refresh()
             }
+            .onAppear { openPendingShortcut() }
+            .onChange(of: shortcuts.pendingLaunch) { _, _ in openPendingShortcut() }
         }
+    }
+
+    private func openPendingShortcut() {
+        guard let launch = shortcuts.pendingLaunch else { return }
+        shortcuts.pendingLaunch = nil
+        addLaunch = launch
     }
 
     private var balanceCard: some View {
@@ -162,47 +170,6 @@ struct HomeView: View {
         }
     }
 
-    private var recentSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Frequent foods").font(.title3.bold())
-                Spacer()
-                Text("Tap to add one serving").font(.caption).foregroundStyle(.secondary)
-            }
-            if store.recentFoods.isEmpty {
-                Text("Foods you log appear here for one-tap reuse. Hidden foods return when logged again.")
-                    .foregroundStyle(.secondary).padding(.vertical, 10)
-            }
-            ForEach(Array(store.recentFoods.prefix(8))) { food in
-                Button { log(food) } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.title2).foregroundStyle(.tint)
-                        VStack(alignment: .leading) {
-                            Text(food.name).font(.body.weight(.medium)).foregroundStyle(.primary)
-                            Text(food.serving).font(.caption).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Text("\(food.kcal)").font(.headline.monospacedDigit()).foregroundStyle(.primary)
-                        if loggingID == food.id { ProgressView() }
-                        if dismissingFoodID == food.id { ProgressView() }
-                    }
-                    .padding(.vertical, 8)
-                }
-                .disabled(loggingID != nil || dismissingFoodID != nil)
-                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                    Button("Hide", systemImage: "eye.slash") { dismiss(food) }
-                        .tint(.gray)
-                }
-                .contextMenu {
-                    Button("Log half serving") { log(food, quantity: 0.5) }
-                    Button("Log two servings") { log(food, quantity: 2) }
-                    Button("Hide from frequent foods") { dismiss(food) }
-                }
-            }
-        }
-    }
-
     private var foodLogSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -257,25 +224,6 @@ struct HomeView: View {
     private func shiftLogDate(by days: Int) {
         guard let date = Calendar.current.date(byAdding: .day, value: days, to: selectedLogDate) else { return }
         selectedLogDate = min(max(date, earliestLogDate), Calendar.current.startOfDay(for: Date()))
-    }
-
-    private func log(_ food: FoodItem, quantity: Double = 1) {
-        loggingID = food.id
-        Task {
-            defer { loggingID = nil }
-            do { try await store.log(food, quantity: quantity) }
-            catch { errorText = error.localizedDescription }
-        }
-    }
-
-    private func dismiss(_ food: FoodItem) {
-        guard dismissingFoodID == nil else { return }
-        dismissingFoodID = food.id
-        Task {
-            defer { dismissingFoodID = nil }
-            do { try await store.dismissFromFrequent(food) }
-            catch { errorText = error.localizedDescription }
-        }
     }
 
     private func delete(_ log: FoodLog) {

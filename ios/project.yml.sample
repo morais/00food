@@ -29,6 +29,13 @@ targets:
         NSCameraUsageDescription: "00Food uses the camera to capture a meal for an estimate you review."
         NSHealthShareUsageDescription: "00Food reads active energy, weight, and body-fat percentage to show your daily balance and progress. Health history stays on this device; a weight is saved to your account only when you choose to use it."
         NSHealthUpdateUsageDescription: "00Food reads active energy, weight, and body fat and does not write to Apple Health."
+        UIApplicationShortcutItems:
+          - UIApplicationShortcutItemType: com.00food.quick-add.log
+            UIApplicationShortcutItemTitle: Log food
+            UIApplicationShortcutItemIconType: UIApplicationShortcutIconTypeAdd
+          - UIApplicationShortcutItemType: com.00food.quick-add.camera
+            UIApplicationShortcutItemTitle: Log with camera
+            UIApplicationShortcutItemIconType: UIApplicationShortcutIconTypeCapturePhoto
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationPortraitUpsideDown

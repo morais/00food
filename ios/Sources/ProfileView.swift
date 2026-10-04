@@ -9,6 +9,7 @@ struct ProfileView: View {
     @State private var weightKg = 70.0
     @State private var estimateProfile = "neutral"
     @State private var deficitKcal = 300
+    @State private var birthYear = ""
     @State private var busy = false
     @State private var errorText: String?
 
@@ -35,8 +36,15 @@ struct ProfileView: View {
                         Text("Female").tag("female")
                         Text("Male").tag("male")
                     }
+                    HStack {
+                        Text("Birth year")
+                        Spacer()
+                        TextField("Optional", text: $birthYear)
+                            .multilineTextAlignment(.trailing)
+                            .keyboardType(.numberPad)
+                    }
                 } header: { Text("Your details") } footer: {
-                    Text("Used only for a rough calorie target. Choose the estimate setting that works for you.")
+                    Text("Birth year improves the rough resting estimate. Leave it empty to use age 35 as a reference.")
                 }
                 Section("Daily target") {
                     Picker("Calorie gap", selection: $deficitKcal) {
@@ -77,7 +85,7 @@ struct ProfileView: View {
                         .frame(maxWidth: .infinity).disabled(busy || !valid)
                 }
                 Section {
-                    Text("This is a directional estimate from height, weight, and the selected setting. It does not account for age, health conditions, or body composition.")
+                    Text("This is a directional estimate from height, weight, birth year when provided, and the selected setting. It does not account for health conditions or body composition.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
             }
@@ -91,6 +99,7 @@ struct ProfileView: View {
                     weightKg = profile.weightKg
                     estimateProfile = profile.estimateProfile
                     deficitKcal = DeficitLevel.nearest(to: profile.deficitKcal).rawValue
+                    birthYear = profile.birthYear.map(String.init) ?? ""
                 }
             }
             .task {
@@ -103,10 +112,16 @@ struct ProfileView: View {
         }
     }
 
-    private var valid: Bool { (100...250).contains(heightCm) && (25...400).contains(weightKg) }
+    private var valid: Bool {
+        let year = birthYear.trimmingCharacters(in: .whitespacesAndNewlines)
+        let currentYear = Calendar.current.component(.year, from: Date())
+        return (100...250).contains(heightCm) && (25...400).contains(weightKg) &&
+            (year.isEmpty || (Int(year).map { (1900...(currentYear - 18)).contains($0) } ?? false))
+    }
     private var preview: FoodProfile {
         FoodProfile(heightCm: heightCm, weightKg: weightKg,
-                    estimateProfile: estimateProfile, deficitKcal: deficitKcal)
+                    estimateProfile: estimateProfile, deficitKcal: deficitKcal,
+                    birthYear: Int(birthYear.trimmingCharacters(in: .whitespacesAndNewlines)))
     }
     private func save() {
         busy = true

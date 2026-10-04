@@ -90,6 +90,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         let response: ProfileResponse = try await call("/v1/profile", method: "PUT", body: [
             "heightCm": input.heightCm, "weightKg": input.weightKg,
             "estimateProfile": input.estimateProfile, "deficitKcal": input.deficitKcal,
+            "birthYear": input.birthYear as Any? ?? NSNull(),
         ] as [String: Any])
         profile = response.profile
     }

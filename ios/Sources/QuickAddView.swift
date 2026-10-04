@@ -3,6 +3,7 @@ import SwiftUI
 import UIKit
 
 struct QuickAddView: View {
+    var openCameraOnAppear = false
     @Environment(FoodStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
@@ -11,8 +12,8 @@ struct QuickAddView: View {
     @State private var photoData: Data?
     @State private var loadingPhoto = false
     @State private var photoLoadID = UUID()
-    @State private var showingSeeds = false
     @State private var showingCamera = false
+    @State private var didOpenCamera = false
     @State private var showingManual = false
     @State private var busy = false
     @State private var errorText: String?
@@ -20,15 +21,8 @@ struct QuickAddView: View {
 
     private var matches: [FoodItem] {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        return needle.isEmpty ? Array(store.recentFoods.prefix(25)) : store.recentFoods.filter {
+        return needle.isEmpty ? Array(store.recentFoods.prefix(25)) : store.foods.filter {
             $0.name.localizedCaseInsensitiveContains(needle)
-        }
-    }
-    private var seeds: [SeedFood] {
-        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        return SeedFood.all.filter { seed in
-            (needle.isEmpty || seed.name.localizedCaseInsensitiveContains(needle)) &&
-            !store.foods.contains { $0.name.localizedCaseInsensitiveCompare(seed.name) == .orderedSame }
         }
     }
 
@@ -48,30 +42,22 @@ struct QuickAddView: View {
                         }
                     }
                 }
-                if !seeds.isEmpty {
-                    Section {
-                        DisclosureGroup("Common starting points", isExpanded: $showingSeeds) {
-                            ForEach(seeds) { seed in
-                                Button { logSeed(seed) } label: { foodRow(seed.name, seed.serving, seed.kcal) }
-                                    .disabled(busy)
-                            }
-                        }
-                    }
-                }
                 Section("New food for your agent") {
-                    TextField("Describe the food, ingredients, and portion", text: $descriptionText, axis: .vertical)
-                        .lineLimit(2...4)
-                    PhotosPicker(selection: $photoItem, matching: .images) {
-                        Label("Choose from Photos", systemImage: "photo.on.rectangle")
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .buttonStyle(.borderless)
-                    if UIImagePickerController.isSourceTypeAvailable(.camera) {
-                        Button { photoItem = nil; showingCamera = true } label: {
-                            Label("Take photo", systemImage: "camera")
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                    TextField("Describe food and portion", text: $descriptionText)
+                        .submitLabel(.done)
+                    HStack(spacing: 12) {
+                        PhotosPicker(selection: $photoItem, matching: .images) {
+                            Label("Photos", systemImage: "photo.on.rectangle")
+                                .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.bordered)
+                        if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                            Button { photoItem = nil; showingCamera = true } label: {
+                                Label("Camera", systemImage: "camera")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                        }
                     }
                     if let photoData, let image = UIImage(data: photoData) {
                         Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 180)
@@ -89,16 +75,25 @@ struct QuickAddView: View {
                     .disabled(busy || loadingPhoto || (descriptionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && photoData == nil))
                     Text("Your agent receives the description and attached photo together, then you review its estimate before logging.")
                         .font(.footnote).foregroundStyle(.secondary)
+                }
+                Section {
                     Button { showingManual = true } label: {
                         Label("Enter calories myself", systemImage: "pencil")
                     }
                     .disabled(busy)
+                } header: {
+                    Text("Manual entry")
                 }
             }
             .navigationTitle("Log food")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
             .sheet(isPresented: $showingCamera) { CameraPicker { image in setPhoto(image) } }
+            .onAppear {
+                guard openCameraOnAppear && !didOpenCamera else { return }
+                didOpenCamera = true
+                DispatchQueue.main.async { showingCamera = true }
+            }
             .sheet(isPresented: $showingManual) {
                 ManualFoodView(initialName: descriptionText.isEmpty ? query : descriptionText) { dismiss() }
             }
@@ -149,19 +144,6 @@ struct QuickAddView: View {
             defer { busy = false }
             do { try await store.log(food, quantity: quantity); dismiss() }
             catch { errorText = error.localizedDescription }
-        }
-    }
-
-    private func logSeed(_ seed: SeedFood) {
-        busy = true
-        Task {
-            defer { busy = false }
-            do {
-                let food = try await store.createFood(name: seed.name, serving: seed.serving,
-                                                      kcal: seed.kcal, source: "seed")
-                try await store.log(food)
-                dismiss()
-            } catch { errorText = error.localizedDescription }
         }
     }
 

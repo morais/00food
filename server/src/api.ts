@@ -32,6 +32,7 @@ const profileInput = z.strictObject({
   weightKg: z.number().min(25).max(400),
   estimateProfile: z.enum(["female", "male", "neutral"]),
   deficitKcal: z.number().int().min(0).max(1000),
+  birthYear: z.number().int().min(1900).max(9999).nullable().optional(),
 });
 const foodInput = z.strictObject({
   id: id.optional(), name: z.string().trim().min(1).max(120),
@@ -63,7 +64,7 @@ type LogRow = {
   id: string; food_id: string; food_name: string; serving: string;
   quantity: number; kcal: number; local_date: string; logged_at: string;
 };
-type ProfileRow = { height_cm: number; weight_kg: number; estimate_profile: string; deficit_kcal: number; updated_at: string };
+type ProfileRow = { height_cm: number; weight_kg: number; estimate_profile: string; deficit_kcal: number; birth_year: number | null; updated_at: string };
 type EstimationRow = {
   id: string; description: string; photo_key: string | null; state: string;
   proposed_name: string | null; proposed_serving: string | null; proposed_kcal: number | null;
@@ -86,31 +87,8 @@ export const estimationView = (r: EstimationRow) => ({
 });
 const profileView = (r: ProfileRow) => ({
   heightCm: r.height_cm, weightKg: r.weight_kg, estimateProfile: r.estimate_profile,
-  deficitKcal: r.deficit_kcal, updatedAt: r.updated_at,
+  deficitKcal: r.deficit_kcal, birthYear: r.birth_year, updatedAt: r.updated_at,
 });
-
-export const seedFoods = [
-  { name: "Banana", serving: "1 medium", kcal: 105 },
-  { name: "Apple", serving: "1 medium", kcal: 95 },
-  { name: "Egg", serving: "1 large", kcal: 72 },
-  { name: "Toast", serving: "1 slice", kcal: 85 },
-  { name: "Oatmeal", serving: "1 bowl", kcal: 160 },
-  { name: "Greek yogurt", serving: "1 cup", kcal: 130 },
-  { name: "Coffee with milk", serving: "1 cup", kcal: 50 },
-  { name: "Cappuccino", serving: "1 cup", kcal: 120 },
-  { name: "Rice, cooked", serving: "1 cup", kcal: 205 },
-  { name: "Pasta, cooked", serving: "1 cup", kcal: 220 },
-  { name: "Chicken breast", serving: "100 g", kcal: 165 },
-  { name: "Salmon", serving: "100 g", kcal: 208 },
-  { name: "Mixed salad", serving: "1 bowl", kcal: 100 },
-  { name: "Olive oil", serving: "1 tablespoon", kcal: 120 },
-  { name: "Bread", serving: "1 slice", kcal: 90 },
-  { name: "Cheese", serving: "1 slice", kcal: 110 },
-  { name: "Pizza", serving: "1 slice", kcal: 285 },
-  { name: "Dark chocolate", serving: "1 square", kcal: 55 },
-  { name: "Beer", serving: "330 ml", kcal: 150 },
-  { name: "Wine", serving: "150 ml", kcal: 125 },
-];
 
 class APIError extends Error { constructor(public status: number, message: string) { super(message); } }
 const fail = (status: number, message: string): never => { throw new APIError(status, message); };
@@ -165,7 +143,6 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     const tenant = await tenantForPrincipal(env, principal);
     return json({ id: tenant?.id, email: tenant?.email });
   }
-  if (path === "/v1/seeds" && method === "GET") return json({ foods: seedFoods });
   if (path === "/v1/snapshot" && method === "GET") {
     const [tenant, profile, foods, logs, estimations] = await Promise.all([
       env.DB.prepare("SELECT created_at FROM tenants WHERE id = ?").bind(tenantId).first<{ created_at: string }>(),
@@ -180,13 +157,20 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
   }
   if (path === "/v1/profile" && method === "PUT") {
     const input = profileInput.parse(await body(req));
+    if (input.birthYear != null && input.birthYear > new Date().getUTCFullYear() - 18) {
+      fail(400, "Birth year must be for an adult");
+    }
     const now = new Date().toISOString();
-    await env.DB.prepare(`INSERT INTO profiles (tenant_id, height_cm, weight_kg, estimate_profile, deficit_kcal, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(tenant_id) DO UPDATE SET
+    const previous = await env.DB.prepare("SELECT birth_year FROM profiles WHERE tenant_id = ?")
+      .bind(tenantId).first<{ birth_year: number | null }>();
+    const birthYear = input.birthYear === undefined ? previous?.birth_year ?? null : input.birthYear;
+    await env.DB.prepare(`INSERT INTO profiles (tenant_id, height_cm, weight_kg, estimate_profile, deficit_kcal, birth_year, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(tenant_id) DO UPDATE SET
       height_cm=excluded.height_cm, weight_kg=excluded.weight_kg,
-      estimate_profile=excluded.estimate_profile, deficit_kcal=excluded.deficit_kcal, updated_at=excluded.updated_at`)
-      .bind(tenantId, input.heightCm, input.weightKg, input.estimateProfile, input.deficitKcal, now).run();
-    return json({ profile: { ...input, updatedAt: now } });
+      estimate_profile=excluded.estimate_profile, deficit_kcal=excluded.deficit_kcal,
+      birth_year=excluded.birth_year, updated_at=excluded.updated_at`)
+      .bind(tenantId, input.heightCm, input.weightKg, input.estimateProfile, input.deficitKcal, birthYear, now).run();
+    return json({ profile: { ...input, birthYear, updatedAt: now } });
   }
   if (path === "/v1/foods" && method === "POST") {
     const input = foodInput.parse(await body(req));

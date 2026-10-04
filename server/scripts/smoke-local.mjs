@@ -20,8 +20,13 @@ INSERT INTO credentials (token_hash,id,tenant_id,kind,audience,scopes,label,crea
 VALUES ('${hash(mcpToken)}','${randomUUID()}','${tenant}','mcp','${origin}/mcp','food:read food:write','Local smoke','${now}','${expires}');`;
 const otherSQL = `INSERT INTO credentials (token_hash,id,tenant_id,kind,audience,scopes,label,created_at,expires_at)
 VALUES ('${hash(otherToken)}','${randomUUID()}','${otherTenant}','app','${origin}/v1','food:read food:write','Local smoke','${now}','${expires}');`;
-execFileSync("npx", ["wrangler", "d1", "execute", "00food", "--local", "--command", sql], { stdio: "ignore" });
-execFileSync("npx", ["wrangler", "d1", "execute", "00food", "--local", "--command", otherSQL], { stdio: "ignore" });
+for (const command of [sql, otherSQL]) {
+  try {
+    execFileSync("npx", ["wrangler", "d1", "execute", "00food", "--local", "--command", command]);
+  } catch (error) {
+    throw Error(`Could not seed local smoke data: ${error.stderr?.toString() ?? error.message}`);
+  }
+}
 
 async function request(path, method = "GET", body, token = appToken) {
   const response = await fetch(origin + path, {
@@ -38,7 +43,15 @@ function assert(value, message) { if (!value) throw Error(message); }
 const initial = await request("/v1/snapshot");
 assert(initial.profile === null && initial.foods.length === 0 && initial.startedAt === now,
   "new account snapshot or creation date is wrong");
-await request("/v1/profile", "PUT", { heightCm: 170, weightKg: 70, estimateProfile: "neutral", deficitKcal: 300 });
+const savedProfile = (await request("/v1/profile", "PUT", {
+  heightCm: 170, weightKg: 70, estimateProfile: "neutral", deficitKcal: 300, birthYear: 1988,
+})).profile;
+assert(savedProfile.birthYear === 1988, "birth year was not saved");
+await request("/v1/profile", "PUT", {
+  heightCm: 170, weightKg: 70, estimateProfile: "neutral", deficitKcal: 300,
+});
+assert((await request("/v1/snapshot")).profile.birthYear === 1988,
+  "older profile clients cleared the birth year");
 const food = (await request("/v1/foods", "POST", { id: randomUUID(), name: "Test banana", serving: "1 medium", kcal: 105 })).food;
 const otherLog = await fetch(origin + "/v1/logs", { method: "POST", headers: {
   Authorization: `Bearer ${otherToken}`, "Content-Type": "application/json",
@@ -108,4 +121,4 @@ const combinedImage = await request("/mcp", "POST", { jsonrpc: "2.0", id: 5, met
   params: { name: "view_food_photo", arguments: { id: combined.id } } }, mcpToken);
 assert(combinedImage.result?.content?.[0]?.type === "image", "agent could not inspect the combined photo");
 await request(`/v1/estimations/${combined.id}`, "DELETE");
-console.log("00Food local smoke passed: profile, repeat log, hide and restore food, isolation, photo/text, MCP review");
+console.log("00Food local smoke passed: birth year, repeat log, hide and restore food, isolation, photo/text, MCP review");

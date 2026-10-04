@@ -1,0 +1,1 @@
+ALTER TABLE profiles ADD COLUMN birth_year INTEGER CHECK (birth_year BETWEEN 1900 AND 9999);
