@@ -18,7 +18,12 @@ struct SettingsView: View {
                 Section("Account") {
                     if let email = store.accountEmail { Text(email).foregroundStyle(.secondary) }
                     Button("Your details & target") { showingProfile = true }
-                    Button("Sign out") { Task { await store.signOut(); dismiss() } }
+                    Button("Sign out") {
+                        Task {
+                            do { try await store.signOut(); dismiss() }
+                            catch { errorText = error.localizedDescription }
+                        }
+                    }
                     Button("Delete account and food data", role: .destructive) { confirmingDelete = true }
                 }
                 Section("Apple Health") {

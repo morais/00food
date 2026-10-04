@@ -1,12 +1,20 @@
 import Charts
 import SwiftUI
 
+private struct DailyCalorieBalance: Identifiable {
+    var date: Date
+    var eaten: Int
+    var allowance: Int
+    var id: Date { date }
+}
+
 struct ProgressPlansView: View {
     @Environment(FoodStore.self) private var store
     @Environment(HealthEnergy.self) private var health
     @Environment(\.dismiss) private var dismiss
     @State private var saving = false
     @State private var showingOtherPlans = false
+    @State private var calorieHistoryDays = 30
     @State private var errorText: String?
 
     private var profile: FoodProfile? { store.profile }
@@ -55,6 +63,7 @@ struct ProgressPlansView: View {
                         } label: {
                             Text("Other plans").font(.headline)
                         }
+                        calorieHistoryCard(profile: profile)
                     }
                     fatCard
                     Text("BMI is an adult screening measure, not a personal diagnosis or target. A fixed calorie gap does not produce a fixed rate of weight loss. Your body adapts, and daily weight and body-fat measurements vary. Use the charts to compare directions, then adjust from your recorded trend.")
@@ -74,6 +83,70 @@ struct ProgressPlansView: View {
                 Button("OK", role: .cancel) {}
             } message: { Text(errorText ?? "") }
         }
+    }
+
+    private func calorieHistoryCard(profile: FoodProfile) -> some View {
+        let points = dailyCalorieBalances(profile: profile)
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("Calories over time").font(.title3.bold())
+            Picker("Period", selection: $calorieHistoryDays) {
+                Text("30 days").tag(30)
+                Text("90 days").tag(90)
+            }
+            .pickerStyle(.segmented)
+            if let first = points.first, let last = points.last {
+                Chart {
+                    ForEach(points) { point in
+                        BarMark(x: .value("Day", point.date), y: .value("Logged food", point.eaten))
+                            .foregroundStyle(.orange.opacity(0.75))
+                        LineMark(x: .value("Day", point.date), y: .value("Allowance", point.allowance))
+                            .foregroundStyle(.blue)
+                            .lineStyle(StrokeStyle(lineWidth: 2))
+                    }
+                }
+                .frame(height: 190)
+                .chartLegend(.hidden)
+                .chartXScale(domain: first.date...(Calendar.current.date(byAdding: .day, value: 1, to: last.date) ?? last.date))
+                HStack(spacing: 16) {
+                    Label("Logged food", systemImage: "square.fill").foregroundStyle(.orange)
+                    Label("Allowance", systemImage: "line.diagonal").foregroundStyle(.blue)
+                }
+                .font(.caption)
+            } else {
+                Text("No calorie history yet.").foregroundStyle(.secondary)
+            }
+            Text("Allowance uses your current food target plus each day’s recorded Health active energy. Earlier plan changes are not tracked; days without an active-energy record show the base target. Bars show only food logged in 00Food.")
+                .font(.footnote).foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+    }
+
+    private func dailyCalorieBalances(profile: FoodProfile) -> [DailyCalorieBalance] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let windowStart = calendar.date(byAdding: .day, value: 1 - calorieHistoryDays, to: today) ?? today
+        let accountStart = calendar.startOfDay(for: store.accountStartedAt ?? today)
+        let first = max(windowStart, accountStart)
+        guard first <= today else { return [] }
+        var foodByDay: [String: Int] = [:]
+        for log in store.logs { foodByDay[log.localDate, default: 0] += log.kcal }
+        var activeByDay: [String: Int] = [:]
+        for point in health.activeHistory {
+            activeByDay[FoodDates.localDate(for: point.date)] = max(0, Int(point.value.rounded()))
+        }
+        var days: [DailyCalorieBalance] = []
+        var date = first
+        while date <= today {
+            let key = FoodDates.localDate(for: date)
+            let active = date == today ? health.activeKcal : (activeByDay[key] ?? 0)
+            days.append(DailyCalorieBalance(date: date, eaten: foodByDay[key] ?? 0,
+                                            allowance: profile.roughDailyTarget + active))
+            guard let next = calendar.date(byAdding: .day, value: 1, to: date) else { break }
+            date = next
+        }
+        return days
     }
 
     private func planCard(title: String, deficit: Int, isCurrent: Bool, profile: FoodProfile) -> some View {

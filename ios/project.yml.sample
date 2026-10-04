@@ -96,6 +96,17 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.00food.app.widgets
         APPLICATION_EXTENSION_API_ONLY: YES
         TARGETED_DEVICE_FAMILY: "1,2"
+  ZeroZeroFoodTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: ZeroZeroFood
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.zerozerofood.tests
+        GENERATE_INFOPLIST_FILE: YES
 schemes:
   ZeroZeroFood:
     build:
@@ -105,3 +116,6 @@ schemes:
       config: Debug
     archive:
       config: Release
+    test:
+      targets:
+        - ZeroZeroFoodTests

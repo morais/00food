@@ -42,7 +42,7 @@ const foodInput = z.strictObject({
 });
 const logInput = z.strictObject({
   id: id.optional(), foodId: id, quantity: z.number().min(0.1).max(20).default(1),
-  localDate: day,
+  localDate: day, loggedAt: z.iso.datetime({ offset: true }).optional(),
 });
 const estimationInput = z.strictObject({
   id: id.optional(), description: z.string().trim().max(500), localDate: day,
@@ -215,13 +215,16 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     if ((count?.n ?? 0) >= 10000) throw new APIError(403, "Food log limit reached");
     const now = new Date().toISOString();
     const calories = Math.max(1, Math.round(food.kcal * input.quantity));
+    const loggedAt = input.loggedAt || now;
     const result = await env.DB.prepare(`INSERT OR IGNORE INTO food_logs
       (id, tenant_id, food_id, food_name, serving, quantity, kcal, local_date, logged_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(logId, tenantId, food.id, food.name,
-        food.serving, input.quantity, calories, input.localDate, now).run();
+        food.serving, input.quantity, calories, input.localDate, loggedAt).run();
     if (result.meta.changes) {
-      await env.DB.prepare(`UPDATE foods SET use_count = use_count + 1, last_used_at = ?, dismissed_at = NULL
-        WHERE id = ? AND tenant_id = ?`).bind(now, food.id, tenantId).run();
+      await env.DB.prepare(`UPDATE foods SET use_count = use_count + 1,
+        last_used_at = CASE WHEN last_used_at IS NULL OR last_used_at < ? THEN ? ELSE last_used_at END,
+        dismissed_at = NULL WHERE id = ? AND tenant_id = ?`)
+        .bind(loggedAt, loggedAt, food.id, tenantId).run();
     }
     const row = await env.DB.prepare("SELECT * FROM food_logs WHERE id = ? AND tenant_id = ?")
       .bind(logId, tenantId).first<LogRow>();

@@ -80,7 +80,7 @@ struct PendingEstimation: Codable, Identifiable, Equatable {
     var updatedAt: String
 }
 
-struct FoodSnapshot: Decodable {
+struct FoodSnapshot: Codable {
     var startedAt: String?
     var profile: FoodProfile?
     var foods: [FoodItem]

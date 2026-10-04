@@ -16,6 +16,7 @@ struct HealthMeasurePoint: Identifiable {
     var latestBodyFatDate: Date?
     var weightHistory: [HealthMeasurePoint] = []
     var bodyFatHistory: [HealthMeasurePoint] = []
+    var activeHistory: [HealthMeasurePoint] = []
     var requested = UserDefaults.standard.bool(forKey: "healthRequested")
     var weightRequested = UserDefaults.standard.bool(forKey: "healthWeightRequested")
     var bodyFatRequested = UserDefaults.standard.bool(forKey: "healthBodyFatRequested")
@@ -34,6 +35,7 @@ struct HealthMeasurePoint: Identifiable {
             historyStart = start
             weightHistory = []
             bodyFatHistory = []
+            activeHistory = []
         }
     }
 
@@ -68,6 +70,10 @@ struct HealthMeasurePoint: Identifiable {
                 store.execute(query)
             }
             activeKcal = max(0, Int(active.rounded()))
+            if let historyStart {
+                let ninetyDaysAgo = Calendar.current.date(byAdding: .day, value: -89, to: start) ?? start
+                activeHistory = try await dailyActiveEnergy(from: max(historyStart, ninetyDaysAgo))
+            }
 
             if weightRequested {
                 let latest = try await newestSample(of: bodyMass)
@@ -98,6 +104,27 @@ struct HealthMeasurePoint: Identifiable {
                                       sortDescriptors: [newestFirst]) { _, samples, error in
                 if let error { continuation.resume(throwing: error) }
                 else { continuation.resume(returning: samples?.first as? HKQuantitySample) }
+            }
+            store.execute(query)
+        }
+    }
+
+    private func dailyActiveEnergy(from start: Date) async throws -> [HealthMeasurePoint] {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[HealthMeasurePoint], Error>) in
+            let predicate = HKQuery.predicateForSamples(withStart: start, end: Date(), options: [.strictStartDate])
+            let query = HKStatisticsCollectionQuery(quantityType: energy, quantitySamplePredicate: predicate,
+                                                    options: .cumulativeSum, anchorDate: start,
+                                                    intervalComponents: DateComponents(day: 1))
+            query.initialResultsHandler = { _, collection, error in
+                if let error { continuation.resume(throwing: error) }
+                else {
+                    let points = collection?.statistics().compactMap { day -> HealthMeasurePoint? in
+                        guard let quantity = day.sumQuantity() else { return nil }
+                        return HealthMeasurePoint(date: day.startDate,
+                                                  value: quantity.doubleValue(for: .kilocalorie()))
+                    } ?? []
+                    continuation.resume(returning: points)
+                }
             }
             store.execute(query)
         }

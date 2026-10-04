@@ -22,13 +22,14 @@ struct RootView: View {
     var body: some View {
         Group {
             if !store.signedIn { SignInView() }
+            else if !store.hasLoadedSnapshot { accountLoadView }
             else if store.profile == nil { ProfileView(isOnboarding: true) }
             else { HomeView() }
         }
         .task {
-            if UserDefaults.standard.string(forKey: "foodControlIconsVersion") != "2" {
+            if UserDefaults.standard.string(forKey: "foodControlIconsVersion") != "3" {
                 ControlCenter.shared.reloadAllControls()
-                UserDefaults.standard.set("2", forKey: "foodControlIconsVersion")
+                UserDefaults.standard.set("3", forKey: "foodControlIconsVersion")
             }
             openPendingWidgetLaunch()
             if store.signedIn {
@@ -67,6 +68,28 @@ struct RootView: View {
         pendingWidgetLaunch = ""
         FoodQuickActions.shared.pendingLaunch = launch
     }
+
+    private var accountLoadView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: store.isOffline ? "wifi.slash" : "arrow.triangle.2.circlepath")
+                .font(.largeTitle)
+            Text("Connect to load your foods").font(.title2.bold())
+            Text("Your account needs one successful sync on this iPhone before it can work offline.")
+                .multilineTextAlignment(.center).foregroundStyle(.secondary)
+            if let syncError = store.syncError {
+                Text(syncError).font(.footnote).foregroundStyle(.red)
+            }
+            Button("Try again") { Task { try? await store.refresh() } }
+                .buttonStyle(.borderedProminent)
+            Button("Sign out") {
+                Task {
+                    do { try await store.signOut() }
+                    catch { errorText = error.localizedDescription }
+                }
+            }
+        }
+        .padding(30)
+    }
 }
 
 struct HomeView: View {
@@ -95,6 +118,9 @@ struct HomeView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
+                    if store.isOffline || store.pendingSyncCount > 0 || store.syncError != nil {
+                        syncStatus
+                    }
                     balanceCard
                     Button { addLaunch = .log } label: {
                         Label("Log food", systemImage: "plus.circle.fill")
@@ -158,6 +184,27 @@ struct HomeView: View {
         }
     }
 
+    private var syncStatus: some View {
+        HStack(spacing: 10) {
+            Image(systemName: store.isOffline ? "wifi.slash" : "arrow.triangle.2.circlepath")
+            VStack(alignment: .leading, spacing: 2) {
+                Text(store.isOffline ? "Offline · saved on this iPhone" :
+                     store.pendingSyncCount > 0 ? "\(store.pendingSyncCount) change(s) waiting to sync" : "Sync needs attention")
+                    .font(.subheadline.weight(.medium))
+                if let syncError = store.syncError {
+                    Text(syncError).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            if !store.isOffline {
+                Button("Retry") { Task { try? await store.refresh() } }
+                    .font(.subheadline)
+            }
+        }
+        .padding(12)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
+    }
+
     private var balanceCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Button {
@@ -219,7 +266,9 @@ struct HomeView: View {
                         VStack(alignment: .leading) {
                             Text(item.proposedName ?? (item.description.isEmpty ? "Food photo" : item.description))
                                 .lineLimit(1).foregroundStyle(.primary)
-                            Text(item.state == "proposed" ? "Review estimate" : "Ask your connected agent to estimate it")
+                            Text(item.state == "proposed" ? "Review estimate" :
+                                 item.state == "uploading" ? "Saved here · sends when online" :
+                                 "Ask your connected agent to estimate it")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()

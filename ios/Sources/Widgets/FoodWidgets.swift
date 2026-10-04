@@ -134,7 +134,7 @@ private struct LogWithPhotoControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
         StaticControlConfiguration(kind: "com.00food.control.camera") {
             ControlWidgetButton(action: OpenFoodLogIntent(target: .camera)) {
-                Label("Photograph food", systemImage: "camera.fill")
+                Label("Photograph food", systemImage: "fork.knife.circle.fill")
             }
         }
         .displayName("Photograph food")
