@@ -56,7 +56,8 @@ export const proposalInput = z.strictObject({
 
 type FoodRow = {
   id: string; name: string; serving: string; kcal: number; source: string;
-  use_count: number; last_used_at: string | null; created_at: string; updated_at: string;
+  use_count: number; last_used_at: string | null; dismissed_at: string | null;
+  created_at: string; updated_at: string;
 };
 type LogRow = {
   id: string; food_id: string; food_name: string; serving: string;
@@ -71,7 +72,8 @@ type EstimationRow = {
 
 export const foodView = (r: FoodRow) => ({
   id: r.id, name: r.name, serving: r.serving, kcal: r.kcal, source: r.source,
-  useCount: r.use_count, lastUsedAt: r.last_used_at, createdAt: r.created_at, updatedAt: r.updated_at,
+  useCount: r.use_count, lastUsedAt: r.last_used_at, dismissedAt: r.dismissed_at,
+  createdAt: r.created_at, updatedAt: r.updated_at,
 });
 export const logView = (r: LogRow) => ({
   id: r.id, foodId: r.food_id, foodName: r.food_name, serving: r.serving,
@@ -205,6 +207,16 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     if (!row) throw new APIError(409, "Food ID is already in use");
     return json({ food: foodView(row) }, 201);
   }
+  const dismissFoodMatch = /^\/v1\/foods\/([a-f0-9-]{36})\/dismiss$/.exec(path);
+  if (dismissFoodMatch && method === "POST") {
+    const now = new Date().toISOString();
+    const result = await env.DB.prepare("UPDATE foods SET dismissed_at = ? WHERE id = ? AND tenant_id = ?")
+      .bind(now, dismissFoodMatch[1], tenantId).run();
+    if (!result.meta.changes) throw new APIError(404, "Food not found");
+    const row = await env.DB.prepare("SELECT * FROM foods WHERE id = ? AND tenant_id = ?")
+      .bind(dismissFoodMatch[1], tenantId).first<FoodRow>();
+    return json({ food: foodView(row!) });
+  }
   if (path === "/v1/logs" && method === "POST") {
     const input = logInput.parse(await body(req));
     const food = await env.DB.prepare("SELECT * FROM foods WHERE id = ? AND tenant_id = ?")
@@ -224,7 +236,7 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(logId, tenantId, food.id, food.name,
         food.serving, input.quantity, calories, input.localDate, now).run();
     if (result.meta.changes) {
-      await env.DB.prepare(`UPDATE foods SET use_count = use_count + 1, last_used_at = ?
+      await env.DB.prepare(`UPDATE foods SET use_count = use_count + 1, last_used_at = ?, dismissed_at = NULL
         WHERE id = ? AND tenant_id = ?`).bind(now, food.id, tenantId).run();
     }
     const row = await env.DB.prepare("SELECT * FROM food_logs WHERE id = ? AND tenant_id = ?")

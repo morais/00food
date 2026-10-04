@@ -59,7 +59,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         return logs.filter { $0.localDate == day }.sorted { $0.loggedAt > $1.loggedAt }
     }
     var recentFoods: [FoodItem] {
-        foods.sorted {
+        foods.filter { $0.useCount > 0 && $0.dismissedAt == nil }.sorted {
             if $0.useCount != $1.useCount { return $0.useCount > $1.useCount }
             return ($0.lastUsedAt ?? "") > ($1.lastUsedAt ?? "")
         }
@@ -112,8 +112,16 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         if let index = foods.firstIndex(where: { $0.id == food.id }) {
             foods[index].useCount += 1
             foods[index].lastUsedAt = response.log.loggedAt
+            foods[index].dismissedAt = nil
         }
         message = "Logged \(food.name)"
+    }
+
+    func dismissFromFrequent(_ food: FoodItem) async throws {
+        let response: FoodResponse = try await call("/v1/foods/\(food.id)/dismiss", method: "POST")
+        if let index = foods.firstIndex(where: { $0.id == food.id }) {
+            foods[index] = response.food
+        }
     }
 
     func deleteLog(_ log: FoodLog) async throws {

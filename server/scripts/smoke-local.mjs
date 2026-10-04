@@ -53,6 +53,14 @@ await request("/v1/logs", "POST", { id: logId, foodId: food.id, quantity: 1, loc
 await request("/v1/logs", "POST", { id: logId, foodId: food.id, quantity: 1, localDate: "2026-10-03" });
 const afterLog = await request("/v1/snapshot");
 assert(afterLog.foods[0].useCount === 1 && afterLog.logs.length === 1, "log retry was not idempotent");
+const hidden = await request(`/v1/foods/${food.id}/dismiss`, "POST");
+assert(hidden.food.dismissedAt, "food was not hidden from frequent foods");
+const secondLog = (await request("/v1/logs", "POST", {
+  id: randomUUID(), foodId: food.id, quantity: 1, localDate: "2026-10-03",
+})).log;
+const restored = await request("/v1/snapshot");
+assert(restored.foods[0].dismissedAt === null, "logging a hidden food did not restore it");
+await request(`/v1/logs/${secondLog.id}`, "DELETE");
 const estimate = (await request("/v1/estimations", "POST", {
   id: randomUUID(), description: "Small bowl of berries", localDate: "2026-10-03",
 })).estimation;
@@ -100,4 +108,4 @@ const combinedImage = await request("/mcp", "POST", { jsonrpc: "2.0", id: 5, met
   params: { name: "view_food_photo", arguments: { id: combined.id } } }, mcpToken);
 assert(combinedImage.result?.content?.[0]?.type === "image", "agent could not inspect the combined photo");
 await request(`/v1/estimations/${combined.id}`, "DELETE");
-console.log("00Food local smoke passed: profile, repeat log, isolation, separate and combined photo/text, MCP review");
+console.log("00Food local smoke passed: profile, repeat log, hide and restore food, isolation, photo/text, MCP review");

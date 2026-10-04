@@ -48,6 +48,7 @@ struct FoodItem: Codable, Identifiable, Equatable {
     var source: String
     var useCount: Int
     var lastUsedAt: String?
+    var dismissedAt: String?
     var createdAt: String
     var updatedAt: String
 }

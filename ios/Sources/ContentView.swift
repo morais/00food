@@ -43,6 +43,7 @@ struct HomeView: View {
     @State private var reviewing: PendingEstimation?
     @State private var errorText: String?
     @State private var loggingID: String?
+    @State private var dismissingFoodID: String?
     @State private var deletingLogID: String?
     @State private var selectedLogDate = Calendar.current.startOfDay(for: Date())
 
@@ -60,11 +61,6 @@ struct HomeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     balanceCard
-                    Button { showingProgress = true } label: {
-                        Label("Progress & calorie plans", systemImage: "chart.xyaxis.line")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
                     Button { showingAdd = true } label: {
                         Label("Log food", systemImage: "plus.circle.fill")
                             .font(.headline).frame(maxWidth: .infinity).frame(height: 48)
@@ -77,9 +73,12 @@ struct HomeView: View {
                 }
                 .padding(.horizontal, 20).padding(.bottom, 28)
             }
+            .swipeActionsContainer()
             .navigationTitle("00Food")
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button { showingProgress = true } label: { Image(systemName: "chart.xyaxis.line") }
+                        .accessibilityLabel("Progress and calorie plans")
                     Button { showingSettings = true } label: { Image(systemName: "gearshape") }
                         .accessibilityLabel("Settings")
                 }
@@ -117,6 +116,12 @@ struct HomeView: View {
             .font(.subheadline)
             Text("Resting estimate − calorie gap + Health active energy − food. Exercise minutes are not added again.")
                 .font(.caption).foregroundStyle(.secondary)
+            if !store.estimations.isEmpty {
+                Label("\(store.estimations.count) \(store.estimations.count == 1 ? "food" : "foods") awaiting estimate or review · not counted yet",
+                      systemImage: "clock")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.orange)
+            }
             if !health.requested {
                 Button("Connect Apple Health") { Task { await health.connect() } }
                     .font(.subheadline)
@@ -153,12 +158,12 @@ struct HomeView: View {
     private var recentSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Log again").font(.title3.bold())
+                Text("Frequent foods").font(.title3.bold())
                 Spacer()
                 Text("Tap to add one serving").font(.caption).foregroundStyle(.secondary)
             }
             if store.recentFoods.isEmpty {
-                Text("Foods you log will appear here for one-tap reuse.")
+                Text("Foods you log appear here for one-tap reuse. Hidden foods return when logged again.")
                     .foregroundStyle(.secondary).padding(.vertical, 10)
             }
             ForEach(Array(store.recentFoods.prefix(8))) { food in
@@ -173,13 +178,19 @@ struct HomeView: View {
                         Spacer()
                         Text("\(food.kcal)").font(.headline.monospacedDigit()).foregroundStyle(.primary)
                         if loggingID == food.id { ProgressView() }
+                        if dismissingFoodID == food.id { ProgressView() }
                     }
                     .padding(.vertical, 8)
                 }
-                .disabled(loggingID != nil)
+                .disabled(loggingID != nil || dismissingFoodID != nil)
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    Button("Hide", systemImage: "eye.slash") { dismiss(food) }
+                        .tint(.gray)
+                }
                 .contextMenu {
                     Button("Log half serving") { log(food, quantity: 0.5) }
                     Button("Log two servings") { log(food, quantity: 2) }
+                    Button("Hide from frequent foods") { dismiss(food) }
                 }
             }
         }
@@ -220,17 +231,14 @@ struct HomeView: View {
                     }
                     Spacer()
                     Text("\(log.kcal) kcal").font(.subheadline.monospacedDigit())
-                    Button(role: .destructive) { delete(log) } label: {
-                        if deletingLogID == log.id { ProgressView() }
-                        else { Image(systemName: "trash") }
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.red)
-                    .frame(width: 44, height: 44)
-                    .disabled(deletingLogID != nil)
-                    .accessibilityLabel("Remove \(log.foodName) from this day's log")
+                    if deletingLogID == log.id { ProgressView() }
                 }
                 .padding(.vertical, 4)
+                .contentShape(Rectangle())
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    Button("Delete", systemImage: "trash", role: .destructive) { delete(log) }
+                        .disabled(deletingLogID != nil)
+                }
                 .contextMenu {
                     Button("Delete log", role: .destructive) { delete(log) }
                         .disabled(deletingLogID != nil)
@@ -249,6 +257,16 @@ struct HomeView: View {
         Task {
             defer { loggingID = nil }
             do { try await store.log(food, quantity: quantity) }
+            catch { errorText = error.localizedDescription }
+        }
+    }
+
+    private func dismiss(_ food: FoodItem) {
+        guard dismissingFoodID == nil else { return }
+        dismissingFoodID = food.id
+        Task {
+            defer { dismissingFoodID = nil }
+            do { try await store.dismissFromFrequent(food) }
             catch { errorText = error.localizedDescription }
         }
     }

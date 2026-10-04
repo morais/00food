@@ -10,6 +10,13 @@ struct ProgressPlansView: View {
 
     private var profile: FoodProfile? { store.profile }
     private var firstDay: Date { store.accountStartedAt ?? Date() }
+    private var aceThreshold: Double? {
+        switch profile?.estimateProfile {
+        case "male": 25
+        case "female": 32
+        default: nil
+        }
+    }
     private func healthyWeightRange(for heightCm: Double) -> ClosedRange<Double> {
         let metres = heightCm / 100
         let heightSquared = metres * metres
@@ -149,12 +156,15 @@ struct ProgressPlansView: View {
             Text("From \(firstDay.formatted(date: .abbreviated, time: .omitted)) · Apple Health body-fat percentage")
                 .font(.caption).foregroundStyle(.secondary)
             Chart {
-                RuleMark(y: .value("ACE 25%", 25))
-                    .foregroundStyle(.orange)
-                    .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
-                    .annotation(position: .top, alignment: .trailing) {
-                        Text("ACE 25%").font(.caption2).foregroundStyle(.orange)
-                    }
+                if let aceThreshold {
+                    RuleMark(y: .value("ACE classification", aceThreshold))
+                        .foregroundStyle(.orange)
+                        .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                        .annotation(position: .top, alignment: .trailing) {
+                            Text("ACE \(Int(aceThreshold))%")
+                                .font(.caption2).foregroundStyle(.orange)
+                        }
+                }
                 ForEach(health.bodyFatHistory) { point in
                     LineMark(x: .value("Date", point.date), y: .value("Body fat", point.value))
                         .foregroundStyle(.teal)
@@ -169,8 +179,13 @@ struct ProgressPlansView: View {
                 Text("No body-fat readings are available for this period.")
                     .foregroundStyle(.secondary)
             }
-            Text("ACE classifies 25% body fat and above as obesity for men; its categories differ by sex.")
-                .font(.footnote).foregroundStyle(.secondary)
+            if let aceThreshold {
+                Text("ACE’s \(profile?.estimateProfile == "female" ? "female" : "male") body-fat classification places its obesity boundary at \(Int(aceThreshold))%.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            } else {
+                Text("Choose Female or Male in Your details to show the corresponding ACE classification boundary.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -179,7 +194,8 @@ struct ProgressPlansView: View {
 
     private var bodyFatChartRange: ClosedRange<Double> {
         let values = health.bodyFatHistory.map(\.value)
-        return max(0, min(values.min() ?? 25, 25) - 5)...(max(values.max() ?? 25, 25) + 5)
+        let marker = aceThreshold ?? 25
+        return max(0, min(values.min() ?? marker, marker) - 5)...(max(values.max() ?? marker, marker) + 5)
     }
 
     private func projectedWeight(from weight: Double, gap: Int, minimum: Double, until end: Date) -> [HealthMeasurePoint] {
