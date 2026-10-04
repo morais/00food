@@ -8,7 +8,7 @@ enum FoodLogDestination: String, AppEnum {
     static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "Food log screen")
     static var caseDisplayRepresentations: [FoodLogDestination: DisplayRepresentation] = [
         .log: "Log food",
-        .camera: "Log with photo",
+        .camera: "Photograph food",
     ]
 }
 

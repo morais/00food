@@ -1,4 +1,5 @@
 import SwiftUI
+import WidgetKit
 
 struct RootView: View {
     @Environment(FoodStore.self) private var store
@@ -25,6 +26,10 @@ struct RootView: View {
             else { HomeView() }
         }
         .task {
+            if UserDefaults.standard.string(forKey: "foodControlIconsVersion") != "2" {
+                ControlCenter.shared.reloadAllControls()
+                UserDefaults.standard.set("2", forKey: "foodControlIconsVersion")
+            }
             openPendingWidgetLaunch()
             if store.signedIn {
                 do { try await store.refresh() } catch { errorText = error.localizedDescription }
