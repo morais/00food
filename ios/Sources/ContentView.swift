@@ -114,8 +114,15 @@ struct HomeView: View {
                 Label("\(health.activeKcal) active", systemImage: "figure.walk")
             }
             .font(.subheadline)
-            Text("Resting estimate − calorie gap + Health active energy − food. Exercise minutes are not added again.")
-                .font(.caption).foregroundStyle(.secondary)
+            if let profile = store.profile {
+                if profile.restingKcal < 1200 {
+                    Text("Resting estimate (\(profile.restingKcal) kcal); calorie gap (0 kcal). Minimum food target (1,200 kcal) + Health active energy − food.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text("Resting estimate (\(profile.restingKcal) kcal) − calorie gap (\(profile.effectiveDeficit(for: profile.deficitKcal)) kcal) + Health active energy − food.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
             if !store.estimations.isEmpty {
                 Label("\(store.estimations.count) \(store.estimations.count == 1 ? "food" : "foods") awaiting estimate or review · not counted yet",
                       systemImage: "clock")
