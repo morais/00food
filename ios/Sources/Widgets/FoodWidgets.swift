@@ -122,7 +122,7 @@ private struct LogFoodControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
         StaticControlConfiguration(kind: "com.00food.control.log") {
             ControlWidgetButton(action: OpenFoodLogIntent(target: .log)) {
-                Label("Log food", systemImage: "plus.circle")
+                Label("Log food", systemImage: "fork.knife")
             }
         }
         .displayName("Log food")
@@ -134,10 +134,19 @@ private struct LogWithPhotoControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
         StaticControlConfiguration(kind: "com.00food.control.camera") {
             ControlWidgetButton(action: OpenFoodLogIntent(target: .camera)) {
-                Label("Log with photo", systemImage: "camera")
+                Label {
+                    Text("Food photo")
+                } icon: {
+                    Image(systemName: "fork.knife")
+                        .overlay(alignment: .bottomTrailing) {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 9, weight: .bold))
+                                .offset(x: 7, y: 5)
+                        }
+                }
             }
         }
-        .displayName("Log with photo")
+        .displayName("Food photo")
         .description("Open 00Food and start the camera.")
     }
 }
