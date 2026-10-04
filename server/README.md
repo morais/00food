@@ -27,13 +27,13 @@ App routes use `Authorization: Bearer <app token>`:
 | Route | Purpose |
 | --- | --- |
 | `POST /v1/auth/apple` | Exchange a native Apple sign-in for an app session |
-| `GET /v1/snapshot` | Profile, reusable foods, recent logs, and pending estimates |
+| `GET /v1/snapshot` | Account creation date, profile, reusable foods, recent logs, and pending estimates |
 | `PUT /v1/profile` | Height, weight, estimate setting, weight-loss adjustment |
 | `POST /v1/foods` | Save a reusable food |
 | `POST /v1/logs` | Log a serving, using a client UUID for retry safety |
 | `DELETE /v1/logs/:id` | Remove a log |
-| `POST /v1/estimations` | Submit a new food description |
-| `PUT /v1/estimations/:id/photo` | Add a private JPEG photo (up to 2 MB) |
+| `POST /v1/estimations` | Submit a new food description, creating one pending-food ID |
+| `PUT /v1/estimations/:id/photo` | Add a private JPEG photo (up to 2 MB) to the same pending food |
 | `PUT /v1/estimations/:id/proposal` | Edit an agent proposal during review |
 | `POST /v1/estimations/:id/accept` | Save the proposed food and log it |
 | `DELETE /v1/estimations/:id` | Discard a pending estimate and its photo |
@@ -41,4 +41,4 @@ App routes use `Authorization: Bearer <app token>`:
 | `DELETE /v1/account/mcp-connections/:id` | Revoke an agent |
 | `POST /v1/auth/delete-account` | Reauthenticate and remove account data |
 
-`POST /mcp` supports `list_pending_foods`, `get_pending_food`, `view_food_photo`, `propose_food_estimate`, and `list_known_foods`. The remote MCP connection uses OAuth authorization code with PKCE and Apple web sign-in. The consent page explicitly says that a connected agent can inspect pending photos. The agent's proposal does not create a food or log until the app user accepts it.
+`POST /mcp` supports `list_pending_foods`, `get_pending_food`, `view_food_photo`, `propose_food_estimate`, and `list_known_foods`. An agent uses one pending-food ID to read the description and inspect its photo together before proposing an estimate. The remote MCP connection uses OAuth authorization code with PKCE and Apple web sign-in. The consent page explicitly says that a connected agent can inspect pending photos. The agent's proposal does not create a food or log until the app user accepts it.

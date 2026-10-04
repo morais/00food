@@ -156,13 +156,14 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
   }
   if (path === "/v1/seeds" && method === "GET") return json({ foods: seedFoods });
   if (path === "/v1/snapshot" && method === "GET") {
-    const [profile, foods, logs, estimations] = await Promise.all([
+    const [tenant, profile, foods, logs, estimations] = await Promise.all([
+      env.DB.prepare("SELECT created_at FROM tenants WHERE id = ?").bind(tenantId).first<{ created_at: string }>(),
       env.DB.prepare("SELECT * FROM profiles WHERE tenant_id = ?").bind(tenantId).first<ProfileRow>(),
       env.DB.prepare("SELECT * FROM foods WHERE tenant_id = ? ORDER BY use_count DESC, last_used_at DESC, created_at DESC LIMIT 1000").bind(tenantId).all<FoodRow>(),
       env.DB.prepare("SELECT * FROM food_logs WHERE tenant_id = ? AND local_date >= date('now','-90 days') ORDER BY logged_at DESC LIMIT 5000").bind(tenantId).all<LogRow>(),
       env.DB.prepare("SELECT * FROM pending_estimations WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 100").bind(tenantId).all<EstimationRow>(),
     ]);
-    return json({ profile: profile ? profileView(profile) : null,
+    return json({ startedAt: tenant?.created_at ?? null, profile: profile ? profileView(profile) : null,
       foods: foods.results.map(foodView), logs: logs.results.map(logView),
       estimations: estimations.results.map(estimationView), serverTime: new Date().toISOString() });
   }

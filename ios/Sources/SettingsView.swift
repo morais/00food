@@ -35,14 +35,22 @@ struct SettingsView: View {
                         Text("Open Your details & target to use this weight in your daily target.")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
-                    Button(health.weightRequested ? "Refresh Health data" : "Connect Apple Health") {
+                    if let fat = health.latestBodyFatPercent {
+                        HStack {
+                            Text("Latest body fat")
+                            Spacer()
+                            Text("\(fat.formatted(.number.precision(.fractionLength(1))))%")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Button(health.bodyFatRequested ? "Refresh Health data" : "Connect Apple Health") {
                         Task {
-                            if health.weightRequested { await health.refresh() }
+                            if health.bodyFatRequested { await health.refresh() }
                             else { await health.connect() }
                         }
                     }
                     if let error = health.errorMessage { Text(error).font(.footnote).foregroundStyle(.red) }
-                    Text("Active energy stays on this device. A Health weight is saved to your account only when you choose to use it in Your details & target.")
+                    Text("Active energy and body-fat history stay on this device. A Health weight is saved to your account only when you choose to use it in Your details & target.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("AI agent connection") {

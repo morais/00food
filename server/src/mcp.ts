@@ -12,12 +12,12 @@ const tools = [
   },
   {
     name: "get_pending_food", title: "Get Food Awaiting Estimate",
-    description: "Get one food description and whether a photo is available. Use view_food_photo if it has a photo.",
+    description: "Get one pending food's description and whether a photo is available. When it has a photo, inspect that photo too and use both together for the estimate.",
     inputSchema: z.toJSONSchema(z.strictObject({ id: uuid }), { io: "input" }), readOnly: true,
   },
   {
     name: "view_food_photo", title: "View Food Photo",
-    description: "Return the photo for one pending food as an image for visual estimation. The photo is private and removed after user review.",
+    description: "Return the photo for one pending food as an image. Use it together with that food's description from get_pending_food. The photo is private and removed after user review.",
     inputSchema: z.toJSONSchema(z.strictObject({ id: uuid }), { io: "input" }), readOnly: true,
   },
   {

@@ -7,7 +7,7 @@ struct FoodProfile: Codable, Equatable {
     var deficitKcal: Int
     var updatedAt: String?
 
-    var roughDailyTarget: Int {
+    var restingKcal: Int {
         // A deliberately simple directional estimate. The fixed reference
         // age keeps onboarding to the three inputs requested by the user.
         let offset: Double = switch estimateProfile {
@@ -15,8 +15,28 @@ struct FoodProfile: Codable, Equatable {
         case "female": -161
         default: -78
         }
-        let resting = 10 * weightKg + 6.25 * heightCm - 175 + offset
-        return max(1200, Int((resting * 1.2).rounded()) - deficitKcal)
+        return Int((10 * weightKg + 6.25 * heightCm - 175 + offset).rounded())
+    }
+
+    // Health active energy is added separately. Applying an activity
+    // multiplier here would credit the same movement twice.
+    var roughDailyTarget: Int { target(for: deficitKcal) }
+    func target(for deficit: Int) -> Int { max(1200, restingKcal - deficit) }
+    func effectiveDeficit(for deficit: Int) -> Int { max(0, restingKcal - target(for: deficit)) }
+}
+
+enum DeficitLevel: Int, CaseIterable, Identifiable {
+    case gentle = 300, steady = 450, faster = 600
+    var id: Int { rawValue }
+    var title: String {
+        switch self {
+        case .gentle: "Gentle"
+        case .steady: "Steady"
+        case .faster: "Faster"
+        }
+    }
+    static func nearest(to value: Int) -> DeficitLevel {
+        allCases.min { abs($0.rawValue - value) < abs($1.rawValue - value) } ?? .gentle
     }
 }
 
@@ -58,6 +78,7 @@ struct PendingEstimation: Codable, Identifiable, Equatable {
 }
 
 struct FoodSnapshot: Decodable {
+    var startedAt: String?
     var profile: FoodProfile?
     var foods: [FoodItem]
     var logs: [FoodLog]
@@ -98,5 +119,12 @@ enum FoodDates {
     static func today() -> String {
         let p = Calendar.current.dateComponents([.year, .month, .day], from: Date())
         return String(format: "%04d-%02d-%02d", p.year ?? 0, p.month ?? 0, p.day ?? 0)
+    }
+
+    static func parseTimestamp(_ value: String?) -> Date? {
+        guard let value else { return nil }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: value) ?? ISO8601DateFormatter().date(from: value)
     }
 }

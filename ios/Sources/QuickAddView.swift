@@ -32,7 +32,7 @@ struct QuickAddView: View {
         NavigationStack {
             List {
                 Section {
-                    TextField("Search or describe a food", text: $query, axis: .vertical)
+                    TextField("Search foods or describe your photo", text: $query, axis: .vertical)
                         .focused($searchFocused)
                         .submitLabel(.search)
                 }
@@ -73,7 +73,7 @@ struct QuickAddView: View {
                         Label("Ask my agent to estimate", systemImage: "sparkles")
                     }
                     .disabled(busy || (query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && photoData == nil))
-                    Text("Your connected agent can review text or a photo. You approve its estimate before it is saved and logged.")
+                    Text("Add a photo and description together. Your connected agent checks both as one food; you review the estimate before it is saved and logged.")
                         .font(.footnote).foregroundStyle(.secondary)
                     Button { showingManual = true } label: {
                         Label("Enter calories myself", systemImage: "pencil")

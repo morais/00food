@@ -39,9 +39,15 @@ struct ProfileView: View {
                     Text("Used only for a rough calorie target. Choose the estimate setting that works for you.")
                 }
                 Section("Daily target") {
-                    Stepper("Weight-loss adjustment: \(deficitKcal) kcal", value: $deficitKcal, in: 0...1000, step: 50)
-                    Text("Rough baseline: \(preview.roughDailyTarget) kcal/day before Apple Health active energy.")
+                    Picker("Calorie gap", selection: $deficitKcal) {
+                        ForEach(DeficitLevel.allCases) { level in
+                            Text("\(level.title) · \(level.rawValue) kcal/day").tag(level.rawValue)
+                        }
+                    }
+                    Text("Resting estimate \(preview.restingKcal) − calorie gap = \(preview.roughDailyTarget) kcal/day, plus Apple Health active energy.")
                         .font(.subheadline).foregroundStyle(.secondary)
+                    Text("The minimum food target is 1,200 kcal. The actual gap may be smaller at that floor.")
+                        .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section {
                     if let weight = health.latestWeightKg, let date = health.latestWeightDate {
@@ -64,7 +70,7 @@ struct ProfileView: View {
                         Text(error).font(.footnote).foregroundStyle(.red)
                     }
                 } header: { Text("Apple Health") } footer: {
-                    Text("00Food reads weight and active energy. A weight you choose to use is saved in your 00Food profile; active energy stays on this device.")
+                    Text("00Food reads weight, body fat, and active energy. A weight you choose to use is saved in your 00Food profile; Health history stays on this device.")
                 }
                 Section {
                     Button(isOnboarding ? "Start logging" : "Save details") { save() }
@@ -84,10 +90,13 @@ struct ProfileView: View {
                     heightCm = profile.heightCm
                     weightKg = profile.weightKg
                     estimateProfile = profile.estimateProfile
-                    deficitKcal = profile.deficitKcal
+                    deficitKcal = DeficitLevel.nearest(to: profile.deficitKcal).rawValue
                 }
             }
-            .task { if health.requested { await health.refresh() } }
+            .task {
+                health.setHistoryStart(store.accountStartedAt)
+                if health.requested { await health.refresh() }
+            }
             .alert("Could not save details", isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: { Text(errorText ?? "") }

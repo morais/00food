@@ -15,6 +15,7 @@ struct RootView: View {
         .task {
             if store.signedIn {
                 do { try await store.refresh() } catch { errorText = error.localizedDescription }
+                health.setHistoryStart(store.accountStartedAt)
                 await health.refresh()
             }
         }
@@ -22,6 +23,7 @@ struct RootView: View {
             if phase == .active && store.signedIn {
                 Task {
                     try? await store.refresh()
+                    health.setHistoryStart(store.accountStartedAt)
                     await health.refresh()
                 }
             }
@@ -37,6 +39,7 @@ struct HomeView: View {
     @Environment(HealthEnergy.self) private var health
     @State private var showingAdd = false
     @State private var showingSettings = false
+    @State private var showingProgress = false
     @State private var reviewing: PendingEstimation?
     @State private var errorText: String?
     @State private var loggingID: String?
@@ -51,6 +54,11 @@ struct HomeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     balanceCard
+                    Button { showingProgress = true } label: {
+                        Label("Progress & calorie plans", systemImage: "chart.xyaxis.line")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
                     Button { showingAdd = true } label: {
                         Label("Log food", systemImage: "plus.circle.fill")
                             .font(.headline).frame(maxWidth: .infinity).frame(height: 48)
@@ -72,12 +80,18 @@ struct HomeView: View {
             }
             .sheet(isPresented: $showingAdd) { QuickAddView() }
             .sheet(isPresented: $showingSettings) { SettingsView() }
+            .sheet(isPresented: $showingProgress) { ProgressPlansView() }
             .sheet(item: $reviewing) { ReviewEstimationView(estimation: $0) }
             .alert("Something went wrong", isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: { Text(errorText ?? "") }
             .refreshable {
                 try? await store.refresh()
+                health.setHistoryStart(store.accountStartedAt)
+                await health.refresh()
+            }
+            .task {
+                health.setHistoryStart(store.accountStartedAt)
                 await health.refresh()
             }
         }
@@ -95,7 +109,7 @@ struct HomeView: View {
                 Label("\(health.activeKcal) active", systemImage: "figure.walk")
             }
             .font(.subheadline)
-            Text("Target \(store.profile?.roughDailyTarget ?? 0) + active energy − food. Estimates are directional.")
+            Text("Resting estimate − calorie gap + Health active energy − food. Exercise minutes are not added again.")
                 .font(.caption).foregroundStyle(.secondary)
             if !health.requested {
                 Button("Connect Apple Health") { Task { await health.connect() } }

@@ -36,7 +36,8 @@ async function request(path, method = "GET", body, token = appToken) {
 function assert(value, message) { if (!value) throw Error(message); }
 
 const initial = await request("/v1/snapshot");
-assert(initial.profile === null && initial.foods.length === 0, "new account is not empty");
+assert(initial.profile === null && initial.foods.length === 0 && initial.startedAt === now,
+  "new account snapshot or creation date is wrong");
 await request("/v1/profile", "PUT", { heightCm: 170, weightKg: 70, estimateProfile: "neutral", deficitKcal: 300 });
 const food = (await request("/v1/foods", "POST", { id: randomUUID(), name: "Test banana", serving: "1 medium", kcal: 105 })).food;
 const otherLog = await fetch(origin + "/v1/logs", { method: "POST", headers: {
@@ -65,6 +66,11 @@ const upload = await fetch(`${origin}/v1/estimations/${estimate.id}/photo`, {
   method: "PUT", headers: { Authorization: `Bearer ${appToken}`, "Content-Type": "image/jpeg" }, body: jpeg,
 });
 assert(upload.ok, `photo upload failed (${upload.status}): ${upload.ok ? "" : await upload.text()}`);
+const pending = await request("/mcp", "POST", { jsonrpc: "2.0", id: 3, method: "tools/call",
+  params: { name: "get_pending_food", arguments: { id: estimate.id } } }, mcpToken);
+assert(JSON.stringify(pending.result?.content).includes("Small bowl of berries") &&
+  JSON.stringify(pending.result?.content).includes("hasPhoto"),
+  "agent could not inspect the combined description and photo request");
 const image = await request("/mcp", "POST", { jsonrpc: "2.0", id: 2, method: "tools/call",
   params: { name: "view_food_photo", arguments: { id: estimate.id } } }, mcpToken);
 assert(image.result?.content?.[0]?.type === "image" && image.result.content[0].mimeType === "image/jpeg",

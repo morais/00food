@@ -36,6 +36,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     var estimations: [PendingEstimation] = []
     var connections: [MCPConnection] = []
     var accountEmail: String?
+    var startedAt: String?
     var busy = false
     var message: String?
     private(set) var token: String
@@ -50,6 +51,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
 
     var signedIn: Bool { !token.isEmpty }
     var mcpAddress: String { baseURL + "/mcp" }
+    var accountStartedAt: Date? { FoodDates.parseTimestamp(startedAt) }
     var todaysLogs: [FoodLog] { logs.filter { $0.localDate == FoodDates.today() }.sorted { $0.loggedAt > $1.loggedAt } }
     var consumedToday: Int { todaysLogs.reduce(0) { $0 + $1.kcal } }
     var recentFoods: [FoodItem] {
@@ -73,6 +75,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     func refresh() async throws {
         guard signedIn else { return }
         let snapshot: FoodSnapshot = try await call("/v1/snapshot")
+        startedAt = snapshot.startedAt
         profile = snapshot.profile
         foods = snapshot.foods
         logs = snapshot.logs
@@ -164,6 +167,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         Self.deleteToken()
         token = ""
         accountEmail = nil
+        startedAt = nil
         UserDefaults.standard.removeObject(forKey: "accountEmail")
         profile = nil
         foods = []
@@ -179,6 +183,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         Self.deleteToken()
         token = ""
         accountEmail = nil
+        startedAt = nil
         UserDefaults.standard.removeObject(forKey: "accountEmail")
         profile = nil
         foods = []

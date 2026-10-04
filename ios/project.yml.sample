@@ -7,7 +7,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: 5.10
-    MARKETING_VERSION: "0.1"
+    MARKETING_VERSION: "1.0"
     CURRENT_PROJECT_VERSION: "1"
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Automatic
@@ -27,8 +27,8 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         FoodServerBaseURL: https://api.example.com
         NSCameraUsageDescription: "00Food uses the camera to capture a meal for an estimate you review."
-        NSHealthShareUsageDescription: "00Food reads active energy and your latest weight. Active energy stays on this device; a weight is saved to your account only when you choose to use it."
-        NSHealthUpdateUsageDescription: "00Food reads active energy and weight and does not write to Apple Health."
+        NSHealthShareUsageDescription: "00Food reads active energy, weight, and body-fat percentage to show your daily balance and progress. Health history stays on this device; a weight is saved to your account only when you choose to use it."
+        NSHealthUpdateUsageDescription: "00Food reads active energy, weight, and body fat and does not write to Apple Health."
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationPortraitUpsideDown
