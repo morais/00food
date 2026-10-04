@@ -89,10 +89,11 @@ struct QuickAddView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
             .sheet(isPresented: $showingCamera) { CameraPicker { image in setPhoto(image) } }
-            .onAppear {
+            .task {
                 guard openCameraOnAppear && !didOpenCamera else { return }
                 didOpenCamera = true
-                DispatchQueue.main.async { showingCamera = true }
+                try? await Task.sleep(for: .milliseconds(400))
+                if !Task.isCancelled { showingCamera = true }
             }
             .sheet(isPresented: $showingManual) {
                 ManualFoodView(initialName: descriptionText.isEmpty ? query : descriptionText) { dismiss() }

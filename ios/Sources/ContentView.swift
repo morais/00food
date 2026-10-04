@@ -107,7 +107,19 @@ struct HomeView: View {
     private func openPendingShortcut() {
         guard let launch = shortcuts.pendingLaunch else { return }
         shortcuts.pendingLaunch = nil
-        addLaunch = launch
+        let hasPresentedSheet = addLaunch != nil || showingSettings || showingProgress || reviewing != nil
+        if hasPresentedSheet {
+            addLaunch = nil
+            showingSettings = false
+            showingProgress = false
+            reviewing = nil
+            Task {
+                try? await Task.sleep(for: .milliseconds(400))
+                addLaunch = launch
+            }
+        } else {
+            addLaunch = launch
+        }
     }
 
     private var balanceCard: some View {
