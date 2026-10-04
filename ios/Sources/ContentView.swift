@@ -169,6 +169,15 @@ struct HomeView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("\(remaining) calories left")
             .accessibilityHint(showingBalanceDetails ? "Hide calculation" : "Show calculation")
+            if showingBalanceDetails, let profile = store.profile {
+                if profile.restingKcal < 1200 {
+                    Text("Resting estimate (\(profile.restingKcal) kcal); calorie gap (0 kcal). Minimum food target (1,200 kcal) + Health active energy − food.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text("Resting estimate (\(profile.restingKcal) kcal) − calorie gap (\(profile.effectiveDeficit(for: profile.deficitKcal)) kcal) + Health active energy − food.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
             HStack(spacing: 16) {
                 Label("\(store.consumedToday) eaten", systemImage: "fork.knife")
                 Label("\(health.activeKcal) active", systemImage: "figure.walk")
@@ -177,15 +186,6 @@ struct HomeView: View {
             if let profile = store.profile {
                 ActiveDayComparison(allowanceKcal: profile.roughDailyTarget + health.activeKcal,
                                     eatenKcal: store.consumedToday)
-                if showingBalanceDetails {
-                    if profile.restingKcal < 1200 {
-                        Text("Resting estimate (\(profile.restingKcal) kcal); calorie gap (0 kcal). Minimum food target (1,200 kcal) + Health active energy − food.")
-                            .font(.caption).foregroundStyle(.secondary)
-                    } else {
-                        Text("Resting estimate (\(profile.restingKcal) kcal) − calorie gap (\(profile.effectiveDeficit(for: profile.deficitKcal)) kcal) + Health active energy − food.")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
             }
             if !store.estimations.isEmpty {
                 Label("\(store.estimations.count) \(store.estimations.count == 1 ? "food" : "foods") awaiting estimate or review · not counted yet",
