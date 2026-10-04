@@ -4,6 +4,8 @@
 
 The iOS app is SwiftUI. The backend is a Cloudflare Worker with D1 for account and food data and a private R2 bucket for photos awaiting review. Native Sign in with Apple connects to the Worker. Apple Health active energy, weight, and body-fat percentage are read on device. The latest Health weight can be reviewed and imported into the account profile. The rough daily balance is a weight-loss target based on a resting estimate from height, weight, and an estimate setting, plus today's Health active energy, minus logged food. Exercise minutes are not converted to a second calorie credit. Three calorie-gap levels show directional eight-week illustrations beside actual Health weight and body-fat history from account creation. These are guides, not clinical predictions.
 
+The food log can browse previous dates, with individual entries removable from the selected day. Progress charts display the adult BMI 18.5–24.9 weight band for the saved height, begin their weight axis at the BMI 18.5 weight, and mark 25% on the body-fat chart as a reference.
+
 ## Development
 
 - [iOS setup](ios/README.md)

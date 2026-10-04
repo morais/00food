@@ -52,8 +52,12 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     var signedIn: Bool { !token.isEmpty }
     var mcpAddress: String { baseURL + "/mcp" }
     var accountStartedAt: Date? { FoodDates.parseTimestamp(startedAt) }
-    var todaysLogs: [FoodLog] { logs.filter { $0.localDate == FoodDates.today() }.sorted { $0.loggedAt > $1.loggedAt } }
+    var todaysLogs: [FoodLog] { logs(on: Date()) }
     var consumedToday: Int { todaysLogs.reduce(0) { $0 + $1.kcal } }
+    func logs(on date: Date) -> [FoodLog] {
+        let day = FoodDates.localDate(for: date)
+        return logs.filter { $0.localDate == day }.sorted { $0.loggedAt > $1.loggedAt }
+    }
     var recentFoods: [FoodItem] {
         foods.sorted {
             if $0.useCount != $1.useCount { return $0.useCount > $1.useCount }

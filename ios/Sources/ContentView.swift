@@ -44,9 +44,15 @@ struct HomeView: View {
     @State private var errorText: String?
     @State private var loggingID: String?
     @State private var deletingLogID: String?
+    @State private var selectedLogDate = Calendar.current.startOfDay(for: Date())
 
     private var remaining: Int {
         (store.profile?.roughDailyTarget ?? 0) + health.activeKcal - store.consumedToday
+    }
+    private var selectedLogs: [FoodLog] { store.logs(on: selectedLogDate) }
+    private var selectedDayIsToday: Bool { Calendar.current.isDateInToday(selectedLogDate) }
+    private var earliestLogDate: Date {
+        Calendar.current.date(byAdding: .day, value: -89, to: Calendar.current.startOfDay(for: Date())) ?? Date()
     }
 
     var body: some View {
@@ -67,7 +73,7 @@ struct HomeView: View {
 
                     if !store.estimations.isEmpty { estimatesSection }
                     recentSection
-                    todaySection
+                    foodLogSection
                 }
                 .padding(.horizontal, 20).padding(.bottom, 28)
             }
@@ -179,13 +185,33 @@ struct HomeView: View {
         }
     }
 
-    private var todaySection: some View {
+    private var foodLogSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Today’s food").font(.title3.bold())
-            if store.todaysLogs.isEmpty {
+            HStack {
+                Text(selectedDayIsToday ? "Today’s food" : "Food log").font(.title3.bold())
+                Spacer()
+                Button { shiftLogDate(by: -1) } label: {
+                    Image(systemName: "chevron.left").frame(width: 30, height: 36)
+                }
+                .disabled(selectedLogDate <= earliestLogDate)
+                .accessibilityLabel("Previous day")
+                Button { shiftLogDate(by: 1) } label: {
+                    Image(systemName: "chevron.right").frame(width: 30, height: 36)
+                }
+                .disabled(selectedDayIsToday)
+                .accessibilityLabel("Next day")
+            }
+            DatePicker("Food log date", selection: $selectedLogDate,
+                       in: earliestLogDate...Date(), displayedComponents: .date)
+                .datePickerStyle(.compact)
+            if !selectedDayIsToday {
+                Text("\(selectedLogs.reduce(0) { $0 + $1.kcal }) kcal logged")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            }
+            if selectedLogs.isEmpty {
                 Text("Nothing logged yet.").foregroundStyle(.secondary)
             }
-            ForEach(store.todaysLogs) { log in
+            ForEach(selectedLogs) { log in
                 HStack {
                     VStack(alignment: .leading) {
                         Text(log.foodName)
@@ -202,7 +228,7 @@ struct HomeView: View {
                     .foregroundStyle(.red)
                     .frame(width: 44, height: 44)
                     .disabled(deletingLogID != nil)
-                    .accessibilityLabel("Remove \(log.foodName) from today's log")
+                    .accessibilityLabel("Remove \(log.foodName) from this day's log")
                 }
                 .padding(.vertical, 4)
                 .contextMenu {
@@ -211,6 +237,11 @@ struct HomeView: View {
                 }
             }
         }
+    }
+
+    private func shiftLogDate(by days: Int) {
+        guard let date = Calendar.current.date(byAdding: .day, value: days, to: selectedLogDate) else { return }
+        selectedLogDate = min(max(date, earliestLogDate), Calendar.current.startOfDay(for: Date()))
     }
 
     private func log(_ food: FoodItem, quantity: Double = 1) {

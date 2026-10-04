@@ -60,14 +60,17 @@ struct QuickAddView: View {
                     }
                 }
                 Section("Something new") {
-                    HStack {
-                        PhotosPicker(selection: $photoItem, matching: .images) {
-                            Label("Choose photo", systemImage: "photo")
+                    PhotosPicker(selection: $photoItem, matching: .images) {
+                        Label("Choose from Photos", systemImage: "photo.on.rectangle")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.borderless)
+                    if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                        Button { showingCamera = true } label: {
+                            Label("Take photo", systemImage: "camera")
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        Spacer()
-                        if UIImagePickerController.isSourceTypeAvailable(.camera) {
-                            Button { showingCamera = true } label: { Label("Camera", systemImage: "camera") }
-                        }
+                        .buttonStyle(.borderless)
                     }
                     Button { requestEstimate() } label: {
                         Label("Ask my agent to estimate", systemImage: "sparkles")

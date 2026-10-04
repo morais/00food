@@ -117,7 +117,11 @@ struct SeedFood: Identifiable {
 
 enum FoodDates {
     static func today() -> String {
-        let p = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        localDate(for: Date())
+    }
+
+    static func localDate(for date: Date) -> String {
+        let p = Calendar.current.dateComponents([.year, .month, .day], from: date)
         return String(format: "%04d-%02d-%02d", p.year ?? 0, p.month ?? 0, p.day ?? 0)
     }
 

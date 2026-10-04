@@ -9,7 +9,9 @@ xcodegen generate --spec project.yml
 open ZeroZeroFood.xcodeproj
 ```
 
-The app App ID needs Sign in with Apple and HealthKit. It reads `activeEnergyBurned`, `bodyMass`, and `bodyFatPercentage` from Apple Health. Active energy and historical measurements stay on device. The user can choose to import the displayed weight into their 00Food profile, which is stored in Cloudflare. The progress screen compares gentle (300), steady (450), and faster (600 kcal/day) gaps, with illustrative weight lines and actual weight/body-fat history since account creation. The allowance adds Health active energy once; exercise minutes are not converted to calories. The target in `project.yml.sample` uses example identifiers; the real project file is ignored.
+The app App ID needs Sign in with Apple and HealthKit. It reads `activeEnergyBurned`, `bodyMass`, and `bodyFatPercentage` from Apple Health. Active energy and historical measurements stay on device. The user can choose to import the displayed weight into their 00Food profile, which is stored in Cloudflare. The progress screen compares gentle (300), steady (450), and faster (600 kcal/day) gaps, with illustrative weight lines and actual weight/body-fat history since account creation. Its weight axis starts at the weight corresponding to adult BMI 18.5; a shaded band reaches BMI 24.9, and the body-fat chart includes a 25% reference line. BMI is a screening measure, and the forecasts are directional. The allowance adds Health active energy once; exercise minutes are not converted to calories. The target in `project.yml.sample` uses example identifiers; the real project file is ignored.
+
+The home screen's food log date control and arrows show previous days and allow deleting an individual entry. The snapshot currently supplies the last 90 days of logs. In Add, "Choose from Photos" and "Take photo" occupy separate rows so they open the intended library or camera control.
 
 For a simulator compile without signing:
 
