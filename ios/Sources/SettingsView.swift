@@ -5,6 +5,8 @@ struct SettingsView: View {
     @Environment(FoodStore.self) private var store
     @Environment(HealthEnergy.self) private var health
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("activeDayStartMinutes") private var activeDayStartMinutes = 7 * 60
+    @AppStorage("activeDayEndMinutes") private var activeDayEndMinutes = 23 * 60
     @State private var showingProfile = false
     @State private var showingDelete = false
     @State private var confirmingDelete = false
@@ -53,6 +55,12 @@ struct SettingsView: View {
                     Text("Active energy and body-fat history stay on this device. A Health weight is saved to your account only when you choose to use it in Your details & target.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
+                Section("Active day") {
+                    DatePicker("Start", selection: startTime, displayedComponents: .hourAndMinute)
+                    DatePicker("End", selection: endTime, displayedComponents: .hourAndMinute)
+                    Text("Sets the time marker on Today's rough balance. The food marker uses your current allowance, including Health active energy so far.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
                 Section("AI agent connection") {
                     Text("Remote MCP address").font(.caption).foregroundStyle(.secondary)
                     Text(store.mcpAddress).font(.footnote).textSelection(.enabled)
@@ -81,6 +89,30 @@ struct SettingsView: View {
                 Button("OK", role: .cancel) {}
             } message: { Text(errorText ?? "") }
         }
+    }
+
+    private var startTime: Binding<Date> {
+        Binding(
+            get: { Self.today(at: activeDayStartMinutes) },
+            set: { activeDayStartMinutes = Self.minutes(in: $0) }
+        )
+    }
+
+    private var endTime: Binding<Date> {
+        Binding(
+            get: { Self.today(at: activeDayEndMinutes) },
+            set: { activeDayEndMinutes = Self.minutes(in: $0) }
+        )
+    }
+
+    private static func today(at minutes: Int) -> Date {
+        Calendar.current.date(byAdding: .minute, value: minutes,
+                              to: Calendar.current.startOfDay(for: Date())) ?? Date()
+    }
+
+    private static func minutes(in date: Date) -> Int {
+        let parts = Calendar.current.dateComponents([.hour, .minute], from: date)
+        return (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
     }
 
     private func revoke(_ connection: MCPConnection) {
