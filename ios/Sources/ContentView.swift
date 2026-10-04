@@ -135,6 +135,10 @@ struct HomeView: View {
             }
             .font(.subheadline)
             if let profile = store.profile {
+                DayPaceGuide(baseKcal: profile.roughDailyTarget,
+                             activeKcal: health.activeKcal,
+                             eatenKcal: store.consumedToday,
+                             logs: store.logs)
                 if profile.restingKcal < 1200 {
                     Text("Resting estimate (\(profile.restingKcal) kcal); calorie gap (0 kcal). Minimum food target (1,200 kcal) + Health active energy − food.")
                         .font(.caption).foregroundStyle(.secondary)
