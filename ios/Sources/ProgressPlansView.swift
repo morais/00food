@@ -6,6 +6,7 @@ struct ProgressPlansView: View {
     @Environment(HealthEnergy.self) private var health
     @Environment(\.dismiss) private var dismiss
     @State private var saving = false
+    @State private var showingOtherPlans = false
     @State private var errorText: String?
 
     private var profile: FoodProfile? { store.profile }
@@ -27,7 +28,7 @@ struct ProgressPlansView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
-                    Text("Compare three daily calorie gaps. The lines are illustrations, not predictions. Actual weight and body-fat readings come from Apple Health from the day you joined 00Food.")
+                    Text("Your saved calorie plan and Health trends. The line is an illustration, not a prediction. Open Other plans to compare calorie gaps and switch plans.")
                         .font(.subheadline).foregroundStyle(.secondary)
 
                     if !health.bodyFatRequested {
@@ -40,8 +41,19 @@ struct ProgressPlansView: View {
                         Text(error).font(.footnote).foregroundStyle(.red)
                     }
                     if let profile {
-                        ForEach(DeficitLevel.allCases) { level in
-                            planCard(level, profile: profile)
+                        let currentLevel = DeficitLevel.allCases.first { $0.rawValue == profile.deficitKcal }
+                        planCard(title: currentLevel?.title ?? "Custom", deficit: profile.deficitKcal,
+                                 isCurrent: true, profile: profile)
+                        DisclosureGroup(isExpanded: $showingOtherPlans) {
+                            VStack(alignment: .leading, spacing: 16) {
+                                ForEach(DeficitLevel.allCases.filter { $0.rawValue != profile.deficitKcal }) { level in
+                                    planCard(title: level.title, deficit: level.rawValue,
+                                             isCurrent: false, profile: profile)
+                                }
+                            }
+                            .padding(.top, 12)
+                        } label: {
+                            Text("Other plans").font(.headline)
                         }
                     }
                     fatCard
@@ -64,8 +76,8 @@ struct ProgressPlansView: View {
         }
     }
 
-    private func planCard(_ level: DeficitLevel, profile: FoodProfile) -> some View {
-        let gap = profile.effectiveDeficit(for: level.rawValue)
+    private func planCard(title: String, deficit: Int, isCurrent: Bool, profile: FoodProfile) -> some View {
+        let gap = profile.effectiveDeficit(for: deficit)
         let healthyRange = healthyWeightRange(for: profile.heightCm)
         let startingWeight = health.weightHistory.last?.value ?? profile.weightKg
         let today = Calendar.current.startOfDay(for: Date())
@@ -79,16 +91,18 @@ struct ProgressPlansView: View {
                            health.weightHistory.map(\.value).max() ?? 0,
                            projection.map(\.value).max() ?? 0) + 4
         let shownChange = (projection.first?.value ?? 0) - (projection.last?.value ?? 0)
-        let isSelected = profile.deficitKcal == level.rawValue
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text(level.title).font(.title3.bold())
+                Text(title).font(.title3.bold())
                 Spacer()
-                Text("\(level.rawValue) kcal/day").font(.subheadline.bold())
+                VStack(alignment: .trailing, spacing: 2) {
+                    if isCurrent { Text("Current plan").font(.caption).foregroundStyle(.tint) }
+                    Text("\(deficit) kcal/day").font(.subheadline.bold())
+                }
             }
-            Text("Food target \(profile.target(for: level.rawValue)) kcal + Health active energy")
+            Text("Food target \(profile.target(for: deficit)) kcal + Health active energy")
                 .font(.subheadline).foregroundStyle(.secondary)
-            if gap < level.rawValue {
+            if gap < deficit {
                 Text("The 1,200 kcal floor makes the effective gap about \(gap) kcal/day before activity.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
@@ -141,9 +155,11 @@ struct ProgressPlansView: View {
                 Text("Estimated entry into the adult BMI range: \(bmiEntryDate.formatted(date: .abbreviated, time: .omitted))")
                     .font(.subheadline.weight(.medium))
             }
-            Button(isSelected ? "Current plan" : "Use this plan") { select(level, profile: profile) }
-                .buttonStyle(.borderedProminent)
-                .disabled(saving || isSelected)
+            if !isCurrent {
+                Button("Use this plan") { select(deficit, profile: profile) }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(saving)
+            }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -220,14 +236,15 @@ struct ProgressPlansView: View {
         return entry
     }
 
-    private func select(_ level: DeficitLevel, profile: FoodProfile) {
+    private func select(_ deficit: Int, profile: FoodProfile) {
         saving = true
         Task {
             defer { saving = false }
             do {
                 var updated = profile
-                updated.deficitKcal = level.rawValue
+                updated.deficitKcal = deficit
                 try await store.saveProfile(updated)
+                showingOtherPlans = false
             } catch { errorText = error.localizedDescription }
         }
     }
