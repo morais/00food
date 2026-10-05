@@ -97,6 +97,7 @@ struct ProgressPlansView: View {
 
     private func calorieHistoryCard(profile: FoodProfile) -> some View {
         let points = dailyCalorieBalances(profile: profile)
+        let today = Calendar.current.startOfDay(for: Date())
         return VStack(alignment: .leading, spacing: 10) {
             Text("Calories over time").font(.title3.bold())
             Picker("Period", selection: $calorieHistoryDays) {
@@ -104,33 +105,47 @@ struct ProgressPlansView: View {
                 Text("90 days").tag(90)
             }
             .pickerStyle(.segmented)
-            if let first = points.first, let last = points.last {
+            if !points.isEmpty {
                 Chart {
                     ForEach(points) { point in
                         BarMark(x: .value("Day", point.date), y: .value("Logged food", point.eaten))
-                            .foregroundStyle(.orange.opacity(0.75))
+                            .foregroundStyle(point.date == today ? Color.purple : Color.orange.opacity(0.75))
                         LineMark(x: .value("Day", point.date), y: .value("Allowance", point.allowance))
                             .foregroundStyle(.blue)
                             .lineStyle(StrokeStyle(lineWidth: 2))
+                        if point.date == today {
+                            PointMark(x: .value("Day", point.date), y: .value("Today's allowance", point.allowance))
+                                .foregroundStyle(.purple)
+                                .symbolSize(45)
+                        }
                     }
                 }
                 .frame(height: 190)
                 .chartLegend(.hidden)
-                .chartXScale(domain: first.date...(Calendar.current.date(byAdding: .day, value: 1, to: last.date) ?? last.date))
+                .chartXScale(domain: calorieHistoryDomain)
                 HStack(spacing: 16) {
                     Label("Logged food", systemImage: "square.fill").foregroundStyle(.orange)
                     Label("Allowance", systemImage: "line.diagonal").foregroundStyle(.blue)
+                    Label("Today", systemImage: "circle.fill").foregroundStyle(.purple)
                 }
                 .font(.caption)
             } else {
                 Text("No calorie history yet.").foregroundStyle(.secondary)
             }
-            Text("Allowance uses your current food target, including the current resting-energy average, plus each day’s recorded Health active energy. Earlier target changes are not tracked; days without an active-energy record show the base target. Bars show only food logged in 00Food.")
+            Text("Today is still in progress. Allowance uses your current food target, including the current resting-energy average, plus each day’s recorded Health active energy. Earlier target changes are not tracked; days without an active-energy record show the base target. Bars show only food logged in 00Food.")
                 .font(.footnote).foregroundStyle(.secondary)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+    }
+
+    private var calorieHistoryDomain: ClosedRange<Date> {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let start = calendar.date(byAdding: .day, value: 1 - calorieHistoryDays, to: today) ?? today
+        let end = calendar.date(byAdding: .day, value: 1, to: today) ?? today.addingTimeInterval(86_400)
+        return start...end
     }
 
     private func dailyCalorieBalances(profile: FoodProfile) -> [DailyCalorieBalance] {
@@ -274,8 +289,8 @@ struct ProgressPlansView: View {
         let today = Calendar.current.startOfDay(for: Date())
         let sixMonths = Calendar.current.date(byAdding: .month, value: 6, to: today) ?? today
         return VStack(alignment: .leading, spacing: 10) {
-            Text("Body fat since you joined").font(.title3.bold())
-            Text("From \(firstDay.formatted(date: .abbreviated, time: .omitted)) · Apple Health body-fat percentage")
+            Text("Body fat over time").font(.title3.bold())
+            Text("Apple Health readings since \(firstDay.formatted(date: .abbreviated, time: .omitted))")
                 .font(.caption).foregroundStyle(.secondary)
             Chart {
                 ForEach(visibleACEBoundaries) { boundary in
@@ -323,14 +338,22 @@ struct ProgressPlansView: View {
             if !visibleACEBoundaries.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(visibleACEBoundaries) { boundary in
-                        HStack(spacing: 6) {
-                            Capsule().frame(width: 18, height: 2)
-                            Text("ACE \(boundary.category) · \(Int(boundary.percentage))%")
+                        HStack(alignment: .top, spacing: 7) {
+                            Capsule()
+                                .fill(aceColor(for: boundary))
+                                .frame(width: 18, height: 2)
+                                .padding(.top, 7)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("ACE \(boundary.category) · \(Int(boundary.percentage))%")
+                                    .foregroundStyle(aceColor(for: boundary))
+                                Text(aceForecastLabel(for: boundary, projection: projection))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
-                        .foregroundStyle(aceColor(for: boundary))
+                        .font(.caption)
                     }
                 }
-                .font(.caption)
                 .accessibilityElement(children: .combine)
             }
             if health.bodyFatHistory.isEmpty {
@@ -357,6 +380,16 @@ struct ProgressPlansView: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+    }
+
+    private func aceForecastLabel(for boundary: ACEBodyFatBoundary,
+                                  projection: [HealthMeasurePoint]) -> String {
+        guard let first = projection.first else { return "No projection" }
+        if first.value <= boundary.percentage { return "Already below" }
+        guard let date = ACEThresholdForecast.crossingDate(for: boundary.percentage, in: projection) else {
+            return "Not reached in projection"
+        }
+        return "Estimated \(date.formatted(.dateTime.day().month(.abbreviated).year()))"
     }
 
     private var bodyFatChartRange: ClosedRange<Double> {
