@@ -63,7 +63,7 @@ struct ProfileView: View {
                             if (25...400).contains(weight) { weightKg = weight }
                             else { errorText = "The Health weight is outside the supported range." }
                         }
-                        Text("Recorded \(date.formatted(date: .abbreviated, time: .omitted)). You can edit the weight above before saving.")
+                        Text("Recorded \(date.formatted(date: .abbreviated, time: .omitted)). You can edit the weight above before continuing.")
                             .font(.footnote).foregroundStyle(.secondary)
                     } else {
                         Button(health.weightRequested ? "Refresh Apple Health weight" : "Connect Apple Health and get weight") {
@@ -80,9 +80,11 @@ struct ProfileView: View {
                 } header: { Text("Apple Health") } footer: {
                     Text("00Food reads weight, body fat, and active and resting energy. A weight you choose to use is saved in your 00Food profile; Health history stays on this device.")
                 }
-                Section {
-                    Button(isOnboarding ? "Start logging" : "Save details") { save() }
-                        .frame(maxWidth: .infinity).disabled(busy || !valid)
+                if isOnboarding {
+                    Section {
+                        Button("Start logging") { save() }
+                            .frame(maxWidth: .infinity).disabled(busy || !valid)
+                    }
                 }
                 Section {
                     Text("When available, your target uses recent Apple Health resting energy. Otherwise it uses a directional estimate from your details. It does not account for health conditions or body composition.")
@@ -91,7 +93,17 @@ struct ProfileView: View {
             }
             .navigationTitle(isOnboarding ? "Set up 00Food" : "Your details")
             .toolbar {
-                if !isOnboarding { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
+                if !isOnboarding {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Cancel") { dismiss() }
+                            .disabled(busy)
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Done") { save() }
+                            .fontWeight(.semibold)
+                            .disabled(busy || !valid)
+                    }
+                }
             }
             .onAppear {
                 if let profile = store.profile {
@@ -124,6 +136,7 @@ struct ProfileView: View {
                     birthYear: Int(birthYear.trimmingCharacters(in: .whitespacesAndNewlines)))
     }
     private func save() {
+        guard !busy, valid else { return }
         busy = true
         Task {
             defer { busy = false }
