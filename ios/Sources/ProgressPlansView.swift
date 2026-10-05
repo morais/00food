@@ -26,6 +26,16 @@ struct ProgressPlansView: View {
         ProgressProjection.visibleACEBoundaries(for: profile?.estimateProfile ?? "",
                                                 projectedPercentages: projectedBodyFat.map(\.value))
     }
+    private func aceColor(for boundary: ACEBodyFatBoundary) -> Color {
+        switch boundary.category {
+        case "Obesity": .orange
+        case "Average": .blue
+        case "Fitness": .green
+        case "Athletes": .purple
+        case "Essential": .pink
+        default: .gray
+        }
+    }
     private func healthyWeightRange(for heightCm: Double) -> ClosedRange<Double> {
         let metres = heightCm / 100
         let heightSquared = metres * metres
@@ -270,12 +280,14 @@ struct ProgressPlansView: View {
             Chart {
                 ForEach(visibleACEBoundaries) { boundary in
                     RuleMark(y: .value("ACE category boundary", boundary.percentage))
-                        .foregroundStyle(boundary.isObesity ? Color.orange : Color.gray.opacity(0.7))
+                        .foregroundStyle(aceColor(for: boundary))
                         .lineStyle(StrokeStyle(lineWidth: boundary.isObesity ? 1.5 : 1, dash: [5, 4]))
                         .annotation(position: .top, alignment: .trailing) {
                             Text("ACE \(boundary.category) \(Int(boundary.percentage))%")
                                 .font(.caption2)
-                                .foregroundStyle(boundary.isObesity ? Color.orange : Color.secondary)
+                                .foregroundStyle(aceColor(for: boundary))
+                                .padding(.horizontal, 3)
+                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 3))
                         }
                 }
                 ForEach(health.bodyFatHistory) { point in
@@ -308,6 +320,19 @@ struct ProgressPlansView: View {
                 Label("Illustration", systemImage: "circle.dotted").foregroundStyle(.teal)
             }
             .font(.caption)
+            if !visibleACEBoundaries.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(visibleACEBoundaries) { boundary in
+                        HStack(spacing: 6) {
+                            Capsule().frame(width: 18, height: 2)
+                            Text("ACE \(boundary.category) · \(Int(boundary.percentage))%")
+                        }
+                        .foregroundStyle(aceColor(for: boundary))
+                    }
+                }
+                .font(.caption)
+                .accessibilityElement(children: .combine)
+            }
             if health.bodyFatHistory.isEmpty {
                 Text("No body-fat readings since you joined. An illustration, if shown, starts from your latest Health reading.")
                     .foregroundStyle(.secondary)
