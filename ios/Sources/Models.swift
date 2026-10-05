@@ -23,8 +23,12 @@ struct FoodProfile: Codable, Equatable {
     // Health active energy is added separately. Applying an activity
     // multiplier here would credit the same movement twice.
     var roughDailyTarget: Int { target(for: deficitKcal) }
-    func target(for deficit: Int) -> Int { max(1200, restingKcal - deficit) }
-    func effectiveDeficit(for deficit: Int) -> Int { max(0, restingKcal - target(for: deficit)) }
+    func target(for deficit: Int, resting: Int? = nil) -> Int {
+        max(1200, (resting ?? restingKcal) - deficit)
+    }
+    func effectiveDeficit(for deficit: Int, resting: Int? = nil) -> Int {
+        max(0, (resting ?? restingKcal) - target(for: deficit, resting: resting))
+    }
 }
 
 enum DeficitLevel: Int, CaseIterable, Identifiable {
@@ -125,6 +129,7 @@ struct PendingEstimation: Codable, Identifiable, Equatable {
 }
 
 struct FoodSnapshot: Codable {
+    var accountId: String? = nil
     var startedAt: String?
     var profile: FoodProfile?
     var foods: [FoodItem]

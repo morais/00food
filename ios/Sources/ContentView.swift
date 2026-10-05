@@ -13,7 +13,9 @@ struct RootView: View {
 
     private var widgetSnapshot: FoodWidgetSnapshot? {
         guard store.signedIn, let profile = store.profile else { return nil }
-        return FoodWidgetSnapshot(localDate: FoodDates.today(), targetKcal: profile.roughDailyTarget,
+        return FoodWidgetSnapshot(localDate: FoodDates.today(),
+                                  targetKcal: profile.target(for: profile.deficitKcal,
+                                                             resting: health.effectiveRestingKcal(for: profile)),
                                   consumedKcal: store.consumedToday, activeKcal: health.activeKcal,
                                   pendingCount: store.estimations.count, startMinutes: activeDayStartMinutes,
                                   endMinutes: activeDayEndMinutes)
@@ -36,6 +38,7 @@ struct RootView: View {
                 do { try await store.refresh() } catch { errorText = error.localizedDescription }
                 health.setHistoryStart(store.accountStartedAt)
                 await health.refresh()
+                syncDietaryEnergy()
             }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -47,6 +50,7 @@ struct RootView: View {
                     try? await store.refresh()
                     health.setHistoryStart(store.accountStartedAt)
                     await health.refresh()
+                    syncDietaryEnergy()
                 }
             }
         }
@@ -58,6 +62,8 @@ struct RootView: View {
             if let snapshot { FoodWidgetSnapshotStore.save(snapshot) }
             else { FoodWidgetSnapshotStore.clear() }
         }
+        .onChange(of: store.logs, initial: true) { _, _ in syncDietaryEnergy() }
+        .onChange(of: store.accountId) { _, _ in syncDietaryEnergy() }
         .alert("Could not refresh", isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(errorText ?? "") }
@@ -67,6 +73,13 @@ struct RootView: View {
         guard let launch = FoodQuickLaunch(rawValue: pendingWidgetLaunch) else { return }
         pendingWidgetLaunch = ""
         FoodQuickActions.shared.pendingLaunch = launch
+    }
+
+    private func syncDietaryEnergy() {
+        guard store.signedIn, store.hasLoadedSnapshot, let accountId = store.accountId else { return }
+        health.configureDietaryExport(accountId: accountId)
+        let logs = store.logs
+        Task { await health.syncDietaryEnergy(logs: logs, accountId: accountId) }
     }
 
     private var accountLoadView: some View {
@@ -106,7 +119,10 @@ struct HomeView: View {
     @State private var showingBalanceDetails = false
 
     private var remaining: Int {
-        (store.profile?.roughDailyTarget ?? 0) + health.activeKcal - store.consumedToday
+        guard let profile = store.profile else { return 0 }
+        return profile.target(for: profile.deficitKcal,
+                              resting: health.effectiveRestingKcal(for: profile))
+            + health.activeKcal - store.consumedToday
     }
     private var selectedLogs: [FoodLog] { store.logs(on: selectedLogDate) }
     private var selectedDayIsToday: Bool { Calendar.current.isDateInToday(selectedLogDate) }
@@ -222,11 +238,12 @@ struct HomeView: View {
             .accessibilityLabel("\(remaining) calories left")
             .accessibilityHint(showingBalanceDetails ? "Hide calculation" : "Show calculation")
             if showingBalanceDetails, let profile = store.profile {
-                if profile.restingKcal < 1200 {
-                    Text("Resting estimate (\(profile.restingKcal) kcal); calorie gap (0 kcal). Minimum food target (1,200 kcal) + Health active energy − food.")
+                let resting = health.effectiveRestingKcal(for: profile)
+                if resting < 1200 {
+                    Text("Resting estimate (\(resting) kcal); calorie gap (0 kcal). Minimum food target (1,200 kcal) + Health active energy − food.")
                         .font(.caption).foregroundStyle(.secondary)
                 } else {
-                    Text("Resting estimate (\(profile.restingKcal) kcal) − calorie gap (\(profile.effectiveDeficit(for: profile.deficitKcal)) kcal) + Health active energy − food.")
+                    Text("Resting estimate (\(resting) kcal) − calorie gap (\(profile.effectiveDeficit(for: profile.deficitKcal, resting: resting)) kcal) + Health active energy − food.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -236,7 +253,8 @@ struct HomeView: View {
             }
             .font(.subheadline)
             if let profile = store.profile {
-                ActiveDayComparison(allowanceKcal: profile.roughDailyTarget + health.activeKcal,
+                ActiveDayComparison(allowanceKcal: profile.target(for: profile.deficitKcal,
+                    resting: health.effectiveRestingKcal(for: profile)) + health.activeKcal,
                                     eatenKcal: store.consumedToday)
             }
             if !store.estimations.isEmpty {

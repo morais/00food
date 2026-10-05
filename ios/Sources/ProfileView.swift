@@ -44,7 +44,7 @@ struct ProfileView: View {
                             .keyboardType(.numberPad)
                     }
                 } header: { Text("Your details") } footer: {
-                    Text("Birth year improves the rough resting estimate. Leave it empty to use age 35 as a reference.")
+                    Text("Birth year improves the fallback resting estimate. Leave it empty to use age 35 as a reference.")
                 }
                 Section("Daily target") {
                     Picker("Calorie gap", selection: $deficitKcal) {
@@ -52,7 +52,7 @@ struct ProfileView: View {
                             Text("\(level.title) · \(level.rawValue) kcal/day").tag(level.rawValue)
                         }
                     }
-                    Text("Resting estimate \(preview.restingKcal) − calorie gap = \(preview.roughDailyTarget) kcal/day, plus Apple Health active energy.")
+                    Text("Resting estimate \(health.effectiveRestingKcal(for: preview)) − calorie gap = \(preview.target(for: deficitKcal, resting: health.effectiveRestingKcal(for: preview))) kcal/day, plus Apple Health active energy.")
                         .font(.subheadline).foregroundStyle(.secondary)
                     Text("The minimum food target is 1,200 kcal. The actual gap may be smaller at that floor.")
                         .font(.footnote).foregroundStyle(.secondary)
@@ -78,14 +78,14 @@ struct ProfileView: View {
                         Text(error).font(.footnote).foregroundStyle(.red)
                     }
                 } header: { Text("Apple Health") } footer: {
-                    Text("00Food reads weight, body fat, and active energy. A weight you choose to use is saved in your 00Food profile; Health history stays on this device.")
+                    Text("00Food reads weight, body fat, and active and resting energy. A weight you choose to use is saved in your 00Food profile; Health history stays on this device.")
                 }
                 Section {
                     Button(isOnboarding ? "Start logging" : "Save details") { save() }
                         .frame(maxWidth: .infinity).disabled(busy || !valid)
                 }
                 Section {
-                    Text("This is a directional estimate from height, weight, birth year when provided, and the selected setting. It does not account for health conditions or body composition.")
+                    Text("When available, your target uses recent Apple Health resting energy. Otherwise it uses a directional estimate from your details. It does not account for health conditions or body composition.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
             }

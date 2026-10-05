@@ -15,6 +15,7 @@ private struct LoginResponse: Decodable {
     var tenant: Tenant
     struct Tenant: Decodable { var id: String; var email: String? }
 }
+private struct MeResponse: Decodable { var id: String? }
 private struct FoodResponse: Decodable { var food: FoodItem }
 private struct LogResponse: Decodable { var log: FoodLog }
 private struct ProfileResponse: Decodable { var profile: FoodProfile }
@@ -38,6 +39,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     var estimations: [PendingEstimation] = []
     var connections: [MCPConnection] = []
     var accountEmail: String?
+    var accountId: String?
     var startedAt: String?
     var busy = false
     var message: String?
@@ -98,6 +100,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         operations = []
         hasLoadedSnapshot = false
         accountEmail = response.tenant.email
+        accountId = response.tenant.id
         UserDefaults.standard.set(accountEmail, forKey: "accountEmail")
         try await refresh()
     }
@@ -115,6 +118,10 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
                 }
                 let snapshot: FoodSnapshot = try await call("/v1/snapshot")
                 if !operations.isEmpty { continue }
+                if accountId == nil {
+                    let me: MeResponse = try await call("/v1/me")
+                    accountId = me.id
+                }
                 apply(snapshot)
                 hasLoadedSnapshot = true
                 try persist()
@@ -225,6 +232,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         Self.deleteToken()
         token = ""
         accountEmail = nil
+        accountId = nil
         startedAt = nil
         UserDefaults.standard.removeObject(forKey: "accountEmail")
         profile = nil
@@ -247,6 +255,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         Self.deleteToken()
         token = ""
         accountEmail = nil
+        accountId = nil
         startedAt = nil
         UserDefaults.standard.removeObject(forKey: "accountEmail")
         profile = nil
@@ -268,11 +277,13 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     }
 
     private func snapshot() -> FoodSnapshot {
-        FoodSnapshot(startedAt: startedAt, profile: profile, foods: foods, logs: logs, estimations: estimations)
+        FoodSnapshot(accountId: accountId, startedAt: startedAt, profile: profile,
+                     foods: foods, logs: logs, estimations: estimations)
     }
 
     private func apply(_ snapshot: FoodSnapshot) {
         startedAt = snapshot.startedAt
+        if let id = snapshot.accountId { accountId = id }
         profile = snapshot.profile
         foods = snapshot.foods
         logs = snapshot.logs

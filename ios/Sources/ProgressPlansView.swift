@@ -115,7 +115,7 @@ struct ProgressPlansView: View {
             } else {
                 Text("No calorie history yet.").foregroundStyle(.secondary)
             }
-            Text("Allowance uses your current food target plus each day’s recorded Health active energy. Earlier plan changes are not tracked; days without an active-energy record show the base target. Bars show only food logged in 00Food.")
+            Text("Allowance uses your current food target, including the current resting-energy average, plus each day’s recorded Health active energy. Earlier target changes are not tracked; days without an active-energy record show the base target. Bars show only food logged in 00Food.")
                 .font(.footnote).foregroundStyle(.secondary)
         }
         .padding(16)
@@ -142,7 +142,8 @@ struct ProgressPlansView: View {
             let key = FoodDates.localDate(for: date)
             let active = date == today ? health.activeKcal : (activeByDay[key] ?? 0)
             days.append(DailyCalorieBalance(date: date, eaten: foodByDay[key] ?? 0,
-                                            allowance: profile.roughDailyTarget + active))
+                                            allowance: profile.target(for: profile.deficitKcal,
+                                                resting: health.effectiveRestingKcal(for: profile)) + active))
             guard let next = calendar.date(byAdding: .day, value: 1, to: date) else { break }
             date = next
         }
@@ -150,7 +151,8 @@ struct ProgressPlansView: View {
     }
 
     private func planCard(title: String, deficit: Int, isCurrent: Bool, profile: FoodProfile) -> some View {
-        let gap = profile.effectiveDeficit(for: deficit)
+        let resting = health.effectiveRestingKcal(for: profile)
+        let gap = profile.effectiveDeficit(for: deficit, resting: resting)
         let healthyRange = healthyWeightRange(for: profile.heightCm)
         let startingWeight = health.weightHistory.last?.value ?? profile.weightKg
         let today = Calendar.current.startOfDay(for: Date())
@@ -173,7 +175,7 @@ struct ProgressPlansView: View {
                     Text("\(deficit) kcal/day").font(.subheadline.bold())
                 }
             }
-            Text("Food target \(profile.target(for: deficit)) kcal + Health active energy")
+            Text("Food target \(profile.target(for: deficit, resting: resting)) kcal + Health active energy")
                 .font(.subheadline).foregroundStyle(.secondary)
             if gap < deficit {
                 Text("The 1,200 kcal floor makes the effective gap about \(gap) kcal/day before activity.")
@@ -343,7 +345,8 @@ struct ProgressPlansView: View {
         let startingWeight = health.weightHistory.last?.value ?? health.latestWeightKg ?? profile.weightKg
         let today = Calendar.current.startOfDay(for: Date())
         let sixMonths = Calendar.current.date(byAdding: .month, value: 6, to: today) ?? today
-        return projectedWeight(from: startingWeight, gap: profile.effectiveDeficit(for: profile.deficitKcal),
+        return projectedWeight(from: startingWeight, gap: profile.effectiveDeficit(for: profile.deficitKcal,
+            resting: health.effectiveRestingKcal(for: profile)),
                                minimum: healthyWeightRange(for: profile.heightCm).lowerBound,
                                until: sixMonths).map { point in
             HealthMeasurePoint(date: point.date,

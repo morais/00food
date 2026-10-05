@@ -35,8 +35,8 @@ targets:
               - zerozerofood
         FoodServerBaseURL: https://api.example.com
         NSCameraUsageDescription: "00Food uses the camera to capture a meal for an estimate you review."
-        NSHealthShareUsageDescription: "00Food reads active energy, weight, and body-fat percentage to show your daily balance and progress. Health history stays on this device; a weight is saved to your account only when you choose to use it."
-        NSHealthUpdateUsageDescription: "00Food reads active energy, weight, and body fat and does not write to Apple Health."
+        NSHealthShareUsageDescription: "00Food reads resting and active energy, weight, and body-fat percentage to show your daily balance and progress. Health history stays on this device; a weight is saved to your account only when you choose to use it."
+        NSHealthUpdateUsageDescription: "00Food writes food calories you log to Apple Health Dietary Energy when you enable export in Settings. Deleting a log also removes its Health entry."
         UIApplicationShortcutItems:
           - UIApplicationShortcutItemType: com.00food.quick-add.log
             UIApplicationShortcutItemTitle: Log food

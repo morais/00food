@@ -27,6 +27,27 @@ struct SettingsView: View {
                     Button("Delete account and food data", role: .destructive) { confirmingDelete = true }
                 }
                 Section("Apple Health") {
+                    if let profile = store.profile {
+                        HStack {
+                            Text("Resting energy · Health")
+                            Spacer()
+                            Text(health.restingAverageKcal.map { "\($0) kcal/day" } ?? "Not enough data")
+                                .foregroundStyle(.secondary)
+                        }
+                        HStack {
+                            Text("Resting estimate · details")
+                            Spacer()
+                            Text("\(profile.restingKcal) kcal/day").foregroundStyle(.secondary)
+                        }
+                        if let average = health.restingAverageKcal {
+                            let difference = average - profile.restingKcal
+                            Text("Your food target uses the Health average: \(difference >= 0 ? "+" : "")\(difference) kcal/day compared with the estimate from your details. Based on \(health.restingDaysUsed) of the last 7 completed days.")
+                                .font(.footnote).foregroundStyle(.secondary)
+                        } else {
+                            Text("Your food target uses the estimate from your details until at least 5 of the last 7 completed days have readable resting energy (currently \(health.restingDaysUsed)).")
+                                .font(.footnote).foregroundStyle(.secondary)
+                        }
+                    }
                     HStack {
                         Text("Active energy today")
                         Spacer()
@@ -56,8 +77,23 @@ struct SettingsView: View {
                             else { await health.connect() }
                         }
                     }
+                    if let accountId = store.accountId {
+                        if health.dietaryExportEnabled && health.dietaryExportAuthorized {
+                            Label("Dietary Energy export is on", systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                        } else {
+                            Button("Write new food logs to Apple Health") {
+                                Task { await health.enableDietaryExport(accountId: accountId, logs: store.logs) }
+                            }
+                        }
+                        Text("After you enable export, new 00Food logs are written as Dietary Energy. Deleting a log removes its matching Health entry. Earlier logs are not exported.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                    if let error = health.dietaryErrorMessage {
+                        Text(error).font(.footnote).foregroundStyle(.red)
+                    }
                     if let error = health.errorMessage { Text(error).font(.footnote).foregroundStyle(.red) }
-                    Text("Active energy and body-fat history stay on this device. A Health weight is saved to your account only when you choose to use it in Your details & target.")
+                    Text("Resting and active energy and body measurements stay on this device. A Health weight is saved to your account only when you choose to use it in Your details & target.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("Active day") {
@@ -89,7 +125,10 @@ struct SettingsView: View {
             .confirmationDialog("Delete your account and all food data?", isPresented: $confirmingDelete) {
                 Button("Continue to Apple verification", role: .destructive) { showingDelete = true }
             } message: { Text("This removes your profile, foods, logs, estimates, photos, and agent connections.") }
-            .task { try? await store.refreshConnections() }
+            .task {
+                health.configureDietaryExport(accountId: store.accountId)
+                try? await store.refreshConnections()
+            }
             .alert("Could not update settings", isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: { Text(errorText ?? "") }
