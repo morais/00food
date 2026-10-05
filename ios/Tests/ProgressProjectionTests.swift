@@ -13,4 +13,14 @@ final class ProgressProjectionTests: XCTestCase {
                                                            projectedWeightKg: 80), 25, accuracy: 0.001)
     }
 
+    func testOnlyCrossedACEBoundariesAreAddedForEachProfile() {
+        let male = ProgressProjection.visibleACEBoundaries(for: "male", projectedPercentages: [28, 16])
+        XCTAssertEqual(male.map(\.percentage), [25, 18])
+        let female = ProgressProjection.visibleACEBoundaries(for: "female", projectedPercentages: [29, 19])
+        XCTAssertEqual(female.map(\.percentage), [32, 25, 21])
+        XCTAssertEqual(ProgressProjection.visibleACEBoundaries(for: "neutral", projectedPercentages: [29, 19]), [])
+        XCTAssertEqual(ProgressProjection.visibleACEBoundaries(for: "male", projectedPercentages: []),
+                       [ACEBodyFatBoundary(category: "Obesity", percentage: 25, isObesity: true)])
+    }
+
 }

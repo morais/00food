@@ -42,7 +42,41 @@ enum DeficitLevel: Int, CaseIterable, Identifiable {
     }
 }
 
+struct ACEBodyFatBoundary: Identifiable, Equatable {
+    let category: String
+    let percentage: Double
+    let isObesity: Bool
+    var id: Int { Int(percentage) }
+}
+
 enum ProgressProjection {
+    // ACE Personal Training Manual classification chart, reproduced by ACE:
+    // https://www.acefitness.org/fitness-certifications/ace-answers/exam-preparation-blog/3815/anthropometric-measurements-when-to-use-this-assessment/
+    static func aceBoundaries(for estimateProfile: String) -> [ACEBodyFatBoundary] {
+        let values: [(String, Double)]
+        switch estimateProfile {
+        case "male": values = [("Obesity", 25), ("Average", 18), ("Fitness", 14),
+                               ("Athletes", 6), ("Essential", 2)]
+        case "female": values = [("Obesity", 32), ("Average", 25), ("Fitness", 21),
+                                 ("Athletes", 14), ("Essential", 10)]
+        default: return []
+        }
+        return values.enumerated().map { index, item in
+            ACEBodyFatBoundary(category: item.0, percentage: item.1, isObesity: index == 0)
+        }
+    }
+
+    static func visibleACEBoundaries(for estimateProfile: String,
+                                     projectedPercentages: [Double]) -> [ACEBodyFatBoundary] {
+        let values = projectedPercentages.filter(\.isFinite)
+        guard let minimum = values.min(), let maximum = values.max() else {
+            return aceBoundaries(for: estimateProfile).filter(\.isObesity)
+        }
+        return aceBoundaries(for: estimateProfile).filter { boundary in
+            boundary.isObesity || (minimum < boundary.percentage && maximum >= boundary.percentage)
+        }
+    }
+
     static func bodyFatPercent(startWeightKg: Double, startBodyFatPercent: Double,
                                projectedWeightKg: Double) -> Double {
         guard startWeightKg > 0, projectedWeightKg > 0 else { return 0 }

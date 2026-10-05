@@ -19,12 +19,12 @@ struct ProgressPlansView: View {
 
     private var profile: FoodProfile? { store.profile }
     private var firstDay: Date { store.accountStartedAt ?? Date() }
-    private var aceThreshold: Double? {
-        switch profile?.estimateProfile {
-        case "male": 25
-        case "female": 32
-        default: nil
-        }
+    private var aceObesityBoundary: ACEBodyFatBoundary? {
+        ProgressProjection.aceBoundaries(for: profile?.estimateProfile ?? "").first
+    }
+    private var visibleACEBoundaries: [ACEBodyFatBoundary] {
+        ProgressProjection.visibleACEBoundaries(for: profile?.estimateProfile ?? "",
+                                                projectedPercentages: projectedBodyFat.map(\.value))
     }
     private func healthyWeightRange(for heightCm: Double) -> ClosedRange<Double> {
         let metres = heightCm / 100
@@ -266,13 +266,14 @@ struct ProgressPlansView: View {
             Text("From \(firstDay.formatted(date: .abbreviated, time: .omitted)) · Apple Health body-fat percentage")
                 .font(.caption).foregroundStyle(.secondary)
             Chart {
-                if let aceThreshold {
-                    RuleMark(y: .value("ACE classification", aceThreshold))
-                        .foregroundStyle(.orange)
-                        .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                ForEach(visibleACEBoundaries) { boundary in
+                    RuleMark(y: .value("ACE category boundary", boundary.percentage))
+                        .foregroundStyle(boundary.isObesity ? Color.orange : Color.gray.opacity(0.7))
+                        .lineStyle(StrokeStyle(lineWidth: boundary.isObesity ? 1.5 : 1, dash: [5, 4]))
                         .annotation(position: .top, alignment: .trailing) {
-                            Text("ACE \(Int(aceThreshold))%")
-                                .font(.caption2).foregroundStyle(.orange)
+                            Text("ACE \(boundary.category) \(Int(boundary.percentage))%")
+                                .font(.caption2)
+                                .foregroundStyle(boundary.isObesity ? Color.orange : Color.secondary)
                         }
                 }
                 ForEach(health.bodyFatHistory) { point in
@@ -316,9 +317,11 @@ struct ProgressPlansView: View {
                 Text("The dotted line starts from your latest Health body-fat reading and assumes every kilogram of illustrated weight loss is fat, with lean mass unchanged. It is a rough illustration, not a prediction.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
-            if let aceThreshold {
-                Text("ACE’s \(profile?.estimateProfile == "female" ? "female" : "male") body-fat classification places its obesity boundary at \(Int(aceThreshold))%.")
+            if let aceObesityBoundary {
+                Text("ACE’s \(profile?.estimateProfile == "female" ? "female" : "male") body-fat classification places its obesity boundary at \(Int(aceObesityBoundary.percentage))%. Other category boundaries appear when the illustration crosses them.")
                     .font(.footnote).foregroundStyle(.secondary)
+                Link("ACE body-fat category chart", destination: URL(string: "https://www.acefitness.org/fitness-certifications/ace-answers/exam-preparation-blog/3815/anthropometric-measurements-when-to-use-this-assessment/")!)
+                    .font(.footnote)
             } else {
                 Text("Choose Female or Male in Your details to show the corresponding ACE classification boundary.")
                     .font(.footnote).foregroundStyle(.secondary)
@@ -331,7 +334,7 @@ struct ProgressPlansView: View {
 
     private var bodyFatChartRange: ClosedRange<Double> {
         let values = health.bodyFatHistory.map(\.value) + projectedBodyFat.map(\.value)
-        let marker = aceThreshold ?? 25
+        let marker = aceObesityBoundary?.percentage ?? 25
         return max(0, min(values.min() ?? marker, marker) - 5)...(max(values.max() ?? marker, marker) + 5)
     }
 

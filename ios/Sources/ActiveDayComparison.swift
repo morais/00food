@@ -3,6 +3,7 @@ import SwiftUI
 struct ActiveDayComparison: View {
     @AppStorage("activeDayStartMinutes") private var startMinutes = 7 * 60
     @AppStorage("activeDayEndMinutes") private var endMinutes = 23 * 60
+    @ScaledMetric(relativeTo: .caption) private var paceLabelSize: CGFloat = 14
 
     let allowanceKcal: Int
     let eatenKcal: Int
@@ -47,7 +48,7 @@ struct ActiveDayComparison: View {
                     Circle().fill(foodColor).frame(width: 10, height: 10)
                     Text("\(foodPercent)% allowance used")
                 }
-                .font(.caption)
+                .font(.system(size: paceLabelSize))
                 .foregroundStyle(.secondary)
             }
             .accessibilityElement(children: .combine)
