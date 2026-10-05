@@ -42,6 +42,16 @@ enum DeficitLevel: Int, CaseIterable, Identifiable {
     }
 }
 
+enum ProgressProjection {
+    static func bodyFatPercent(startWeightKg: Double, startBodyFatPercent: Double,
+                               projectedWeightKg: Double) -> Double {
+        guard startWeightKg > 0, projectedWeightKg > 0 else { return 0 }
+        let startingFatKg = startWeightKg * startBodyFatPercent / 100
+        let fatLostKg = max(0, startWeightKg - projectedWeightKg)
+        return min(100, max(0, 100 * (startingFatKg - fatLostKg) / projectedWeightKg))
+    }
+}
+
 struct FoodItem: Codable, Identifiable, Equatable {
     var id: String
     var name: String

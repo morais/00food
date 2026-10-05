@@ -36,7 +36,7 @@ struct ProgressPlansView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
-                    Text("Your saved calorie plan and Health trends. The line is an illustration, not a prediction. Open Other plans to compare calorie gaps and switch plans.")
+                    Text("Your saved calorie plan and Health trends. Dotted lines are illustrations, not predictions. Open Other plans to compare calorie gaps and switch plans.")
                         .font(.subheadline).foregroundStyle(.secondary)
 
                     if !health.bodyFatRequested {
@@ -186,7 +186,7 @@ struct ProgressPlansView: View {
             Text("Adult BMI 18.5–24.9 at your height: \(healthyRange.lowerBound.formatted(.number.precision(.fractionLength(1))))–\(healthyRange.upperBound.formatted(.number.precision(.fractionLength(1)))) kg")
                 .font(.footnote).foregroundStyle(.secondary)
             if health.weightHistory.isEmpty {
-                Text("No Health weight readings since you joined. The dashed line starts from your saved weight.")
+                Text("No Health weight readings since you joined. The dotted line starts from your saved weight.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
             if !fullProjection {
@@ -204,23 +204,41 @@ struct ProgressPlansView: View {
                               yEnd: .value("Healthy BMI maximum", healthyRange.upperBound))
                     .foregroundStyle(.green.opacity(0.12))
                 ForEach(health.weightHistory) { point in
-                    LineMark(x: .value("Date", point.date), y: .value("Recorded weight", point.value))
+                    LineMark(x: .value("Date", point.date), y: .value("Recorded weight", point.value),
+                             series: .value("Series", "Health weight"))
                         .foregroundStyle(.blue)
                     PointMark(x: .value("Date", point.date), y: .value("Recorded weight", point.value))
                         .foregroundStyle(.blue)
                 }
                 ForEach(projection) { point in
-                    LineMark(x: .value("Date", point.date), y: .value("Illustration", point.value))
-                        .foregroundStyle(.orange)
-                        .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 4]))
+                    LineMark(x: .value("Date", point.date), y: .value("Illustration", point.value),
+                             series: .value("Series", "Projected weight"))
+                        .foregroundStyle(.blue)
+                        .lineStyle(StrokeStyle(lineWidth: 2, dash: [2, 4]))
                 }
             }
             .frame(height: 170)
             .chartLegend(.hidden)
             .chartYScale(domain: healthyRange.lowerBound...chartTop)
+            .chartXAxis {
+                AxisMarks(values: .stride(by: .month, count: 1)) {
+                    AxisGridLine()
+                    AxisTick()
+                    AxisValueLabel(format: .dateTime.month(.abbreviated))
+                }
+            }
+            .chartYAxis {
+                AxisMarks(position: .trailing, values: .stride(by: 5.0)) { value in
+                    AxisGridLine()
+                    AxisTick()
+                    AxisValueLabel {
+                        if let kg = value.as(Double.self) { Text("\(Int(kg))") }
+                    }
+                }
+            }
             HStack(spacing: 14) {
                 Label("Health weight", systemImage: "circle.fill").foregroundStyle(.blue)
-                Label("Illustration", systemImage: "circle.dotted").foregroundStyle(.orange)
+                Label("Illustration", systemImage: "circle.dotted").foregroundStyle(.blue)
                 Label("BMI range", systemImage: "rectangle.fill").foregroundStyle(.green)
             }
             .font(.caption)
@@ -240,7 +258,10 @@ struct ProgressPlansView: View {
     }
 
     private var fatCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let projection = projectedBodyFat
+        let today = Calendar.current.startOfDay(for: Date())
+        let sixMonths = Calendar.current.date(byAdding: .month, value: 6, to: today) ?? today
+        return VStack(alignment: .leading, spacing: 10) {
             Text("Body fat since you joined").font(.title3.bold())
             Text("From \(firstDay.formatted(date: .abbreviated, time: .omitted)) · Apple Health body-fat percentage")
                 .font(.caption).foregroundStyle(.secondary)
@@ -255,18 +276,45 @@ struct ProgressPlansView: View {
                         }
                 }
                 ForEach(health.bodyFatHistory) { point in
-                    LineMark(x: .value("Date", point.date), y: .value("Body fat", point.value))
+                    LineMark(x: .value("Date", point.date), y: .value("Body fat", point.value),
+                             series: .value("Series", "Health body fat"))
                         .foregroundStyle(.teal)
                     PointMark(x: .value("Date", point.date), y: .value("Body fat", point.value))
                         .foregroundStyle(.teal)
+                }
+                ForEach(projection) { point in
+                    LineMark(x: .value("Date", point.date), y: .value("Illustrated body fat", point.value),
+                             series: .value("Series", "Projected body fat"))
+                        .foregroundStyle(.teal)
+                        .lineStyle(StrokeStyle(lineWidth: 2, dash: [2, 4]))
                 }
             }
             .frame(height: 180)
             .chartYAxisLabel("%")
             .chartYScale(domain: bodyFatChartRange)
+            .chartXScale(domain: firstDay...sixMonths)
+            .chartXAxis {
+                AxisMarks(values: .stride(by: .month, count: 1)) {
+                    AxisGridLine()
+                    AxisTick()
+                    AxisValueLabel(format: .dateTime.month(.abbreviated))
+                }
+            }
+            HStack(spacing: 14) {
+                Label("Health", systemImage: "circle.fill").foregroundStyle(.teal)
+                Label("Illustration", systemImage: "circle.dotted").foregroundStyle(.teal)
+            }
+            .font(.caption)
             if health.bodyFatHistory.isEmpty {
-                Text("No body-fat readings are available for this period.")
+                Text("No body-fat readings since you joined. An illustration, if shown, starts from your latest Health reading.")
                     .foregroundStyle(.secondary)
+            }
+            if projection.isEmpty {
+                Text("Add a body-fat reading in Apple Health to show an illustration.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            } else {
+                Text("The dotted line starts from your latest Health body-fat reading and assumes every kilogram of illustrated weight loss is fat, with lean mass unchanged. It is a rough illustration, not a prediction.")
+                    .font(.footnote).foregroundStyle(.secondary)
             }
             if let aceThreshold {
                 Text("ACE’s \(profile?.estimateProfile == "female" ? "female" : "male") body-fat classification places its obesity boundary at \(Int(aceThreshold))%.")
@@ -282,9 +330,24 @@ struct ProgressPlansView: View {
     }
 
     private var bodyFatChartRange: ClosedRange<Double> {
-        let values = health.bodyFatHistory.map(\.value)
+        let values = health.bodyFatHistory.map(\.value) + projectedBodyFat.map(\.value)
         let marker = aceThreshold ?? 25
         return max(0, min(values.min() ?? marker, marker) - 5)...(max(values.max() ?? marker, marker) + 5)
+    }
+
+    private var projectedBodyFat: [HealthMeasurePoint] {
+        guard let profile, let bodyFatPercent = health.latestBodyFatPercent else { return [] }
+        let startingWeight = health.weightHistory.last?.value ?? health.latestWeightKg ?? profile.weightKg
+        let today = Calendar.current.startOfDay(for: Date())
+        let sixMonths = Calendar.current.date(byAdding: .month, value: 6, to: today) ?? today
+        return projectedWeight(from: startingWeight, gap: profile.effectiveDeficit(for: profile.deficitKcal),
+                               minimum: healthyWeightRange(for: profile.heightCm).lowerBound,
+                               until: sixMonths).map { point in
+            HealthMeasurePoint(date: point.date,
+                               value: ProgressProjection.bodyFatPercent(
+                                startWeightKg: startingWeight, startBodyFatPercent: bodyFatPercent,
+                                projectedWeightKg: point.value))
+        }
     }
 
     private func projectedWeight(from weight: Double, gap: Int, minimum: Double, until end: Date) -> [HealthMeasurePoint] {

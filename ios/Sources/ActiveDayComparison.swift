@@ -16,6 +16,7 @@ struct ActiveDayComparison: View {
             let foodFraction = min(1, foodRatio)
             let dayPercent = Int((dayFraction * 100).rounded())
             let foodPercent = Int((foodRatio * 100).rounded())
+            let foodColor: Color = foodRatio > dayFraction ? .yellow : .accentColor
 
             VStack(alignment: .leading, spacing: 8) {
                 GeometryReader { geometry in
@@ -32,7 +33,7 @@ struct ActiveDayComparison: View {
                             .frame(width: 20, height: 20)
                             .offset(x: travel * dayFraction)
                         Circle()
-                            .fill(.tint)
+                            .fill(foodColor)
                             .overlay(Circle().strokeBorder(.background, lineWidth: 1.5))
                             .frame(width: 14, height: 14)
                             .offset(x: travel * foodFraction + 3, y: 3)
@@ -43,10 +44,10 @@ struct ActiveDayComparison: View {
                     Circle().strokeBorder(.secondary, lineWidth: 2).frame(width: 10, height: 10)
                     Text("\(dayPercent)% active day")
                     Spacer(minLength: 8)
-                    Circle().fill(.tint).frame(width: 10, height: 10)
+                    Circle().fill(foodColor).frame(width: 10, height: 10)
                     Text("\(foodPercent)% allowance used")
                 }
-                .font(.caption2)
+                .font(.caption)
                 .foregroundStyle(.secondary)
             }
             .accessibilityElement(children: .combine)

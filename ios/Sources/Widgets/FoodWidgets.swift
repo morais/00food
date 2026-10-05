@@ -80,6 +80,7 @@ private struct FoodBalanceWidgetView: View {
                                                       endMinutes: snapshot.endMinutes)
         let foodRatio = Double(max(0, snapshot.consumedKcal)) / Double(max(1, snapshot.allowanceKcal))
         let foodFraction = min(1, foodRatio)
+        let foodColor: Color = foodRatio > timeFraction ? .yellow : .mint
         return VStack(spacing: 6) {
             GeometryReader { geometry in
                 let travel = max(0, geometry.size.width - 18)
@@ -87,7 +88,7 @@ private struct FoodBalanceWidgetView: View {
                     Capsule().fill(.white.opacity(0.25)).frame(height: 3).offset(y: 8)
                     Circle().strokeBorder(.white.opacity(0.8), lineWidth: 2)
                         .frame(width: 18, height: 18).offset(x: travel * timeFraction)
-                    Circle().fill(.mint).frame(width: 12, height: 12)
+                    Circle().fill(foodColor).frame(width: 12, height: 12)
                         .offset(x: travel * foodFraction + 3, y: 3)
                 }
             }
@@ -96,10 +97,11 @@ private struct FoodBalanceWidgetView: View {
                 Circle().strokeBorder(.white.opacity(0.8), lineWidth: 1.5).frame(width: 8, height: 8)
                 Text("\(Int((timeFraction * 100).rounded()))% active day")
                 Spacer(minLength: 5)
-                Circle().fill(.mint).frame(width: 8, height: 8)
+                Circle().fill(foodColor).frame(width: 8, height: 8)
                 Text("\(Int((foodRatio * 100).rounded()))% allowance used")
             }
-            .font(.caption2).foregroundStyle(.white.opacity(0.72))
+            .font(.caption).foregroundStyle(.white.opacity(0.72))
+            .lineLimit(1).minimumScaleFactor(0.85)
         }
         .accessibilityElement(children: .combine)
     }
