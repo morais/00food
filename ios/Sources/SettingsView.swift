@@ -8,6 +8,7 @@ struct SettingsView: View {
     @AppStorage("activeDayStartMinutes") private var activeDayStartMinutes = 7 * 60
     @AppStorage("activeDayEndMinutes") private var activeDayEndMinutes = 23 * 60
     @State private var showingProfile = false
+    @State private var showingManualWeight = false
     @State private var showingDelete = false
     @State private var confirmingDelete = false
     @State private var errorText: String?
@@ -63,6 +64,7 @@ struct SettingsView: View {
                         Text("Open Your details & target to use this weight in your daily target.")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
+                    Button("Log weight manually") { showingManualWeight = true }
                     if let fat = health.latestBodyFatPercent {
                         HStack {
                             Text("Latest body fat")
@@ -70,6 +72,11 @@ struct SettingsView: View {
                             Text("\(fat.formatted(.number.precision(.fractionLength(1))))%")
                                 .foregroundStyle(.secondary)
                         }
+                    }
+                    HStack {
+                        Text("Water today")
+                        Spacer()
+                        Text("\(health.waterMlToday.formatted()) mL").foregroundStyle(.secondary)
                     }
                     Button(health.bodyFatRequested ? "Refresh Health data" : "Connect Apple Health") {
                         Task {
@@ -93,7 +100,7 @@ struct SettingsView: View {
                         Text(error).font(.footnote).foregroundStyle(.red)
                     }
                     if let error = health.errorMessage { Text(error).font(.footnote).foregroundStyle(.red) }
-                    Text("Resting and active energy and body measurements stay on this device. A Health weight is saved to your account only when you choose to use it in Your details & target.")
+                    Text("Health history stays on this device. Logging weight manually also updates your 00Food profile weight; water stays in Apple Health.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("Active day") {
@@ -121,6 +128,7 @@ struct SettingsView: View {
             .navigationTitle("Settings")
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
             .sheet(isPresented: $showingProfile) { ProfileView() }
+            .sheet(isPresented: $showingManualWeight) { ManualWeightView() }
             .sheet(isPresented: $showingDelete) { DeleteAccountView() }
             .confirmationDialog("Delete your account and all food data?", isPresented: $confirmingDelete) {
                 Button("Continue to Apple verification", role: .destructive) { showingDelete = true }
@@ -163,6 +171,61 @@ struct SettingsView: View {
         Task {
             do { try await store.revokeConnection(connection) }
             catch { errorText = error.localizedDescription }
+        }
+    }
+}
+
+private struct ManualWeightView: View {
+    @Environment(FoodStore.self) private var store
+    @Environment(HealthEnergy.self) private var health
+    @Environment(\.dismiss) private var dismiss
+    @State private var weightKg = 70.0
+    @State private var busy = false
+    @State private var errorText: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    HStack {
+                        Text("Weight")
+                        Spacer()
+                        TextField("kg", value: $weightKg, format: .number.precision(.fractionLength(1)))
+                            .multilineTextAlignment(.trailing).keyboardType(.decimalPad)
+                        Text("kg").foregroundStyle(.secondary)
+                    }
+                } footer: {
+                    Text("Saves today's weight to Apple Health and updates the weight used by your 00Food target. It will appear in your progress chart.")
+                }
+            }
+            .navigationTitle("Log weight")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) { Button("Cancel") { dismiss() }.disabled(busy) }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Log") { save() }
+                        .disabled(busy || !weightKg.isFinite || !(25...400).contains(weightKg))
+                }
+            }
+            .onAppear { weightKg = health.latestWeightKg ?? store.profile?.weightKg ?? 70 }
+            .alert("Could not log weight", isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: { Text(errorText ?? "") }
+        }
+    }
+
+    private func save() {
+        guard !busy else { return }
+        busy = true
+        Task {
+            defer { busy = false }
+            do {
+                try await health.logWeight(weightKg)
+                if var profile = store.profile {
+                    profile.weightKg = weightKg
+                    try await store.saveProfile(profile)
+                }
+                dismiss()
+            } catch { errorText = error.localizedDescription }
         }
     }
 }

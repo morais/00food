@@ -79,6 +79,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     var accountStartedAt: Date? { FoodDates.parseTimestamp(startedAt) }
     var todaysLogs: [FoodLog] { logs(on: Date()) }
     var consumedToday: Int { todaysLogs.reduce(0) { $0 + $1.kcal } }
+    var fruitVegToday: Int { min(5, todaysLogs.reduce(0) { $0 + $1.countedFruitVegPortions }) }
     func logs(on date: Date) -> [FoodLog] {
         let day = FoodDates.localDate(for: date)
         return logs.filter { $0.localDate == day }.sorted { $0.loggedAt > $1.loggedAt }
@@ -146,11 +147,13 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         try stage(.saveProfile(local)) { profile = local }
     }
 
-    func createFood(name: String, serving: String, kcal: Int, source: String = "manual") async throws -> FoodItem {
+    func createFood(name: String, serving: String, kcal: Int,
+                    fruitVegPortions: Int = 0, source: String = "manual") async throws -> FoodItem {
         let now = Self.now()
         let food = FoodItem(id: UUID().uuidString.lowercased(), name: name, serving: serving,
                             kcal: kcal, source: source, useCount: 0, lastUsedAt: nil,
-                            dismissedAt: nil, createdAt: now, updatedAt: now)
+                            dismissedAt: nil, createdAt: now, updatedAt: now,
+                            fruitVegPortions: fruitVegPortions)
         try stage(.createFood(food)) { foods.insert(food, at: 0) }
         return food
     }
@@ -159,7 +162,8 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         let log = FoodLog(id: UUID().uuidString.lowercased(), foodId: food.id,
                           foodName: food.name, serving: food.serving, quantity: quantity,
                           kcal: max(1, Int((Double(food.kcal) * quantity).rounded())),
-                          localDate: FoodDates.today(), loggedAt: Self.now())
+                          localDate: FoodDates.today(), loggedAt: Self.now(),
+                          fruitVegPortions: min(5, Int((Double(food.countedFruitVegPortions) * quantity).rounded())))
         try stage(.log(log)) {
             logs.insert(log, at: 0)
             if let index = foods.firstIndex(where: { $0.id == food.id }) {
@@ -174,6 +178,19 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     func dismissFromFrequent(_ food: FoodItem) async throws {
         try stage(.dismissFood(food.id)) {
             if let index = foods.firstIndex(where: { $0.id == food.id }) { foods[index].dismissedAt = Self.now() }
+        }
+    }
+
+    func setFruitVegPortions(_ portions: Int, for food: FoodItem) throws {
+        guard (0...5).contains(portions) else { throw FoodServiceError(message: "Choose 0–5 portions") }
+        try stage(.setFruitVegPortions(food.id, portions)) {
+            if let index = foods.firstIndex(where: { $0.id == food.id }) {
+                foods[index].fruitVegPortions = portions
+                foods[index].updatedAt = Self.now()
+            }
+            for index in logs.indices where logs[index].foodId == food.id {
+                logs[index].fruitVegPortions = min(5, Int((Double(portions) * logs[index].quantity).rounded()))
+            }
         }
     }
 
@@ -195,9 +212,11 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         try stage(.estimate(estimation, photo)) { estimations.insert(estimation, at: 0) }
     }
 
-    func updateProposal(id: String, name: String, serving: String, kcal: Int) async throws {
+    func updateProposal(id: String, name: String, serving: String, kcal: Int,
+                        fruitVegPortions: Int) async throws {
         let _: EstimationResponse = try await call("/v1/estimations/\(id)/proposal", method: "PUT", body: [
-            "name": name, "serving": serving, "kcal": kcal, "note": "Adjusted after review",
+            "name": name, "serving": serving, "kcal": kcal, "fruitVegPortions": fruitVegPortions,
+            "note": "Adjusted after review",
         ] as [String: Any])
     }
 
@@ -344,7 +363,8 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         case .createFood(let food):
             let _: FoodResponse = try await call("/v1/foods", method: "POST", body: [
                 "id": food.id, "name": food.name, "serving": food.serving,
-                "kcal": food.kcal, "source": food.source,
+                "kcal": food.kcal, "fruitVegPortions": food.countedFruitVegPortions,
+                "source": food.source,
             ])
         case .log(let log):
             let _: LogResponse = try await call("/v1/logs", method: "POST", body: [
@@ -353,6 +373,9 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
             ])
         case .dismissFood(let id):
             let _: FoodResponse = try await call("/v1/foods/\(id)/dismiss", method: "POST")
+        case .setFruitVegPortions(let id, let portions):
+            let _: FoodResponse = try await call("/v1/foods/\(id)/fruit-veg-portions", method: "PUT",
+                                                 body: ["fruitVegPortions": portions])
         case .deleteLog(let id):
             do { let _: OKResponse = try await call("/v1/logs/\(id)", method: "DELETE") }
             catch let error as FoodServiceError where error.status == 404 { break }

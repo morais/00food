@@ -52,7 +52,9 @@ await request("/v1/profile", "PUT", {
 });
 assert((await request("/v1/snapshot")).profile.birthYear === 1988,
   "older profile clients cleared the birth year");
-const food = (await request("/v1/foods", "POST", { id: randomUUID(), name: "Test banana", serving: "1 medium", kcal: 105 })).food;
+const food = (await request("/v1/foods", "POST", { id: randomUUID(), name: "Test banana",
+  serving: "1 medium", kcal: 105, fruitVegPortions: 1 })).food;
+assert(food.fruitVegPortions === 1, "manual food lost its fruit/veg portion count");
 const otherLog = await fetch(origin + "/v1/logs", { method: "POST", headers: {
   Authorization: `Bearer ${otherToken}`, "Content-Type": "application/json",
 }, body: JSON.stringify({ foodId: food.id, localDate: "2026-10-03" }) });
@@ -100,6 +102,14 @@ const loggedEvents = JSON.parse(events.result.content[0].text).events.filter(eve
 assert(loggedEvents.length === 1, "retry duplicated the food log event");
 const afterLog = await request("/v1/snapshot");
 assert(afterLog.foods[0].useCount === 1 && afterLog.logs.length === 1, "log retry was not idempotent");
+assert(afterLog.logs[0].fruitVegPortions === 1, "logged fruit/veg portions were not saved");
+const portionUpdate = await request("/mcp", "POST", { jsonrpc: "2.0", id: 18,
+  method: "tools/call", params: { name: "set_food_fruit_veg_portions",
+    arguments: { id: food.id, fruitVegPortions: 2 } } }, mcpToken);
+assert(JSON.parse(portionUpdate.result.content[0].text).food.fruitVegPortions === 2,
+  "agent could not correct saved food portions");
+assert((await request("/v1/snapshot")).logs[0].fruitVegPortions === 2,
+  "correcting a saved food did not update its earlier log");
 const hidden = await request(`/v1/foods/${food.id}/dismiss`, "POST");
 assert(hidden.food.dismissedAt, "food was not hidden from frequent foods");
 const secondLog = (await request("/v1/logs", "POST", {
@@ -133,6 +143,7 @@ assert(image.result?.content?.[0]?.type === "image" && image.result.content[0].m
 const toolResult = await request("/mcp", "POST", { jsonrpc: "2.0", id: 1, method: "tools/call",
   params: { name: "propose_food_estimate", arguments: {
     id: estimate.id, name: "Berries", serving: "1 small bowl", kcal: 80, note: "Rough portion estimate",
+    fruitVegPortions: 1,
     reasoning: "The small bowl appears to hold about one cup of berries.",
   } } }, mcpToken);
 assert(toolResult.result?.content?.length, "agent proposal failed");
@@ -158,12 +169,16 @@ assert(JSON.parse(eventsAfterClarification.result.content[0].text).events.filter
 await request("/mcp", "POST", { jsonrpc: "2.0", id: 14, method: "tools/call",
   params: { name: "propose_food_estimate", arguments: {
     id: estimate.id, name: "Berries and yogurt", serving: "1 small bowl", kcal: 190,
+    fruitVegPortions: 1,
     reasoning: "Berries plus sweetened yogurt add up to roughly 190 kcal.",
   } } }, mcpToken);
 await request(`/v1/estimations/${estimate.id}/accept`, "POST");
 const final = await request("/v1/snapshot");
 assert(final.foods.length === 2 && final.logs.length === 2 && final.estimations.length === 0,
   "review did not save food and log");
+assert(final.foods.some(item => item.name === "Berries and yogurt" && item.fruitVegPortions === 1) &&
+  final.logs.some(item => item.foodName === "Berries and yogurt" && item.fruitVegPortions === 1),
+  "review did not keep the agent's fruit/veg portions");
 const combinedDescription = "Toast with butter, one slice";
 const combined = (await request("/v1/estimations", "POST", {
   id: randomUUID(), description: combinedDescription,
@@ -180,4 +195,4 @@ const combinedImage = await request("/mcp", "POST", { jsonrpc: "2.0", id: 5, met
   params: { name: "view_food_photo", arguments: { id: combined.id } } }, mcpToken);
 assert(combinedImage.result?.content?.[0]?.type === "image", "agent could not inspect the combined photo");
 await request(`/v1/estimations/${combined.id}`, "DELETE");
-console.log("00Food local smoke passed: birth year, repeat log, hide and restore food, isolation, photo/text, MCP review");
+console.log("00Food local smoke passed: produce portions, repeat log, hide and restore food, isolation, photo/text, MCP review");

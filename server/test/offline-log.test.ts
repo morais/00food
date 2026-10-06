@@ -7,7 +7,8 @@ describe("offline log replay", () => {
     const foodId = "c5f84159-41d0-495e-947d-18c2238db9b3";
     const logId = "a4d491d0-6787-4920-983a-ec8ec1b7319b";
     const loggedAt = "2026-10-03T19:10:00Z";
-    const food = { id: foodId, name: "Rice bowl", serving: "1 bowl", kcal: 540, source: "manual",
+    const food = { id: foodId, name: "Rice bowl", serving: "1 bowl", kcal: 540,
+      fruit_veg_portions: 2, source: "manual",
       use_count: 0, last_used_at: null as string | null, dismissed_at: null,
       created_at: loggedAt, updated_at: loggedAt };
     let log: Record<string, unknown> | null = null;
@@ -33,7 +34,8 @@ describe("offline log replay", () => {
                 if (sql.startsWith("INSERT OR IGNORE INTO food_logs")) {
                   if (log) return { meta: { changes: 0 } };
                   log = { id: args[0], food_id: args[2], food_name: args[3], serving: args[4],
-                    quantity: args[5], kcal: args[6], local_date: args[7], logged_at: args[8] };
+                    quantity: args[5], kcal: args[6], fruit_veg_portions: args[7],
+                    local_date: args[8], logged_at: args[9] };
                   return { meta: { changes: 1 } };
                 }
                 if (sql.startsWith("UPDATE foods SET use_count")) {
@@ -70,5 +72,6 @@ describe("offline log replay", () => {
     expect(food.last_used_at).toBe(loggedAt);
     expect(eventCount).toBe(1);
     expect((log as unknown as Record<string, unknown>)["local_date"]).toBe("2026-10-03");
+    expect((log as unknown as Record<string, unknown>)["fruit_veg_portions"]).toBe(2);
   });
 });

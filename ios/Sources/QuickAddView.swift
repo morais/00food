@@ -15,6 +15,7 @@ struct QuickAddView: View {
     @State private var showingCamera = false
     @State private var didOpenCamera = false
     @State private var showingManual = false
+    @State private var editingPortions: FoodItem?
     @State private var busy = false
     @State private var errorText: String?
     @FocusState private var searchFocused: Bool
@@ -37,8 +38,14 @@ struct QuickAddView: View {
                 if !matches.isEmpty {
                     Section("Your foods · one tap to log") {
                         ForEach(matches) { food in
-                            Button { log(food) } label: { foodRow(food.name, food.serving, food.kcal) }
+                            Button { log(food) } label: { foodRow(food) }
                                 .disabled(busy)
+                                .swipeActions(edge: .trailing) {
+                                    Button("5 a day", systemImage: "leaf") { editingPortions = food }
+                                }
+                                .contextMenu {
+                                    Button("Set fruit & veg portions") { editingPortions = food }
+                                }
                         }
                     }
                 }
@@ -98,6 +105,7 @@ struct QuickAddView: View {
             .sheet(isPresented: $showingManual) {
                 ManualFoodView(initialName: descriptionText.isEmpty ? query : descriptionText) { dismiss() }
             }
+            .sheet(item: $editingPortions) { FruitVegPortionsView(food: $0) }
             .onChange(of: photoItem) { _, item in
                 let loadID = UUID()
                 photoLoadID = loadID
@@ -127,15 +135,21 @@ struct QuickAddView: View {
         return "Ask my agent to estimate"
     }
 
-    private func foodRow(_ name: String, _ serving: String, _ kcal: Int) -> some View {
+    private func foodRow(_ food: FoodItem) -> some View {
         HStack {
             Image(systemName: "plus.circle.fill").foregroundStyle(.tint)
             VStack(alignment: .leading) {
-                Text(name).foregroundStyle(.primary)
-                Text(serving).font(.caption).foregroundStyle(.secondary)
+                Text(food.name).foregroundStyle(.primary)
+                Text(food.serving).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            Text("\(kcal) kcal").foregroundStyle(.secondary)
+            VStack(alignment: .trailing) {
+                Text("\(food.kcal) kcal").foregroundStyle(.secondary)
+                if food.countedFruitVegPortions > 0 {
+                    Label("\(food.countedFruitVegPortions)", systemImage: "leaf.fill")
+                        .font(.caption).foregroundStyle(.green)
+                }
+            }
         }
     }
 
@@ -189,6 +203,7 @@ struct ManualFoodView: View {
     @State var name: String
     @State private var serving = "1 serving"
     @State private var kcal = ""
+    @State private var fruitVegPortions = 0
     @State private var busy = false
     @State private var errorText: String?
     var onSaved: () -> Void
@@ -204,6 +219,9 @@ struct ManualFoodView: View {
                 TextField("Food name", text: $name)
                 TextField("Serving (for example, 1 bowl)", text: $serving)
                 TextField("Calories per serving", text: $kcal).keyboardType(.numberPad)
+                Picker("Fruit & veg portions", selection: $fruitVegPortions) {
+                    ForEach(0...5, id: \.self) { Text("\($0)").tag($0) }
+                }
                 Text("A rough value is enough. Once saved, this food is one tap away next time.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
@@ -228,11 +246,49 @@ struct ManualFoodView: View {
         Task {
             defer { busy = false }
             do {
-                let food = try await store.createFood(name: name, serving: serving, kcal: value)
+                let food = try await store.createFood(name: name, serving: serving, kcal: value,
+                                                      fruitVegPortions: fruitVegPortions)
                 try await store.log(food)
                 dismiss()
                 onSaved()
             } catch { errorText = error.localizedDescription }
+        }
+    }
+}
+
+private struct FruitVegPortionsView: View {
+    @Environment(FoodStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    let food: FoodItem
+    @State private var portions = 0
+    @State private var errorText: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text(food.name).font(.headline)
+                    Picker("Fruit & veg portions per serving", selection: $portions) {
+                        ForEach(0...5, id: \.self) { Text("\($0)").tag($0) }
+                    }
+                } footer: {
+                    Text("A rough count is enough. Updating this food also corrects its earlier logs.")
+                }
+            }
+            .navigationTitle("5 a day")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        do { try store.setFruitVegPortions(portions, for: food); dismiss() }
+                        catch { errorText = error.localizedDescription }
+                    }
+                }
+            }
+            .onAppear { portions = food.countedFruitVegPortions }
+            .alert("Could not update food", isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: { Text(errorText ?? "") }
         }
     }
 }

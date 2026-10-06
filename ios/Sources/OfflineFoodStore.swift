@@ -6,6 +6,7 @@ enum OfflineFoodOperation: Codable {
     case createFood(FoodItem)
     case log(FoodLog)
     case dismissFood(String)
+    case setFruitVegPortions(String, Int)
     case deleteLog(String)
     case estimate(PendingEstimation, Data?)
     case clarifyEstimate(String, String, String)

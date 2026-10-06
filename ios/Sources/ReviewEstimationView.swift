@@ -7,6 +7,7 @@ struct ReviewEstimationView: View {
     @State private var name = ""
     @State private var serving = ""
     @State private var kcal = ""
+    @State private var fruitVegPortions = 0
     @State private var clarification = ""
     @State private var busy = false
     @State private var errorText: String?
@@ -25,6 +26,9 @@ struct ReviewEstimationView: View {
                         HStack {
                             TextField("Calories", text: $kcal).keyboardType(.numberPad)
                             Text("kcal").foregroundStyle(.secondary)
+                        }
+                        Picker("Fruit & veg portions", selection: $fruitVegPortions) {
+                            ForEach(0...5, id: \.self) { Text("\($0)").tag($0) }
                         }
                         if let note = current.agentNote, !note.isEmpty {
                             Text(note).font(.footnote).foregroundStyle(.secondary)
@@ -70,11 +74,13 @@ struct ReviewEstimationView: View {
                 name = estimation.proposedName ?? ""
                 serving = estimation.proposedServing ?? ""
                 kcal = estimation.proposedKcal.map(String.init) ?? ""
+                fruitVegPortions = estimation.proposedFruitVegPortions ?? 0
             }
             .onChange(of: current.updatedAt) { _, _ in
                 name = current.proposedName ?? ""
                 serving = current.proposedServing ?? ""
                 kcal = current.proposedKcal.map(String.init) ?? ""
+                fruitVegPortions = current.proposedFruitVegPortions ?? 0
             }
             .alert("Could not save estimate", isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
                 Button("OK", role: .cancel) {}
@@ -105,8 +111,10 @@ struct ReviewEstimationView: View {
         Task {
             defer { busy = false }
             do {
-                if name != current.proposedName || serving != current.proposedServing || value != current.proposedKcal {
-                    try await store.updateProposal(id: estimation.id, name: name, serving: serving, kcal: value)
+                if name != current.proposedName || serving != current.proposedServing || value != current.proposedKcal ||
+                    fruitVegPortions != (current.proposedFruitVegPortions ?? 0) {
+                    try await store.updateProposal(id: estimation.id, name: name, serving: serving, kcal: value,
+                                                   fruitVegPortions: fruitVegPortions)
                 }
                 try await store.accept(estimation)
                 dismiss()

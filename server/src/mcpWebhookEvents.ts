@@ -17,7 +17,8 @@ const string = { type: "string" };
 export const eventDefinitions = [
   { name: "food.logged", description: "A food serving was logged. Use this to track food intake, not to estimate an already approved food.",
     delivery: ["webhook"], inputSchema: emptyArguments,
-    payloadSchema: schema({ log_id: string, food_id: string, food_name: string, kcal: { type: "integer" }, local_date: string },
+    payloadSchema: schema({ log_id: string, food_id: string, food_name: string, kcal: { type: "integer" },
+      fruit_veg_portions: { type: "integer" }, local_date: string },
       ["log_id", "food_id", "food_name", "kcal", "local_date"]) },
   { name: "food.estimate_requested", description: "A new food description or photo needs a calorie estimate. Call get_pending_food and view_food_photo when available.",
     delivery: ["webhook"], inputSchema: emptyArguments,
@@ -176,7 +177,7 @@ function eventData(row: DeliveryRow): unknown {
   const data = JSON.parse(row.payload_json) as Record<string, unknown>;
   switch (row.kind) {
   case "food_logged": return { log_id: row.subject_id, food_id: data.foodId, food_name: data.foodName,
-    kcal: data.kcal, local_date: data.localDate };
+    kcal: data.kcal, fruit_veg_portions: data.fruitVegPortions ?? 0, local_date: data.localDate };
   case "estimate_requested": return { estimation_id: row.subject_id, description: data.description,
     has_photo: data.hasPhoto };
   case "clarification_added": return { estimation_id: row.subject_id, clarification: data.clarification };

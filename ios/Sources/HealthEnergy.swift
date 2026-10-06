@@ -27,6 +27,7 @@ private struct DietaryExportState: Codable {
 
 @MainActor @Observable final class HealthEnergy {
     var activeKcal = 0
+    var waterMlToday = 0
     var latestWeightKg: Double?
     var latestWeightDate: Date?
     var latestBodyFatPercent: Double?
@@ -40,7 +41,10 @@ private struct DietaryExportState: Codable {
     var restingRequested = UserDefaults.standard.bool(forKey: "healthRestingRequested")
     var weightRequested = UserDefaults.standard.bool(forKey: "healthWeightRequested")
     var bodyFatRequested = UserDefaults.standard.bool(forKey: "healthBodyFatRequested")
+    var waterRequested = UserDefaults.standard.bool(forKey: "healthWaterRequested")
     var errorMessage: String?
+    var waterErrorMessage: String?
+    var waterSaving = false
     var dietaryExportEnabled = false
     var dietaryErrorMessage: String?
     private var historyStart: Date?
@@ -53,6 +57,7 @@ private struct DietaryExportState: Codable {
     private let dietaryEnergy = HKObjectType.quantityType(forIdentifier: .dietaryEnergyConsumed)!
     private let bodyMass = HKObjectType.quantityType(forIdentifier: .bodyMass)!
     private let bodyFat = HKObjectType.quantityType(forIdentifier: .bodyFatPercentage)!
+    private let water = HKObjectType.quantityType(forIdentifier: .dietaryWater)!
 
     var available: Bool { HKHealthStore.isHealthDataAvailable() }
     var dietaryExportAuthorized: Bool {
@@ -86,21 +91,28 @@ private struct DietaryExportState: Codable {
             return
         }
         do {
-            try await store.requestAuthorization(toShare: [], read: [energy, restingEnergy, bodyMass, bodyFat])
+            try await store.requestAuthorization(toShare: [], read: [energy, restingEnergy, bodyMass, bodyFat, water])
             requested = true
             restingRequested = true
             weightRequested = true
             bodyFatRequested = true
+            waterRequested = true
             UserDefaults.standard.set(true, forKey: "healthRequested")
             UserDefaults.standard.set(true, forKey: "healthRestingRequested")
             UserDefaults.standard.set(true, forKey: "healthWeightRequested")
             UserDefaults.standard.set(true, forKey: "healthBodyFatRequested")
+            UserDefaults.standard.set(true, forKey: "healthWaterRequested")
             await refresh()
         } catch { errorMessage = error.localizedDescription }
     }
 
     func refresh() async {
-        guard requested && available else { return }
+        guard available else { return }
+        if !requested {
+            if weightRequested { try? await refreshWeight() }
+            if waterRequested { await refreshWater() }
+            return
+        }
         if !restingRequested { await connect(); return }
         do {
             let start = Calendar.current.startOfDay(for: Date())
@@ -126,15 +138,7 @@ private struct DietaryExportState: Codable {
                 activeHistory = try await dailyActiveEnergy(from: max(historyStart, ninetyDaysAgo))
             }
 
-            if weightRequested {
-                let latest = try await newestSample(of: bodyMass)
-                latestWeightKg = latest?.quantity.doubleValue(for: .gramUnit(with: .kilo))
-                latestWeightDate = latest?.endDate
-                if let historyStart {
-                    weightHistory = try await dailyHistory(of: bodyMass, from: historyStart,
-                                                           unit: .gramUnit(with: .kilo), scale: 1)
-                }
-            }
+            if weightRequested { try await refreshWeight() }
             if bodyFatRequested {
                 let latest = try await newestSample(of: bodyFat)
                 latestBodyFatPercent = latest.map { $0.quantity.doubleValue(for: .percent()) * 100 }
@@ -146,6 +150,79 @@ private struct DietaryExportState: Codable {
             }
             errorMessage = nil
         } catch { errorMessage = error.localizedDescription }
+        if waterRequested { await refreshWater() }
+    }
+
+    private func refreshWeight() async throws {
+        let latest = try await newestSample(of: bodyMass)
+        latestWeightKg = latest?.quantity.doubleValue(for: .gramUnit(with: .kilo))
+        latestWeightDate = latest?.endDate
+        if let historyStart {
+            weightHistory = try await dailyHistory(of: bodyMass, from: historyStart,
+                                                   unit: .gramUnit(with: .kilo), scale: 1)
+        }
+    }
+
+    func refreshWater() async {
+        guard waterRequested && available else { return }
+        let start = Calendar.current.startOfDay(for: Date())
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: Date(), options: [.strictStartDate])
+        do {
+            let milliliters = try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<Double, Error>) in
+                let query = HKStatisticsQuery(quantityType: water, quantitySamplePredicate: predicate,
+                                              options: .cumulativeSum) { _, statistics, error in
+                    if let error { continuation.resume(throwing: error) }
+                    else { continuation.resume(returning:
+                        statistics?.sumQuantity()?.doubleValue(for: .literUnit(with: .milli)) ?? 0) }
+                }
+                store.execute(query)
+            }
+            waterMlToday = max(0, Int(milliliters.rounded()))
+            waterErrorMessage = nil
+        } catch { waterErrorMessage = error.localizedDescription }
+    }
+
+    func logWaterCup() async {
+        guard available, !waterSaving else { return }
+        waterSaving = true
+        defer { waterSaving = false }
+        do {
+            if store.authorizationStatus(for: water) != .sharingAuthorized || !waterRequested {
+                try await store.requestAuthorization(toShare: [water], read: [water])
+                waterRequested = true
+                UserDefaults.standard.set(true, forKey: "healthWaterRequested")
+            }
+            guard store.authorizationStatus(for: water) == .sharingAuthorized else {
+                waterErrorMessage = "Allow 00Food to write Water in iPhone Settings → Health → Data Access & Devices."
+                return
+            }
+            let now = Date()
+            let sample = HKQuantitySample(type: water,
+                quantity: HKQuantity(unit: .literUnit(with: .milli), doubleValue: 250),
+                start: now, end: now)
+            try await store.save(sample)
+            await refreshWater()
+        } catch { waterErrorMessage = error.localizedDescription }
+    }
+
+    func logWeight(_ kg: Double) async throws {
+        guard available else { throw FoodServiceError(message: "Apple Health is not available on this device") }
+        guard kg.isFinite && (25...400).contains(kg) else {
+            throw FoodServiceError(message: "Enter a weight between 25 and 400 kg")
+        }
+        try await store.requestAuthorization(toShare: [bodyMass], read: [bodyMass])
+        guard store.authorizationStatus(for: bodyMass) == .sharingAuthorized else {
+            throw FoodServiceError(message: "Allow 00Food to write Weight in iPhone Settings → Health → Data Access & Devices.")
+        }
+        let now = Date()
+        let sample = HKQuantitySample(type: bodyMass,
+            quantity: HKQuantity(unit: .gramUnit(with: .kilo), doubleValue: kg),
+            start: now, end: now)
+        try await store.save(sample)
+        weightRequested = true
+        UserDefaults.standard.set(true, forKey: "healthWeightRequested")
+        try await refreshWeight()
     }
 
     func enableDietaryExport(accountId: String, logs: [FoodLog]) async {

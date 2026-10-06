@@ -41,6 +41,7 @@ const foodInput = z.strictObject({
   id: id.optional(), name: z.string().trim().min(1).max(120),
   serving: z.string().trim().min(1).max(80),
   kcal: z.number().int().min(1).max(5000),
+  fruitVegPortions: z.number().int().min(0).max(5).default(0),
   source: z.enum(["manual", "seed"]).default("manual"),
 });
 const logInput = z.strictObject({
@@ -57,16 +58,18 @@ export const proposalInput = z.strictObject({
   kcal: z.number().int().min(1).max(5000),
   note: z.string().trim().max(500).default(""),
   reasoning: z.string().trim().min(1).max(2000).optional(),
+  fruitVegPortions: z.number().int().min(0).max(5).optional(),
 });
 
 type FoodRow = {
   id: string; name: string; serving: string; kcal: number; source: string;
+  fruit_veg_portions: number;
   use_count: number; last_used_at: string | null; dismissed_at: string | null;
   created_at: string; updated_at: string;
 };
 type LogRow = {
   id: string; food_id: string; food_name: string; serving: string;
-  quantity: number; kcal: number; local_date: string; logged_at: string;
+  quantity: number; kcal: number; fruit_veg_portions: number; local_date: string; logged_at: string;
 };
 type ProfileRow = { height_cm: number; weight_kg: number; estimate_profile: string; deficit_kcal: number; birth_year: number | null; updated_at: string };
 type EstimationRow = {
@@ -74,20 +77,24 @@ type EstimationRow = {
   proposed_name: string | null; proposed_serving: string | null; proposed_kcal: number | null;
   agent_note: string | null; local_date: string; created_at: string; updated_at: string;
   agent_reasoning: string | null; user_clarification: string | null;
+  proposed_fruit_veg_portions: number | null;
 };
 
 export const foodView = (r: FoodRow) => ({
   id: r.id, name: r.name, serving: r.serving, kcal: r.kcal, source: r.source,
+  fruitVegPortions: r.fruit_veg_portions,
   useCount: r.use_count, lastUsedAt: r.last_used_at, dismissedAt: r.dismissed_at,
   createdAt: r.created_at, updatedAt: r.updated_at,
 });
 export const logView = (r: LogRow) => ({
   id: r.id, foodId: r.food_id, foodName: r.food_name, serving: r.serving,
-  quantity: r.quantity, kcal: r.kcal, localDate: r.local_date, loggedAt: r.logged_at,
+  quantity: r.quantity, kcal: r.kcal, fruitVegPortions: r.fruit_veg_portions,
+  localDate: r.local_date, loggedAt: r.logged_at,
 });
 export const estimationView = (r: EstimationRow) => ({
   id: r.id, description: r.description, hasPhoto: !!r.photo_key, state: r.state,
   proposedName: r.proposed_name, proposedServing: r.proposed_serving, proposedKcal: r.proposed_kcal,
+  proposedFruitVegPortions: r.proposed_fruit_veg_portions,
   agentNote: r.agent_note, localDate: r.local_date, createdAt: r.created_at, updatedAt: r.updated_at,
   reasoning: r.agent_reasoning, clarification: r.user_clarification,
 });
@@ -124,12 +131,30 @@ export async function proposeEstimation(env: Env, tenantId: string, estimationId
   const now = new Date().toISOString();
   const result = await env.DB.prepare(`UPDATE pending_estimations SET state = 'proposed',
     proposed_name = ?, proposed_serving = ?, proposed_kcal = ?, agent_note = ?,
-    agent_reasoning = COALESCE(?, agent_reasoning), updated_at = ?
+    agent_reasoning = COALESCE(?, agent_reasoning),
+    proposed_fruit_veg_portions = COALESCE(?, proposed_fruit_veg_portions), updated_at = ?
     WHERE id = ? AND tenant_id = ?`).bind(
-    parsed.name, parsed.serving, parsed.kcal, parsed.note, parsed.reasoning ?? null, now, estimationId, tenantId,
+    parsed.name, parsed.serving, parsed.kcal, parsed.note, parsed.reasoning ?? null,
+    parsed.fruitVegPortions ?? null, now, estimationId, tenantId,
   ).run();
   if (!result.meta.changes) fail(404, "Estimation not found");
   return json({ estimation: estimationView((await findEstimation(env, tenantId, estimationId))!) });
+}
+
+export async function setFoodFruitVegPortions(env: Env, tenantId: string, foodId: string,
+                                              portions: number): Promise<ReturnType<typeof foodView> | null> {
+  const existing = await env.DB.prepare("SELECT * FROM foods WHERE id = ? AND tenant_id = ?")
+    .bind(foodId, tenantId).first<FoodRow>();
+  if (!existing) return null;
+  const now = new Date().toISOString();
+  await env.DB.batch([
+    env.DB.prepare("UPDATE foods SET fruit_veg_portions = ?, updated_at = ? WHERE id = ? AND tenant_id = ?")
+      .bind(portions, now, foodId, tenantId),
+    env.DB.prepare(`UPDATE food_logs SET fruit_veg_portions =
+      min(5, CAST(round(? * quantity) AS INTEGER)) WHERE food_id = ? AND tenant_id = ?`)
+      .bind(portions, foodId, tenantId),
+  ]);
+  return foodView({ ...existing, fruit_veg_portions: portions, updated_at: now });
 }
 
 export async function routeApi(req: Request, env: Env, principal: Principal): Promise<Response> {
@@ -190,9 +215,9 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     if ((count?.n ?? 0) >= 2000) throw new APIError(403, "Food library limit reached");
     const now = new Date().toISOString();
     await env.DB.prepare(`INSERT OR IGNORE INTO foods
-      (id, tenant_id, name, serving, kcal, source, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).bind(foodId, tenantId, input.name, input.serving,
-        input.kcal, input.source, now, now).run();
+      (id, tenant_id, name, serving, kcal, fruit_veg_portions, source, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(foodId, tenantId, input.name, input.serving,
+        input.kcal, input.fruitVegPortions, input.source, now, now).run();
     const row = await env.DB.prepare("SELECT * FROM foods WHERE id = ? AND tenant_id = ?")
       .bind(foodId, tenantId).first<FoodRow>();
     if (!row) throw new APIError(409, "Food ID is already in use");
@@ -207,6 +232,13 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     const row = await env.DB.prepare("SELECT * FROM foods WHERE id = ? AND tenant_id = ?")
       .bind(dismissFoodMatch[1], tenantId).first<FoodRow>();
     return json({ food: foodView(row!) });
+  }
+  const fruitVegMatch = /^\/v1\/foods\/([a-f0-9-]{36})\/fruit-veg-portions$/.exec(path);
+  if (fruitVegMatch && method === "PUT") {
+    const input = z.strictObject({ fruitVegPortions: z.number().int().min(0).max(5) }).parse(await body(req));
+    const food = await setFoodFruitVegPortions(env, tenantId, fruitVegMatch[1], input.fruitVegPortions);
+    if (!food) throw new APIError(404, "Food not found");
+    return json({ food });
   }
   if (path === "/v1/logs" && method === "POST") {
     const input = logInput.parse(await body(req));
@@ -225,11 +257,12 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     if ((count?.n ?? 0) >= 10000) throw new APIError(403, "Food log limit reached");
     const now = new Date().toISOString();
     const calories = Math.max(1, Math.round(food.kcal * input.quantity));
+    const portions = Math.min(5, Math.round(food.fruit_veg_portions * input.quantity));
     const loggedAt = input.loggedAt || now;
     const result = await env.DB.prepare(`INSERT OR IGNORE INTO food_logs
-      (id, tenant_id, food_id, food_name, serving, quantity, kcal, local_date, logged_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(logId, tenantId, food.id, food.name,
-        food.serving, input.quantity, calories, input.localDate, loggedAt).run();
+      (id, tenant_id, food_id, food_name, serving, quantity, kcal, fruit_veg_portions, local_date, logged_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(logId, tenantId, food.id, food.name,
+        food.serving, input.quantity, calories, portions, input.localDate, loggedAt).run();
     if (result.meta.changes) {
       await env.DB.prepare(`UPDATE foods SET use_count = use_count + 1,
         last_used_at = CASE WHEN last_used_at IS NULL OR last_used_at < ? THEN ? ELSE last_used_at END,
@@ -347,20 +380,22 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     const foodId = crypto.randomUUID();
     const logId = crypto.randomUUID();
     const now = new Date().toISOString();
+    const portions = row.proposed_fruit_veg_portions ?? 0;
     await env.DB.batch([
       env.DB.prepare(`INSERT INTO foods
-        (id, tenant_id, name, serving, kcal, source, use_count, last_used_at, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, 'agent', 1, ?, ?, ?)`).bind(foodId, tenantId, row.proposed_name,
-          row.proposed_serving, row.proposed_kcal, now, now, now),
+        (id, tenant_id, name, serving, kcal, fruit_veg_portions, source, use_count, last_used_at, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'agent', 1, ?, ?, ?)`).bind(foodId, tenantId, row.proposed_name,
+          row.proposed_serving, row.proposed_kcal, portions, now, now, now),
       env.DB.prepare(`INSERT INTO food_logs
-        (id, tenant_id, food_id, food_name, serving, quantity, kcal, local_date, logged_at)
-        VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)`).bind(logId, tenantId, foodId,
-          row.proposed_name, row.proposed_serving, row.proposed_kcal, row.local_date, now),
+        (id, tenant_id, food_id, food_name, serving, quantity, kcal, fruit_veg_portions, local_date, logged_at)
+        VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`).bind(logId, tenantId, foodId,
+          row.proposed_name, row.proposed_serving, row.proposed_kcal, portions, row.local_date, now),
       env.DB.prepare("DELETE FROM pending_estimations WHERE id = ? AND tenant_id = ?").bind(row.id, tenantId),
       env.DB.prepare(`INSERT INTO food_events (tenant_id, event_key, kind, subject_id, payload_json, created_at)
         VALUES (?, ?, 'food_logged', ?, ?, ?)`).bind(tenantId, `log:${logId}`, logId,
           JSON.stringify({ id: logId, foodId, foodName: row.proposed_name, serving: row.proposed_serving,
-            quantity: 1, kcal: row.proposed_kcal, localDate: row.local_date, loggedAt: now }), now),
+            quantity: 1, kcal: row.proposed_kcal, fruitVegPortions: portions,
+            localDate: row.local_date, loggedAt: now }), now),
       webhookDeliveryInsert(env, tenantId, `log:${logId}`),
     ]);
     await notifyFoodEvent(env, tenantId);

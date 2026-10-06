@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { type Principal } from "./auth";
-import { appName, estimationView, findEstimation, foodView, json, proposeEstimation, proposalInput, type Env } from "./api";
+import { appName, estimationView, findEstimation, foodView, json, proposeEstimation, proposalInput,
+  setFoodFruitVegPortions, type Env } from "./api";
 import { authChallenge } from "./oauth";
 import { closeFoodEventStream, foodEventsUri, listFoodEvents, recentFoodEvents } from "./foodEvents";
 import { eventDefinitions, McpEventsError, subscribeWebhookEvent, unsubscribeWebhookEvent } from "./mcpWebhookEvents";
@@ -24,13 +25,20 @@ const tools = [
   },
   {
     name: "propose_food_estimate", title: "Propose Food Estimate",
-    description: "Propose a directional calorie estimate for one serving. Explain the calorie choice in reasoning, including visible ingredients, portion assumptions, and uncertainty. The person reviews it before it is logged and reused.",
-    inputSchema: z.toJSONSchema(proposalInput.extend({ id: uuid, reasoning: z.string().trim().min(1).max(2000) }), { io: "input" }), readOnly: false,
+    description: "Propose a directional calorie estimate and 0–5 fruit/vegetable portions for one serving. Count meaningful produce portions, not a garnish; use 0 when uncertain. Explain the choices in reasoning. The person reviews them before logging.",
+    inputSchema: z.toJSONSchema(proposalInput.extend({ id: uuid, reasoning: z.string().trim().min(1).max(2000),
+      fruitVegPortions: z.number().int().min(0).max(5) }), { io: "input" }), readOnly: false,
   },
   {
     name: "list_known_foods", title: "List Known Foods",
-    description: "See previously approved foods and their calorie estimates; use these as context for a similar pending item.",
+    description: "See previously approved foods, calorie estimates, and fruit/vegetable portions; use these as context for a similar pending item.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false }, readOnly: true,
+  },
+  {
+    name: "set_food_fruit_veg_portions", title: "Set Food Fruit and Vegetable Portions",
+    description: "Correct a saved food's rough 0–5 fruit/vegetable portions per serving. Existing logs of that food are updated too. Use only when the person asks to classify or correct a food.",
+    inputSchema: z.toJSONSchema(z.strictObject({ id: uuid,
+      fruitVegPortions: z.number().int().min(0).max(5) }), { io: "input" }), readOnly: false,
   },
   {
     name: "list_food_events", title: "List Food Events",
@@ -179,7 +187,8 @@ export async function routeMcp(req: Request, env: Env, principal: Principal): Pr
       return respondTool({ content: [{ type: "image", data: btoa(binary), mimeType: "image/jpeg" }] });
     }
     case "propose_food_estimate": {
-      const { id, ...proposal } = proposalInput.extend({ id: uuid, reasoning: z.string().trim().min(1).max(2000) }).parse(args);
+      const { id, ...proposal } = proposalInput.extend({ id: uuid, reasoning: z.string().trim().min(1).max(2000),
+        fruitVegPortions: z.number().int().min(0).max(5) }).parse(args);
       const response = await proposeEstimation(env, principal.tenantId, id, proposal);
       return respondTool(content(await response.json()));
     }
@@ -187,6 +196,12 @@ export async function routeMcp(req: Request, env: Env, principal: Principal): Pr
       const rows = await env.DB.prepare(`SELECT * FROM foods WHERE tenant_id = ?
         ORDER BY use_count DESC, last_used_at DESC LIMIT 100`).bind(principal.tenantId).all();
       return respondTool(content({ foods: rows.results.map(r => foodView(r as never)) }));
+    }
+    case "set_food_fruit_veg_portions": {
+      const { id, fruitVegPortions } = z.strictObject({ id: uuid,
+        fruitVegPortions: z.number().int().min(0).max(5) }).parse(args);
+      const food = await setFoodFruitVegPortions(env, principal.tenantId, id, fruitVegPortions);
+      return respondTool(content(food ? { food } : { error: "Food not found" }));
     }
     case "list_food_events": {
       const { after } = z.strictObject({ after: z.number().int().min(0).default(0) }).parse(args);

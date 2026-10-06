@@ -143,6 +143,8 @@ struct HomeView: View {
                             .font(.headline).frame(maxWidth: .infinity).frame(height: 48)
                     }
                     .buttonStyle(.borderedProminent)
+                    hydrationCard
+                    fiveADayCard
 
                     if !store.estimations.isEmpty { estimatesSection }
                     foodLogSection
@@ -298,6 +300,64 @@ struct HomeView: View {
         }
     }
 
+    private var hydrationCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Water").font(.headline)
+                Spacer()
+                Text("\(health.waterMlToday.formatted()) mL today")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            }
+            HStack(spacing: 4) {
+                ForEach(0..<8, id: \.self) { index in
+                    Button { Task { await health.logWaterCup() } } label: {
+                        Image(systemName: "cup.and.saucer.fill")
+                            .font(.system(size: 23))
+                            .foregroundStyle(index < min(8, health.waterMlToday / 250)
+                                ? Color.blue : Color.secondary.opacity(0.35))
+                            .frame(maxWidth: .infinity, minHeight: 38)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(health.waterSaving)
+                    .accessibilityLabel("Add 250 milliliters of water")
+                }
+            }
+            Text(health.waterRequested ? "Tap a cup to add 250 mL in Apple Health." :
+                 "Tap a cup to connect Water in Apple Health and add 250 mL.")
+                .font(.caption).foregroundStyle(.secondary)
+            if let error = health.waterErrorMessage {
+                Text(error).font(.caption).foregroundStyle(.red)
+            }
+        }
+        .padding(14)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+    }
+
+    private var fiveADayCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("5 a day").font(.headline)
+                Spacer()
+                Text("\(store.fruitVegToday) of 5")
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(.green)
+            }
+            HStack(spacing: 12) {
+                ForEach(0..<5, id: \.self) { index in
+                    Image(systemName: "leaf.fill")
+                        .font(.title3)
+                        .foregroundStyle(index < store.fruitVegToday ? Color.green : Color.secondary.opacity(0.3))
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(store.fruitVegToday) of 5 fruit and vegetable portions today")
+            Text("Based on the portions marked in your logged foods.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        .padding(14)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+    }
+
     private var foodLogSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -333,6 +393,10 @@ struct HomeView: View {
                     }
                     Spacer()
                     Text("\(log.kcal) kcal").font(.subheadline.monospacedDigit())
+                    if log.countedFruitVegPortions > 0 {
+                        Label("\(log.countedFruitVegPortions)", systemImage: "leaf.fill")
+                            .font(.caption).foregroundStyle(.green)
+                    }
                     if deletingLogID == log.id { ProgressView() }
                 }
                 .padding(.vertical, 4)

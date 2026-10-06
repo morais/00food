@@ -101,6 +101,8 @@ struct FoodItem: Codable, Identifiable, Equatable {
     var dismissedAt: String?
     var createdAt: String
     var updatedAt: String
+    var fruitVegPortions: Int? = nil
+    var countedFruitVegPortions: Int { min(5, max(0, fruitVegPortions ?? 0)) }
 }
 
 struct FoodLog: Codable, Identifiable, Equatable {
@@ -112,6 +114,8 @@ struct FoodLog: Codable, Identifiable, Equatable {
     var kcal: Int
     var localDate: String
     var loggedAt: String
+    var fruitVegPortions: Int? = nil
+    var countedFruitVegPortions: Int { min(5, max(0, fruitVegPortions ?? 0)) }
 }
 
 struct PendingEstimation: Codable, Identifiable, Equatable {
@@ -128,6 +132,7 @@ struct PendingEstimation: Codable, Identifiable, Equatable {
     var updatedAt: String
     var reasoning: String? = nil
     var clarification: String? = nil
+    var proposedFruitVegPortions: Int? = nil
 }
 
 struct FoodSnapshot: Codable {
