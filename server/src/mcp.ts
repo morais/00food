@@ -90,11 +90,20 @@ export async function routeMcp(req: Request, env: Env, principal: Principal): Pr
       const result = request.method === "events/subscribe"
         ? await subscribeWebhookEvent(env, principal, request.params)
         : await unsubscribeWebhookEvent(env, principal, request.params);
+      console.info("MCP event subscription completed", request.method);
       return ok(requestId, result);
     } catch (cause) {
-      if (cause instanceof McpEventsError) return json({ jsonrpc: "2.0", id: requestId,
-        error: { code: cause.code, message: cause.message, ...(cause.reason ? { data: { reason: cause.reason } } : {}) } });
-      if (cause instanceof z.ZodError) return error(requestId, -32602, "Invalid event subscription");
+      if (cause instanceof McpEventsError) {
+        console.warn("MCP event subscription rejected", request.method, cause.code, cause.reason ?? cause.message);
+        return json({ jsonrpc: "2.0", id: requestId,
+          error: { code: cause.code, message: cause.message, ...(cause.reason ? { data: { reason: cause.reason } } : {}) } });
+      }
+      if (cause instanceof z.ZodError) {
+        console.warn("MCP event subscription rejected", request.method, -32602,
+          cause.issues.map(issue => ({ path: issue.path.join("."), code: issue.code,
+            ...("keys" in issue ? { keys: issue.keys } : {}) })));
+        return error(requestId, -32602, "Invalid event subscription");
+      }
       console.error("MCP event subscription failed", cause instanceof Error ? cause.message : "unknown error");
       return error(requestId, -32603, "Event subscription failed");
     }

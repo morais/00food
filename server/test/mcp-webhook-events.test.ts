@@ -79,7 +79,8 @@ describe("MCP 2.0 webhook events", () => {
     };
     const env = { DB: db as unknown as D1Database } as Env;
     const input = { name: "food.clarification_added", arguments: {},
-      delivery: { mode: "webhook", url: "https://events.chatgpt.com/00food", secret } };
+      delivery: { mode: "webhook", url: "https://events.chatgpt.com/00food", secret,
+        clientExtension: "ignored" }, _meta: { "openai/session": "session" } };
     const subscription = await subscribeWebhookEvent(env, principal, input) as { id: string; refreshBefore: string };
     expect(subscription.id).toBe(subscriptionId);
     expect(subscription.refreshBefore).toBeTruthy();

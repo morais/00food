@@ -28,10 +28,12 @@ export const eventDefinitions = [
     payloadSchema: schema({ estimation_id: string, clarification: string }, ["estimation_id", "clarification"]) },
 ];
 
-const subscriptionInput = z.strictObject({
+// MCP clients may attach transport metadata to method parameters. Validate the
+// fields we use, while ignoring extensions outside the event's filter arguments.
+const subscriptionInput = z.object({
   name: z.enum(["food.logged", "food.estimate_requested", "food.clarification_added"]),
   arguments: z.strictObject({}).default({}),
-  delivery: z.strictObject({ mode: z.literal("webhook"), url: z.url(), secret: z.string().optional() }),
+  delivery: z.object({ mode: z.literal("webhook"), url: z.url(), secret: z.string().optional() }),
   cursor: z.null().optional(), ttlMs: z.number().int().positive().optional().nullable(),
 });
 
