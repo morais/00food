@@ -105,6 +105,36 @@ struct RootView: View {
     }
 }
 
+private struct WaterGlassIcon: View {
+    let filled: Bool
+
+    var body: some View {
+        ZStack {
+            if filled {
+                Path { path in
+                    path.move(to: CGPoint(x: 6, y: 14))
+                    path.addLine(to: CGPoint(x: 22, y: 14))
+                    path.addLine(to: CGPoint(x: 19, y: 28))
+                    path.addLine(to: CGPoint(x: 9, y: 28))
+                    path.closeSubpath()
+                }
+                .fill(.blue.opacity(0.8))
+            }
+            Path { path in
+                path.move(to: CGPoint(x: 4, y: 3))
+                path.addLine(to: CGPoint(x: 24, y: 3))
+                path.addLine(to: CGPoint(x: 19, y: 29))
+                path.addLine(to: CGPoint(x: 9, y: 29))
+                path.closeSubpath()
+            }
+            .stroke(filled ? Color.blue : Color.secondary.opacity(0.6),
+                    style: StrokeStyle(lineWidth: 2, lineJoin: .round))
+        }
+        .frame(width: 28, height: 32)
+        .accessibilityHidden(true)
+    }
+}
+
 struct HomeView: View {
     @Environment(FoodStore.self) private var store
     @Environment(HealthEnergy.self) private var health
@@ -311,10 +341,7 @@ struct HomeView: View {
             HStack(spacing: 4) {
                 ForEach(0..<8, id: \.self) { index in
                     Button { Task { await health.logWaterCup() } } label: {
-                        Image(systemName: "cup.and.saucer.fill")
-                            .font(.system(size: 23))
-                            .foregroundStyle(index < min(8, health.waterMlToday / 250)
-                                ? Color.blue : Color.secondary.opacity(0.35))
+                        WaterGlassIcon(filled: index < min(8, health.waterMlToday / 250))
                             .frame(maxWidth: .infinity, minHeight: 38)
                     }
                     .buttonStyle(.plain)
@@ -322,8 +349,8 @@ struct HomeView: View {
                     .accessibilityLabel("Add 250 milliliters of water")
                 }
             }
-            Text(health.waterRequested ? "Tap a cup to add 250 mL in Apple Health." :
-                 "Tap a cup to connect Water in Apple Health and add 250 mL.")
+            Text(health.waterRequested ? "Tap a glass to add 250 mL in Apple Health." :
+                 "Tap a glass to connect Water in Apple Health and add 250 mL.")
                 .font(.caption).foregroundStyle(.secondary)
             if let error = health.waterErrorMessage {
                 Text(error).font(.caption).foregroundStyle(.red)

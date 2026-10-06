@@ -3,10 +3,16 @@ import SwiftUI
 import UIKit
 
 struct QuickAddView: View {
+    private enum FoodTab: String, CaseIterable {
+        case saved = "Your foods"
+        case new = "New food"
+    }
+
     var openCameraOnAppear = false
     @Environment(FoodStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
+    @State private var selectedTab: FoodTab = .saved
     @State private var descriptionText = ""
     @State private var photoItem: PhotosPickerItem?
     @State private var photoData: Data?
@@ -29,67 +35,90 @@ struct QuickAddView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    TextField("Search your foods", text: $query)
-                        .focused($searchFocused)
-                        .submitLabel(.search)
-                }
-                if !matches.isEmpty {
-                    Section("Your foods · one tap to log") {
-                        ForEach(matches) { food in
-                            Button { log(food) } label: { foodRow(food) }
-                                .disabled(busy)
-                                .swipeActions(edge: .trailing) {
-                                    Button("5 a day", systemImage: "leaf") { editingPortions = food }
-                                }
-                                .contextMenu {
-                                    Button("Set fruit & veg portions") { editingPortions = food }
-                                }
-                        }
+            VStack(spacing: 0) {
+                Picker("Log food mode", selection: $selectedTab) {
+                    ForEach(FoodTab.allCases, id: \.self) { tab in
+                        Text(tab.rawValue).tag(tab)
                     }
                 }
-                Section("New food for your agent") {
-                    TextField("Describe food and portion", text: $descriptionText)
-                        .submitLabel(.done)
-                    HStack(spacing: 12) {
-                        PhotosPicker(selection: $photoItem, matching: .images) {
-                            Label("Photos", systemImage: "photo.on.rectangle")
-                                .frame(maxWidth: .infinity)
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
+                List {
+                    if selectedTab == .saved {
+                        Section {
+                            TextField("Search your foods", text: $query)
+                                .focused($searchFocused)
+                                .submitLabel(.search)
                         }
-                        .buttonStyle(.bordered)
-                        if UIImagePickerController.isSourceTypeAvailable(.camera) {
-                            Button { photoItem = nil; showingCamera = true } label: {
-                                Label("Camera", systemImage: "camera")
-                                    .frame(maxWidth: .infinity)
+                        if !matches.isEmpty {
+                            Section(query.isEmpty ? "Recently used · one tap to log" : "Matching foods · one tap to log") {
+                                ForEach(matches) { food in
+                                    Button { log(food) } label: { foodRow(food) }
+                                        .disabled(busy)
+                                        .swipeActions(edge: .trailing) {
+                                            Button("5 a day", systemImage: "leaf") { editingPortions = food }
+                                        }
+                                        .contextMenu {
+                                            Button("Set fruit & veg portions") { editingPortions = food }
+                                        }
+                                }
                             }
-                            .buttonStyle(.bordered)
+                        } else {
+                            Section {
+                                Text(query.isEmpty ? "Your saved foods will appear here after you log one." :
+                                     "No saved food matches your search.")
+                                    .foregroundStyle(.secondary)
+                                Button(query.isEmpty ? "Add your first food" : "Add \"\(query)\" as new food") {
+                                    selectedTab = .new
+                                }
+                            }
+                        }
+                    } else {
+                        Section("Ask your agent") {
+                            TextField("Describe food and portion", text: $descriptionText)
+                                .submitLabel(.done)
+                            HStack(spacing: 12) {
+                                PhotosPicker(selection: $photoItem, matching: .images) {
+                                    Label("Photos", systemImage: "photo.on.rectangle")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.bordered)
+                                if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                                    Button { photoItem = nil; showingCamera = true } label: {
+                                        Label("Camera", systemImage: "camera")
+                                            .frame(maxWidth: .infinity)
+                                    }
+                                    .buttonStyle(.bordered)
+                                }
+                            }
+                            if let photoData, let image = UIImage(data: photoData) {
+                                Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 180)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                    .accessibilityLabel("Photo attached to this food")
+                                Button("Remove photo", role: .destructive) {
+                                    self.photoData = nil
+                                    photoItem = nil
+                                }
+                            }
+                            if loadingPhoto { ProgressView("Preparing photo…") }
+                            Button { requestEstimate() } label: {
+                                Label(estimateButtonTitle, systemImage: "sparkles")
+                            }
+                            .disabled(busy || loadingPhoto || (descriptionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && photoData == nil))
+                            Text("Your agent receives the description and attached photo together, then you review its estimate before logging.")
+                                .font(.footnote).foregroundStyle(.secondary)
+                        }
+                        Section {
+                            Button { showingManual = true } label: {
+                                Label("Enter calories myself", systemImage: "pencil")
+                            }
+                            .disabled(busy)
+                        } header: {
+                            Text("Manual entry")
                         }
                     }
-                    if let photoData, let image = UIImage(data: photoData) {
-                        Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 180)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .accessibilityLabel("Photo attached to this food")
-                        Button("Remove photo", role: .destructive) {
-                            self.photoData = nil
-                            photoItem = nil
-                        }
-                    }
-                    if loadingPhoto { ProgressView("Preparing photo…") }
-                    Button { requestEstimate() } label: {
-                        Label(estimateButtonTitle, systemImage: "sparkles")
-                    }
-                    .disabled(busy || loadingPhoto || (descriptionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && photoData == nil))
-                    Text("Your agent receives the description and attached photo together, then you review its estimate before logging.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
-                Section {
-                    Button { showingManual = true } label: {
-                        Label("Enter calories myself", systemImage: "pencil")
-                    }
-                    .disabled(busy)
-                } header: {
-                    Text("Manual entry")
                 }
             }
             .navigationTitle("Log food")
@@ -99,6 +128,7 @@ struct QuickAddView: View {
             .task {
                 guard openCameraOnAppear && !didOpenCamera else { return }
                 didOpenCamera = true
+                selectedTab = .new
                 try? await Task.sleep(for: .milliseconds(400))
                 if !Task.isCancelled { showingCamera = true }
             }
@@ -106,6 +136,12 @@ struct QuickAddView: View {
                 ManualFoodView(initialName: descriptionText.isEmpty ? query : descriptionText) { dismiss() }
             }
             .sheet(item: $editingPortions) { FruitVegPortionsView(food: $0) }
+            .onChange(of: selectedTab) { _, tab in
+                searchFocused = false
+                if tab == .new && descriptionText.isEmpty {
+                    descriptionText = query.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            }
             .onChange(of: photoItem) { _, item in
                 let loadID = UUID()
                 photoLoadID = loadID
