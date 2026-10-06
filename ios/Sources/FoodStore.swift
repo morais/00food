@@ -201,6 +201,21 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         ] as [String: Any])
     }
 
+    func clarifyEstimate(id: String, text: String) throws {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= 1000 else {
+            throw FoodServiceError(message: "Clarification must be between 1 and 1,000 characters")
+        }
+        let clarificationId = UUID().uuidString.lowercased()
+        try stage(.clarifyEstimate(id, clarificationId, trimmed)) {
+            if let index = estimations.firstIndex(where: { $0.id == id }) {
+                estimations[index].clarification = trimmed
+                estimations[index].state = "pending"
+                estimations[index].updatedAt = Self.now()
+            }
+        }
+    }
+
     func accept(_ estimation: PendingEstimation) async throws {
         let _: AcceptedResponse = try await call("/v1/estimations/\(estimation.id)/accept", method: "POST")
         try await refresh()
@@ -346,6 +361,9 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
                                           "localDate": estimation.localDate]
             if let photo { payload["photoBase64"] = photo.base64EncodedString() }
             let _: EstimationResponse = try await call("/v1/estimations", method: "POST", body: payload)
+        case .clarifyEstimate(let estimationId, let clarificationId, let text):
+            let _: EstimationResponse = try await call("/v1/estimations/\(estimationId)/clarifications",
+                                                       method: "POST", body: ["id": clarificationId, "text": text])
         case .deleteEstimate(let id):
             do { let _: OKResponse = try await call("/v1/estimations/\(id)", method: "DELETE") }
             catch let error as FoodServiceError where error.status == 404 { break }

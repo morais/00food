@@ -27,6 +27,14 @@ migrations_dir = "migrations"
 binding = "PHOTOS"
 bucket_name = "00food-photos"
 
+[[durable_objects.bindings]]
+name = "FOOD_EVENTS"
+class_name = "FoodEventStream"
+
+[[migrations]]
+tag = "food-events-v1"
+new_sqlite_classes = ["FoodEventStream"]
+
 [[ratelimits]]
 name = "SOURCE_LIMITER"
 namespace_id = "20101"

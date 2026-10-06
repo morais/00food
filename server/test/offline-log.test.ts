@@ -11,6 +11,7 @@ describe("offline log replay", () => {
       use_count: 0, last_used_at: null as string | null, dismissed_at: null,
       created_at: loggedAt, updated_at: loggedAt };
     let log: Record<string, unknown> | null = null;
+    let eventCount = 0;
     const db = {
       prepare(sql: string) {
         return {
@@ -34,6 +35,11 @@ describe("offline log replay", () => {
                   food.last_used_at = args[1] as string;
                   return { meta: { changes: 1 } };
                 }
+                if (sql.startsWith("INSERT OR IGNORE INTO food_events")) {
+                  const inserted = eventCount === 0;
+                  if (inserted) eventCount++;
+                  return { meta: { changes: inserted ? 1 : 0 } };
+                }
                 throw new Error(`Unexpected write: ${sql}`);
               },
             };
@@ -53,6 +59,7 @@ describe("offline log replay", () => {
     expect((await first.json() as { log: { loggedAt: string } }).log.loggedAt).toBe(loggedAt);
     expect(food.use_count).toBe(1);
     expect(food.last_used_at).toBe(loggedAt);
+    expect(eventCount).toBe(1);
     expect((log as unknown as Record<string, unknown>)["local_date"]).toBe("2026-10-03");
   });
 });

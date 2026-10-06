@@ -37,9 +37,12 @@ App routes use `Authorization: Bearer <app token>`:
 | `PUT /v1/estimations/:id/photo` | Add a private JPEG photo (up to 2 MB) to the same pending food |
 | `PUT /v1/estimations/:id/proposal` | Edit an agent proposal during review |
 | `POST /v1/estimations/:id/accept` | Save the proposed food and log it |
+| `POST /v1/estimations/:id/clarifications` | Send an idempotent user clarification and return the item to the agent queue |
 | `DELETE /v1/estimations/:id` | Discard a pending estimate and its photo |
 | `GET /v1/account/mcp-connections` | List connected agents |
 | `DELETE /v1/account/mcp-connections/:id` | Revoke an agent |
 | `POST /v1/auth/delete-account` | Reauthenticate and remove account data |
 
-`POST /mcp` supports `list_pending_foods`, `get_pending_food`, `view_food_photo`, `propose_food_estimate`, and `list_known_foods`. An agent uses one pending-food ID to read the description and inspect its photo together before proposing an estimate. The current iOS app sends both in one atomic submission; the separate photo upload route remains available for older clients. The remote MCP connection uses OAuth authorization code with PKCE and Apple web sign-in. The consent page explicitly says that a connected agent can inspect pending photos. The agent's proposal does not create a food or log until the app user accepts it.
+`POST /mcp` supports `list_pending_foods`, `get_pending_food`, `view_food_photo`, `propose_food_estimate`, `list_known_foods`, and `list_food_events`. An agent uses one pending-food ID to read the description and inspect its photo together before proposing an estimate with a visible calorie rationale. The current iOS app sends both in one atomic submission; the separate photo upload route remains available for older clients. The remote MCP connection uses OAuth authorization code with PKCE and Apple web sign-in. The consent page explicitly says that a connected agent can inspect pending photos. The agent's proposal does not create a food or log until the app user accepts it.
+
+For live updates on the 2025-11-25 MCP connection, the agent calls `resources/subscribe` with `{"uri":"food://events"}` and opens an authenticated `GET /mcp` stream with `Accept: text/event-stream`. New food logs, estimate requests, and user clarifications send `notifications/resources/updated` for that URI. The agent then calls `resources/read` or `list_food_events` with its last `after` cursor to catch up. The D1 event journal is kept for 30 days; the stream reconnects every 15 minutes to recheck authorization. MCP hosts need to support resource subscriptions and choose to act on notifications for autonomous processing.

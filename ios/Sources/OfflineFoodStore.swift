@@ -8,6 +8,7 @@ enum OfflineFoodOperation: Codable {
     case dismissFood(String)
     case deleteLog(String)
     case estimate(PendingEstimation, Data?)
+    case clarifyEstimate(String, String, String)
     case deleteEstimate(String)
 }
 

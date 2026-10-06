@@ -61,9 +61,29 @@ const appMcp = await fetch(origin + "/mcp", { method: "POST", headers: { Authori
 assert(appMcp.status === 401, "app credential was accepted by MCP");
 const mcpApp = await fetch(origin + "/v1/snapshot", { headers: { Authorization: `Bearer ${mcpToken}` } });
 assert(mcpApp.status === 401, "MCP credential was accepted by app API");
+const stream = await fetch(origin + "/mcp", { headers: { Authorization: `Bearer ${mcpToken}`,
+  Accept: "text/event-stream" } });
+assert(stream.ok && stream.headers.get("content-type")?.includes("text/event-stream"), "MCP event stream failed");
+const reader = stream.body.getReader();
+await reader.read(); // Initial SSE comment.
+const subscription = await request("/mcp", "POST", { jsonrpc: "2.0", id: 10,
+  method: "resources/subscribe", params: { uri: "food://events" } }, mcpToken);
+assert(subscription.result && !subscription.error, "food event subscription failed");
 const logId = randomUUID();
 await request("/v1/logs", "POST", { id: logId, foodId: food.id, quantity: 1, localDate: "2026-10-03" });
+let frame = "";
+for (let chunk = 0; chunk < 20 && !frame.includes("\n\n"); chunk++) {
+  const notification = await Promise.race([reader.read(), new Promise((_, reject) =>
+    setTimeout(() => reject(Error("Food event notification timed out")), 5000))]);
+  frame += new TextDecoder().decode(notification.value);
+}
+assert(frame.includes("notifications/resources/updated"), "food log did not notify MCP subscriber");
+await reader.cancel();
 await request("/v1/logs", "POST", { id: logId, foodId: food.id, quantity: 1, localDate: "2026-10-03" });
+const events = await request("/mcp", "POST", { jsonrpc: "2.0", id: 11, method: "tools/call",
+  params: { name: "list_food_events", arguments: { after: 0 } } }, mcpToken);
+const loggedEvents = JSON.parse(events.result.content[0].text).events.filter(event => event.subjectId === logId);
+assert(loggedEvents.length === 1, "retry duplicated the food log event");
 const afterLog = await request("/v1/snapshot");
 assert(afterLog.foods[0].useCount === 1 && afterLog.logs.length === 1, "log retry was not idempotent");
 const hidden = await request(`/v1/foods/${food.id}/dismiss`, "POST");
@@ -99,8 +119,33 @@ assert(image.result?.content?.[0]?.type === "image" && image.result.content[0].m
 const toolResult = await request("/mcp", "POST", { jsonrpc: "2.0", id: 1, method: "tools/call",
   params: { name: "propose_food_estimate", arguments: {
     id: estimate.id, name: "Berries", serving: "1 small bowl", kcal: 80, note: "Rough portion estimate",
+    reasoning: "The small bowl appears to hold about one cup of berries.",
   } } }, mcpToken);
 assert(toolResult.result?.content?.length, "agent proposal failed");
+assert(JSON.parse(toolResult.result.content[0].text).estimation.reasoning?.includes("one cup"),
+  "agent reasoning was not saved");
+const clarificationId = randomUUID();
+await request(`/v1/estimations/${estimate.id}/clarifications`, "POST", {
+  id: clarificationId, text: "The bowl has sweetened yogurt underneath.",
+});
+await request(`/v1/estimations/${estimate.id}/clarifications`, "POST", {
+  id: clarificationId, text: "The bowl has sweetened yogurt underneath.",
+});
+const clarified = await request("/mcp", "POST", { jsonrpc: "2.0", id: 12, method: "tools/call",
+  params: { name: "get_pending_food", arguments: { id: estimate.id } } }, mcpToken);
+const clarifiedFood = JSON.parse(clarified.result.content[0].text).food;
+assert(clarifiedFood.state === "pending" && clarifiedFood.clarification?.includes("yogurt"),
+  "agent did not receive clarification");
+const eventsAfterClarification = await request("/mcp", "POST", { jsonrpc: "2.0", id: 13, method: "tools/call",
+  params: { name: "list_food_events", arguments: { after: 0 } } }, mcpToken);
+assert(JSON.parse(eventsAfterClarification.result.content[0].text).events.filter(event =>
+  event.kind === "clarification_added" && event.subjectId === estimate.id).length === 1,
+"clarification retry duplicated its event");
+await request("/mcp", "POST", { jsonrpc: "2.0", id: 14, method: "tools/call",
+  params: { name: "propose_food_estimate", arguments: {
+    id: estimate.id, name: "Berries and yogurt", serving: "1 small bowl", kcal: 190,
+    reasoning: "Berries plus sweetened yogurt add up to roughly 190 kcal.",
+  } } }, mcpToken);
 await request(`/v1/estimations/${estimate.id}/accept`, "POST");
 const final = await request("/v1/snapshot");
 assert(final.foods.length === 2 && final.logs.length === 2 && final.estimations.length === 0,

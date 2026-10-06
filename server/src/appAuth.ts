@@ -2,6 +2,7 @@ import { z } from "zod";
 import { appleEmail, revokeAppleToken, verifyNativeAppleLogin } from "./apple";
 import { constantTimeEqual, findOrCreateTenant, issueCredential, revokeCredential, tenantForPrincipal, type Principal } from "./auth";
 import { json, type Env } from "./api";
+import { closeAllFoodEventStreams } from "./foodEvents";
 
 const LoginInput = z.strictObject({
   identityToken: z.string().min(100).max(12000),
@@ -64,6 +65,8 @@ export async function deleteAccount(req: Request, env: Env, principal: Principal
   }
   await env.DB.batch([
     env.DB.prepare("DELETE FROM food_logs WHERE tenant_id = ?").bind(tenant.id),
+    env.DB.prepare("DELETE FROM food_events WHERE tenant_id = ?").bind(tenant.id),
+    env.DB.prepare("DELETE FROM mcp_resource_subscriptions WHERE tenant_id = ?").bind(tenant.id),
     env.DB.prepare("DELETE FROM pending_estimations WHERE tenant_id = ?").bind(tenant.id),
     env.DB.prepare("DELETE FROM profiles WHERE tenant_id = ?").bind(tenant.id),
     env.DB.prepare("DELETE FROM foods WHERE tenant_id = ?").bind(tenant.id),
@@ -72,5 +75,6 @@ export async function deleteAccount(req: Request, env: Env, principal: Principal
     env.DB.prepare("DELETE FROM credentials WHERE tenant_id = ?").bind(tenant.id),
     env.DB.prepare("DELETE FROM tenants WHERE id = ? AND apple_subject = ?").bind(tenant.id, tenant.apple_subject),
   ]);
+  await closeAllFoodEventStreams(env, tenant.id);
   return json({ ok: true });
 }

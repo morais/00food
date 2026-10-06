@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { tenantForPrincipal, type Principal } from "./auth";
+import { recordFoodEvent } from "./foodEvents";
 
 export interface Env {
   DB: D1Database;
@@ -18,6 +19,7 @@ export interface Env {
   SOURCE_LIMITER?: RateLimit;
   SIGN_IN_LIMITER?: RateLimit;
   TENANT_LIMITER?: RateLimit;
+  FOOD_EVENTS?: DurableObjectNamespace;
 }
 
 export const appName = (env: Env): string => env.APP_NAME?.trim().slice(0, 60) || "00Food";
@@ -53,6 +55,7 @@ export const proposalInput = z.strictObject({
   serving: z.string().trim().min(1).max(80),
   kcal: z.number().int().min(1).max(5000),
   note: z.string().trim().max(500).default(""),
+  reasoning: z.string().trim().min(1).max(2000).optional(),
 });
 
 type FoodRow = {
@@ -69,6 +72,7 @@ type EstimationRow = {
   id: string; description: string; photo_key: string | null; state: string;
   proposed_name: string | null; proposed_serving: string | null; proposed_kcal: number | null;
   agent_note: string | null; local_date: string; created_at: string; updated_at: string;
+  agent_reasoning: string | null; user_clarification: string | null;
 };
 
 export const foodView = (r: FoodRow) => ({
@@ -84,6 +88,7 @@ export const estimationView = (r: EstimationRow) => ({
   id: r.id, description: r.description, hasPhoto: !!r.photo_key, state: r.state,
   proposedName: r.proposed_name, proposedServing: r.proposed_serving, proposedKcal: r.proposed_kcal,
   agentNote: r.agent_note, localDate: r.local_date, createdAt: r.created_at, updatedAt: r.updated_at,
+  reasoning: r.agent_reasoning, clarification: r.user_clarification,
 });
 const profileView = (r: ProfileRow) => ({
   heightCm: r.height_cm, weightKg: r.weight_kg, estimateProfile: r.estimate_profile,
@@ -117,9 +122,10 @@ export async function proposeEstimation(env: Env, tenantId: string, estimationId
   const parsed = proposalInput.parse(raw);
   const now = new Date().toISOString();
   const result = await env.DB.prepare(`UPDATE pending_estimations SET state = 'proposed',
-    proposed_name = ?, proposed_serving = ?, proposed_kcal = ?, agent_note = ?, updated_at = ?
+    proposed_name = ?, proposed_serving = ?, proposed_kcal = ?, agent_note = ?,
+    agent_reasoning = COALESCE(?, agent_reasoning), updated_at = ?
     WHERE id = ? AND tenant_id = ?`).bind(
-    parsed.name, parsed.serving, parsed.kcal, parsed.note, now, estimationId, tenantId,
+    parsed.name, parsed.serving, parsed.kcal, parsed.note, parsed.reasoning ?? null, now, estimationId, tenantId,
   ).run();
   if (!result.meta.changes) fail(404, "Estimation not found");
   return json({ estimation: estimationView((await findEstimation(env, tenantId, estimationId))!) });
@@ -209,7 +215,10 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     const logId = input.id || crypto.randomUUID();
     const existing = await env.DB.prepare("SELECT * FROM food_logs WHERE id = ? AND tenant_id = ?")
       .bind(logId, tenantId).first<LogRow>();
-    if (existing) return json({ log: logView(existing) }, 201);
+    if (existing) {
+      await recordFoodEvent(env, tenantId, `log:${logId}`, "food_logged", logId, logView(existing));
+      return json({ log: logView(existing) }, 201);
+    }
     const count = await env.DB.prepare("SELECT COUNT(*) AS n FROM food_logs WHERE tenant_id = ?")
       .bind(tenantId).first<{ n: number }>();
     if ((count?.n ?? 0) >= 10000) throw new APIError(403, "Food log limit reached");
@@ -229,6 +238,7 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     const row = await env.DB.prepare("SELECT * FROM food_logs WHERE id = ? AND tenant_id = ?")
       .bind(logId, tenantId).first<LogRow>();
     if (!row) throw new APIError(409, "Log ID is already in use");
+    await recordFoodEvent(env, tenantId, `log:${logId}`, "food_logged", logId, logView(row));
     return json({ log: logView(row) }, 201);
   }
   const logMatch = /^\/v1\/logs\/([a-f0-9-]{36})$/.exec(path);
@@ -246,7 +256,11 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     const input = estimationInput.parse(await body(req, 2_700_000));
     const estimationId = input.id || crypto.randomUUID();
     const existing = await findEstimation(env, tenantId, estimationId);
-    if (existing) return json({ estimation: estimationView(existing) }, 201);
+    if (existing) {
+      await recordFoodEvent(env, tenantId, `estimate:${estimationId}`, "estimate_requested", estimationId,
+        { description: existing.description, hasPhoto: !!existing.photo_key, localDate: existing.local_date });
+      return json({ estimation: estimationView(existing) }, 201);
+    }
     const count = await env.DB.prepare("SELECT COUNT(*) AS n FROM pending_estimations WHERE tenant_id = ?")
       .bind(tenantId).first<{ n: number }>();
     if ((count?.n ?? 0) >= 100) throw new APIError(403, "Review queue is full");
@@ -268,11 +282,14 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
           photoKey, input.localDate, now, now).run();
       const row = await findEstimation(env, tenantId, estimationId);
       if (!row) throw new APIError(409, "Estimation ID is already in use");
-      return json({ estimation: estimationView(row) }, 201);
     } catch (error) {
       if (photoKey) await env.PHOTOS?.delete(photoKey);
       throw error;
     }
+    const row = (await findEstimation(env, tenantId, estimationId))!;
+    await recordFoodEvent(env, tenantId, `estimate:${estimationId}`, "estimate_requested", estimationId,
+      { description: row.description, hasPhoto: !!row.photo_key, localDate: row.local_date });
+    return json({ estimation: estimationView(row) }, 201);
   }
   const photoMatch = /^\/v1\/estimations\/([a-f0-9-]{36})\/photo$/.exec(path);
   if (photoMatch && method === "PUT") {
@@ -292,7 +309,24 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
   if (proposalMatch && method === "PUT") {
     const existing = await findEstimation(env, tenantId, proposalMatch[1]);
     if (!existing || existing.state !== "proposed") throw new APIError(409, "No estimate is ready for review");
-    return proposeEstimation(env, tenantId, existing.id, await body(req));
+    const input = proposalInput.parse(await body(req));
+    return proposeEstimation(env, tenantId, existing.id, { ...input, reasoning: existing.agent_reasoning ?? undefined });
+  }
+  const clarificationMatch = /^\/v1\/estimations\/([a-f0-9-]{36})\/clarifications$/.exec(path);
+  if (clarificationMatch && method === "POST") {
+    const input = z.strictObject({ id, text: z.string().trim().min(1).max(1000) }).parse(await body(req));
+    const existing = await findEstimation(env, tenantId, clarificationMatch[1]);
+    if (!existing) throw new APIError(404, "Estimation not found");
+    const saved = await env.DB.prepare("SELECT clarification_id FROM pending_estimations WHERE id = ? AND tenant_id = ?")
+      .bind(existing.id, tenantId).first<{ clarification_id: string | null }>();
+    if (saved?.clarification_id === input.id) return json({ estimation: estimationView(existing) });
+    const now = new Date().toISOString();
+    await env.DB.prepare(`UPDATE pending_estimations SET user_clarification = ?, clarification_id = ?,
+      state = 'pending', updated_at = ? WHERE id = ? AND tenant_id = ?`)
+      .bind(input.text, input.id, now, existing.id, tenantId).run();
+    await recordFoodEvent(env, tenantId, `clarification:${input.id}`, "clarification_added", existing.id,
+      { estimationId: existing.id, clarification: input.text });
+    return json({ estimation: estimationView((await findEstimation(env, tenantId, existing.id))!) });
   }
   const estimationMatch = /^\/v1\/estimations\/([a-f0-9-]{36})$/.exec(path);
   if (estimationMatch && method === "DELETE") {
@@ -322,7 +356,15 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
         VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)`).bind(logId, tenantId, foodId,
           row.proposed_name, row.proposed_serving, row.proposed_kcal, row.local_date, now),
       env.DB.prepare("DELETE FROM pending_estimations WHERE id = ? AND tenant_id = ?").bind(row.id, tenantId),
+      env.DB.prepare(`INSERT INTO food_events (tenant_id, event_key, kind, subject_id, payload_json, created_at)
+        VALUES (?, ?, 'food_logged', ?, ?, ?)`).bind(tenantId, `log:${logId}`, logId,
+          JSON.stringify({ id: logId, foodId, foodName: row.proposed_name, serving: row.proposed_serving,
+            quantity: 1, kcal: row.proposed_kcal, localDate: row.local_date, loggedAt: now }), now),
     ]);
+    if (env.FOOD_EVENTS) {
+      try { await env.FOOD_EVENTS.getByName(tenantId).fetch("https://events.internal/publish", { method: "POST" }); }
+      catch { console.warn("Food event notification failed after accepting estimate"); }
+    }
     if (row.photo_key) await env.PHOTOS?.delete(row.photo_key);
     return json({ foodId, logId });
   }

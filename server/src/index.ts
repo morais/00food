@@ -1,5 +1,6 @@
 import { routeApi, json, type Env } from "./api";
 import { routeMcp } from "./mcp";
+export { FoodEventStream } from "./FoodEventStream";
 import { authenticate, publicOrigin } from "./auth";
 import { deleteAccount, signInWithApple, signOut } from "./appAuth";
 import { disconnectMcpConnection, listMcpConnections } from "./mcpConnections";

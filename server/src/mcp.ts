@@ -2,6 +2,7 @@ import { z } from "zod";
 import { type Principal } from "./auth";
 import { appName, estimationView, findEstimation, foodView, json, proposeEstimation, proposalInput, type Env } from "./api";
 import { authChallenge } from "./oauth";
+import { closeFoodEventStream, foodEventsUri, listFoodEvents, recentFoodEvents } from "./foodEvents";
 
 const uuid = z.uuid();
 const tools = [
@@ -22,13 +23,18 @@ const tools = [
   },
   {
     name: "propose_food_estimate", title: "Propose Food Estimate",
-    description: "Propose a directional calorie estimate for one serving. State a useful serving size and any uncertainty in note. The person must review it before it is logged and reused.",
-    inputSchema: z.toJSONSchema(proposalInput.extend({ id: uuid }), { io: "input" }), readOnly: false,
+    description: "Propose a directional calorie estimate for one serving. Explain the calorie choice in reasoning, including visible ingredients, portion assumptions, and uncertainty. The person reviews it before it is logged and reused.",
+    inputSchema: z.toJSONSchema(proposalInput.extend({ id: uuid, reasoning: z.string().trim().min(1).max(2000) }), { io: "input" }), readOnly: false,
   },
   {
     name: "list_known_foods", title: "List Known Foods",
     description: "See previously approved foods and their calorie estimates; use these as context for a similar pending item.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false }, readOnly: true,
+  },
+  {
+    name: "list_food_events", title: "List Food Events",
+    description: "Read new food logs, estimate requests, and user clarifications after a cursor. Call after a food-events resource notification or on reconnect. Follow estimate requests and clarifications with get_pending_food.",
+    inputSchema: z.toJSONSchema(z.strictObject({ after: z.number().int().min(0).default(0) }), { io: "input" }), readOnly: true,
   },
 ].map(tool => ({ ...tool, annotations: { title: tool.title, readOnlyHint: tool.readOnly,
   openWorldHint: false, destructiveHint: false, idempotentHint: tool.readOnly } }));
@@ -38,7 +44,21 @@ const error = (id: unknown, code: number, message: string): Response => json({ j
 const content = (value: unknown): unknown => ({ content: [{ type: "text", text: JSON.stringify(value) }] });
 
 export async function routeMcp(req: Request, env: Env, principal: Principal): Promise<Response> {
-  if (req.method !== "POST") return new Response(null, { status: 405, headers: { Allow: "POST" } });
+  if (req.headers.get("origin") && req.headers.get("origin") !== new URL(req.url).origin) {
+    return new Response(null, { status: 403 });
+  }
+  if (req.method === "GET") {
+    if (!principal.scopes.includes("food:read")) return authChallenge(env, 403, ["food:read"]);
+    if (!req.headers.get("accept")?.includes("text/event-stream")) return new Response(null, { status: 406 });
+    const subscription = await env.DB.prepare(`SELECT 1 FROM mcp_resource_subscriptions
+      WHERE token_hash = ? AND tenant_id = ? AND resource_uri = ?`)
+      .bind(principal.tokenHash, principal.tenantId, foodEventsUri).first();
+    if (!env.FOOD_EVENTS) return new Response("Event stream unavailable", { status: 503 });
+    return env.FOOD_EVENTS.getByName(principal.tenantId).fetch("https://events.internal/listen", {
+      headers: { "x-token-hash": principal.tokenHash, "x-active": subscription ? "true" : "false" },
+    });
+  }
+  if (req.method !== "POST") return new Response(null, { status: 405, headers: { Allow: "POST, GET" } });
   if (Number(req.headers.get("content-length") || 0) > 25000) return error(null, -32600, "Request too large");
   let request: Record<string, unknown>;
   try {
@@ -52,11 +72,40 @@ export async function routeMcp(req: Request, env: Env, principal: Principal): Pr
   const requestId = request.id;
   if (requestId === undefined || requestId === null) return error(null, -32600, "Request id required");
   if (request.method === "initialize") return ok(requestId, {
-    protocolVersion: "2025-11-25", capabilities: { tools: { listChanged: false } },
+    protocolVersion: "2025-11-25", capabilities: { tools: { listChanged: false }, resources: { subscribe: true, listChanged: false } },
     serverInfo: { name: appName(env), version: "0.1.0" },
   });
   if (request.method === "ping") return ok(requestId, {});
   if (request.method === "tools/list") return ok(requestId, { tools });
+  if (request.method === "resources/list") {
+    if (!principal.scopes.includes("food:read")) return authChallenge(env, 403, ["food:read"]);
+    return ok(requestId, { resources: [{ uri: foodEventsUri, name: "Food events",
+      description: "New food logs, pending estimate requests, and user clarifications. Read after a change notification.",
+      mimeType: "application/json" }] });
+  }
+  if (request.method === "resources/read" || request.method === "resources/subscribe" || request.method === "resources/unsubscribe") {
+    if (!principal.scopes.includes("food:read")) return authChallenge(env, 403, ["food:read"]);
+    const params = request.params as { uri?: unknown } | undefined;
+    if (params?.uri !== foodEventsUri) return error(requestId, -32602, "Unknown resource URI");
+    if (request.method === "resources/read") {
+      return ok(requestId, { contents: [{ uri: foodEventsUri, mimeType: "application/json",
+        text: JSON.stringify(await recentFoodEvents(env, principal.tenantId)) }] });
+    }
+    if (request.method === "resources/subscribe") {
+      await env.DB.prepare(`INSERT OR IGNORE INTO mcp_resource_subscriptions
+        (token_hash, tenant_id, resource_uri, created_at) VALUES (?, ?, ?, ?)`)
+        .bind(principal.tokenHash, principal.tenantId, foodEventsUri, new Date().toISOString()).run();
+      if (env.FOOD_EVENTS) await env.FOOD_EVENTS.getByName(principal.tenantId).fetch("https://events.internal/activate", {
+        method: "POST", headers: { "x-token-hash": principal.tokenHash },
+      });
+    } else {
+      await env.DB.prepare(`DELETE FROM mcp_resource_subscriptions
+        WHERE token_hash = ? AND tenant_id = ? AND resource_uri = ?`)
+        .bind(principal.tokenHash, principal.tenantId, foodEventsUri).run();
+      await closeFoodEventStream(env, principal.tenantId, principal.tokenHash);
+    }
+    return ok(requestId, {});
+  }
   if (request.method !== "tools/call") return error(requestId, -32601, "Method not found");
   const params = request.params as { name?: unknown; arguments?: unknown } | undefined;
   if (!params || typeof params.name !== "string") return error(requestId, -32602, "Missing tool name");
@@ -93,7 +142,7 @@ export async function routeMcp(req: Request, env: Env, principal: Principal): Pr
       return ok(requestId, { content: [{ type: "image", data: btoa(binary), mimeType: "image/jpeg" }] });
     }
     case "propose_food_estimate": {
-      const { id, ...proposal } = proposalInput.extend({ id: uuid }).parse(args);
+      const { id, ...proposal } = proposalInput.extend({ id: uuid, reasoning: z.string().trim().min(1).max(2000) }).parse(args);
       const response = await proposeEstimation(env, principal.tenantId, id, proposal);
       return ok(requestId, content(await response.json()));
     }
@@ -101,6 +150,10 @@ export async function routeMcp(req: Request, env: Env, principal: Principal): Pr
       const rows = await env.DB.prepare(`SELECT * FROM foods WHERE tenant_id = ?
         ORDER BY use_count DESC, last_used_at DESC LIMIT 100`).bind(principal.tenantId).all();
       return ok(requestId, content({ foods: rows.results.map(r => foodView(r as never)) }));
+    }
+    case "list_food_events": {
+      const { after } = z.strictObject({ after: z.number().int().min(0).default(0) }).parse(args);
+      return ok(requestId, content(await listFoodEvents(env, principal.tenantId, after)));
     }
     }
   } catch (cause) {

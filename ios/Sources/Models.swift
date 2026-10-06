@@ -126,6 +126,8 @@ struct PendingEstimation: Codable, Identifiable, Equatable {
     var localDate: String
     var createdAt: String
     var updatedAt: String
+    var reasoning: String? = nil
+    var clarification: String? = nil
 }
 
 struct FoodSnapshot: Codable {

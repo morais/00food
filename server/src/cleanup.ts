@@ -12,6 +12,7 @@ export async function sweepExpiredAuthData(env: Env, now = new Date()): Promise<
     env.DB.prepare("DELETE FROM credentials WHERE expires_at <= ?").bind(cutoff),
     env.DB.prepare("DELETE FROM credentials WHERE revoked_at IS NOT NULL").bind(),
     env.DB.prepare("DELETE FROM review_credentials WHERE expires_at <= ? OR revoked_at IS NOT NULL").bind(cutoff),
+    env.DB.prepare("DELETE FROM food_events WHERE created_at <= ?").bind(new Date(now.getTime() - 30 * 86400000).toISOString()),
   ]);
 }
 

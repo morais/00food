@@ -25,13 +25,14 @@ final class OfflineFoodStoreTests: XCTestCase {
         let state = OfflineFoodState(
             snapshot: FoodSnapshot(startedAt: log.loggedAt, profile: nil,
                                    foods: [food], logs: [log], estimations: [estimation]),
-            operations: [.createFood(food), .log(log), .estimate(estimation, photo)])
+            operations: [.createFood(food), .log(log), .estimate(estimation, photo),
+                         .clarifyEstimate(estimation.id, "clarification-id", "There is yogurt underneath")])
 
         try OfflineFoodDisk.save(state, for: "account A token", in: directory)
         XCTAssertNil(try OfflineFoodDisk.load(for: "account B token", in: directory))
         let restored = try XCTUnwrap(OfflineFoodDisk.load(for: "account A token", in: directory))
         XCTAssertEqual(restored.snapshot.logs.first?.loggedAt, log.loggedAt)
-        XCTAssertEqual(restored.operations.count, 3)
+        XCTAssertEqual(restored.operations.count, 4)
         if case .createFood(let restoredFood) = restored.operations[0] {
             XCTAssertEqual(restoredFood.id, food.id)
         } else { XCTFail("Food creation must replay first") }
@@ -42,6 +43,11 @@ final class OfflineFoodStoreTests: XCTestCase {
             XCTAssertEqual(restoredEstimate.description, "Lunch")
             XCTAssertEqual(restoredPhoto, photo)
         } else { XCTFail("Photo and description must replay together") }
+        if case .clarifyEstimate(let id, let clarificationId, let text) = restored.operations[3] {
+            XCTAssertEqual(id, estimation.id)
+            XCTAssertEqual(clarificationId, "clarification-id")
+            XCTAssertEqual(text, "There is yogurt underneath")
+        } else { XCTFail("Clarification must replay after the estimate") }
         try OfflineFoodDisk.clear(for: "account A token", in: directory)
         XCTAssertNil(try OfflineFoodDisk.load(for: "account A token", in: directory))
     }

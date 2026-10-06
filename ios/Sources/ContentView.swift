@@ -278,7 +278,7 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Waiting for an estimate").font(.title3.bold())
             ForEach(store.estimations) { item in
-                Button { if item.state == "proposed" { reviewing = item } else { showingSettings = true } } label: {
+                Button { reviewing = item } label: {
                     HStack {
                         Image(systemName: item.hasPhoto ? "photo" : "text.bubble")
                         VStack(alignment: .leading) {
