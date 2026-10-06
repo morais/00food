@@ -61,8 +61,10 @@ struct SettingsView: View {
                             Text("\(weight.formatted(.number.precision(.fractionLength(1)))) kg")
                                 .foregroundStyle(.secondary)
                         }
-                        Text("Open Your details & target to use this weight in your daily target.")
-                            .font(.footnote).foregroundStyle(.secondary)
+                        if let profile = store.profile, abs(profile.weightKg - weight) > 0.05 {
+                            Text("Open Your details & target to use this weight in your daily target.")
+                                .font(.footnote).foregroundStyle(.secondary)
+                        }
                     }
                     Button("Log weight manually") { showingManualWeight = true }
                     if let fat = health.latestBodyFatPercent {

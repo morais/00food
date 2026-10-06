@@ -113,6 +113,13 @@ private struct DietaryExportState: Codable {
             if waterRequested { await refreshWater() }
             return
         }
+        if !waterRequested {
+            do {
+                try await store.requestAuthorization(toShare: [], read: [water])
+                waterRequested = true
+                UserDefaults.standard.set(true, forKey: "healthWaterRequested")
+            } catch { waterErrorMessage = error.localizedDescription }
+        }
         if !restingRequested { await connect(); return }
         do {
             let start = Calendar.current.startOfDay(for: Date())
