@@ -61,6 +61,20 @@ const appMcp = await fetch(origin + "/mcp", { method: "POST", headers: { Authori
 assert(appMcp.status === 401, "app credential was accepted by MCP");
 const mcpApp = await fetch(origin + "/v1/snapshot", { headers: { Authorization: `Bearer ${mcpToken}` } });
 assert(mcpApp.status === 401, "MCP credential was accepted by app API");
+const discovered = await request("/mcp", "POST", { jsonrpc: "2.0", id: 15,
+  method: "server/discover" }, mcpToken);
+assert(discovered.result?.capabilities?.events && discovered.result?.supportedVersions?.includes("2026-07-28"),
+  "MCP 2.0 event discovery failed");
+const modernTools = await fetch(origin + "/mcp", { method: "POST", headers: {
+  Authorization: `Bearer ${mcpToken}`, "Content-Type": "application/json",
+  "MCP-Protocol-Version": "2026-07-28", "Mcp-Method": "tools/list",
+}, body: JSON.stringify({ jsonrpc: "2.0", id: 17, method: "tools/list" }) });
+assert((await modernTools.json()).result?.resultType === "complete", "MCP 2.0 tools were not listed");
+const catalog = await request("/mcp", "POST", { jsonrpc: "2.0", id: 16,
+  method: "events/list" }, mcpToken);
+assert(catalog.result?.events?.some(event => event.name === "food.estimate_requested") &&
+  catalog.result?.events?.some(event => event.name === "food.clarification_added"),
+"MCP webhook event catalog is incomplete");
 const stream = await fetch(origin + "/mcp", { headers: { Authorization: `Bearer ${mcpToken}`,
   Accept: "text/event-stream" } });
 assert(stream.ok && stream.headers.get("content-type")?.includes("text/event-stream"), "MCP event stream failed");

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { tenantForPrincipal, type Principal } from "./auth";
-import { recordFoodEvent } from "./foodEvents";
+import { notifyFoodEvent, recordFoodEvent } from "./foodEvents";
+import { webhookDeliveryInsert } from "./mcpWebhookEvents";
 
 export interface Env {
   DB: D1Database;
@@ -360,11 +361,9 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
         VALUES (?, ?, 'food_logged', ?, ?, ?)`).bind(tenantId, `log:${logId}`, logId,
           JSON.stringify({ id: logId, foodId, foodName: row.proposed_name, serving: row.proposed_serving,
             quantity: 1, kcal: row.proposed_kcal, localDate: row.local_date, loggedAt: now }), now),
+      webhookDeliveryInsert(env, tenantId, `log:${logId}`),
     ]);
-    if (env.FOOD_EVENTS) {
-      try { await env.FOOD_EVENTS.getByName(tenantId).fetch("https://events.internal/publish", { method: "POST" }); }
-      catch { console.warn("Food event notification failed after accepting estimate"); }
-    }
+    await notifyFoodEvent(env, tenantId);
     if (row.photo_key) await env.PHOTOS?.delete(row.photo_key);
     return json({ foodId, logId });
   }

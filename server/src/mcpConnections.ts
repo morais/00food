@@ -35,6 +35,10 @@ export async function disconnectMcpConnection(env: Env, principal: Principal, id
   const result = await env.DB.prepare(`UPDATE credentials SET revoked_at = ?
     WHERE id = ? AND tenant_id = ? AND kind = 'mcp' AND revoked_at IS NULL AND expires_at > ?`)
     .bind(new Date().toISOString(), id, principal.tenantId, new Date().toISOString()).run();
-  if (result.meta.changes === 1 && row) await closeFoodEventStream(env, principal.tenantId, row.token_hash);
+  if (result.meta.changes === 1 && row) {
+    await env.DB.prepare("DELETE FROM mcp_event_subscriptions WHERE token_hash = ? AND tenant_id = ?")
+      .bind(row.token_hash, principal.tenantId).run();
+    await closeFoodEventStream(env, principal.tenantId, row.token_hash);
+  }
   return result.meta.changes === 1 ? json({ ok: true }) : json({ error: "Not found" }, 404);
 }

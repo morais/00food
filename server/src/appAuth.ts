@@ -64,6 +64,8 @@ export async function deleteAccount(req: Request, env: Env, principal: Principal
     } while (cursor);
   }
   await env.DB.batch([
+    env.DB.prepare("DELETE FROM mcp_event_deliveries WHERE tenant_id = ?").bind(tenant.id),
+    env.DB.prepare("DELETE FROM mcp_event_subscriptions WHERE tenant_id = ?").bind(tenant.id),
     env.DB.prepare("DELETE FROM food_logs WHERE tenant_id = ?").bind(tenant.id),
     env.DB.prepare("DELETE FROM food_events WHERE tenant_id = ?").bind(tenant.id),
     env.DB.prepare("DELETE FROM mcp_resource_subscriptions WHERE tenant_id = ?").bind(tenant.id),

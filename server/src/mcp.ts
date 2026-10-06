@@ -3,6 +3,7 @@ import { type Principal } from "./auth";
 import { appName, estimationView, findEstimation, foodView, json, proposeEstimation, proposalInput, type Env } from "./api";
 import { authChallenge } from "./oauth";
 import { closeFoodEventStream, foodEventsUri, listFoodEvents, recentFoodEvents } from "./foodEvents";
+import { eventDefinitions, McpEventsError, subscribeWebhookEvent, unsubscribeWebhookEvent } from "./mcpWebhookEvents";
 
 const uuid = z.uuid();
 const tools = [
@@ -71,12 +72,39 @@ export async function routeMcp(req: Request, env: Env, principal: Principal): Pr
   if (request.method.startsWith("notifications/")) return new Response(null, { status: 202 });
   const requestId = request.id;
   if (requestId === undefined || requestId === null) return error(null, -32600, "Request id required");
+  const modern = req.headers.get("MCP-Protocol-Version") === "2026-07-28" || request.method === "server/discover";
+  const respond = (result: Record<string, unknown>) => ok(requestId, modern ? { resultType: "complete", ...result } : result);
+  const respondTool = (result: unknown) => respond(result as Record<string, unknown>);
+  if (request.method === "server/discover") return ok(requestId, {
+    resultType: "complete", supportedVersions: ["2026-07-28", "2025-11-25"],
+    capabilities: { tools: {}, events: {} },
+    _meta: { serverInfo: { name: appName(env), version: "0.2.0" } },
+  });
+  if (request.method === "events/list") {
+    if (!principal.scopes.includes("food:read")) return authChallenge(env, 403, ["food:read"]);
+    return ok(requestId, { events: eventDefinitions });
+  }
+  if (request.method === "events/subscribe" || request.method === "events/unsubscribe") {
+    if (!principal.scopes.includes("food:read")) return authChallenge(env, 403, ["food:read"]);
+    try {
+      const result = request.method === "events/subscribe"
+        ? await subscribeWebhookEvent(env, principal, request.params)
+        : await unsubscribeWebhookEvent(env, principal, request.params);
+      return ok(requestId, result);
+    } catch (cause) {
+      if (cause instanceof McpEventsError) return json({ jsonrpc: "2.0", id: requestId,
+        error: { code: cause.code, message: cause.message, ...(cause.reason ? { data: { reason: cause.reason } } : {}) } });
+      if (cause instanceof z.ZodError) return error(requestId, -32602, "Invalid event subscription");
+      console.error("MCP event subscription failed", cause instanceof Error ? cause.message : "unknown error");
+      return error(requestId, -32603, "Event subscription failed");
+    }
+  }
   if (request.method === "initialize") return ok(requestId, {
     protocolVersion: "2025-11-25", capabilities: { tools: { listChanged: false }, resources: { subscribe: true, listChanged: false } },
     serverInfo: { name: appName(env), version: "0.1.0" },
   });
   if (request.method === "ping") return ok(requestId, {});
-  if (request.method === "tools/list") return ok(requestId, { tools });
+  if (request.method === "tools/list") return respond({ tools });
   if (request.method === "resources/list") {
     if (!principal.scopes.includes("food:read")) return authChallenge(env, 403, ["food:read"]);
     return ok(requestId, { resources: [{ uri: foodEventsUri, name: "Food events",
@@ -120,46 +148,46 @@ export async function routeMcp(req: Request, env: Env, principal: Principal): Pr
     case "list_pending_foods": {
       const rows = await env.DB.prepare(`SELECT * FROM pending_estimations WHERE tenant_id = ?
         ORDER BY created_at DESC LIMIT 100`).bind(principal.tenantId).all();
-      return ok(requestId, content({ foods: rows.results.map(r => estimationView(r as never)) }));
+      return respondTool(content({ foods: rows.results.map(r => estimationView(r as never)) }));
     }
     case "get_pending_food": {
       const { id } = z.strictObject({ id: uuid }).parse(args);
       const row = await findEstimation(env, principal.tenantId, id);
-      if (!row) return ok(requestId, { isError: true, content: [{ type: "text", text: "Food not found" }] });
-      return ok(requestId, content({ food: estimationView(row) }));
+      if (!row) return respondTool({ isError: true, content: [{ type: "text", text: "Food not found" }] });
+      return respondTool(content({ food: estimationView(row) }));
     }
     case "view_food_photo": {
       const { id } = z.strictObject({ id: uuid }).parse(args);
       const row = await findEstimation(env, principal.tenantId, id);
-      if (!row?.photo_key || !env.PHOTOS) return ok(requestId, { isError: true, content: [{ type: "text", text: "Photo not found" }] });
+      if (!row?.photo_key || !env.PHOTOS) return respondTool({ isError: true, content: [{ type: "text", text: "Photo not found" }] });
       const photo = await env.PHOTOS.get(row.photo_key);
-      if (!photo) return ok(requestId, { isError: true, content: [{ type: "text", text: "Photo not found" }] });
+      if (!photo) return respondTool({ isError: true, content: [{ type: "text", text: "Photo not found" }] });
       const bytes = new Uint8Array(await photo.arrayBuffer());
       let binary = "";
       for (let offset = 0; offset < bytes.length; offset += 8192) {
         binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
       }
-      return ok(requestId, { content: [{ type: "image", data: btoa(binary), mimeType: "image/jpeg" }] });
+      return respondTool({ content: [{ type: "image", data: btoa(binary), mimeType: "image/jpeg" }] });
     }
     case "propose_food_estimate": {
       const { id, ...proposal } = proposalInput.extend({ id: uuid, reasoning: z.string().trim().min(1).max(2000) }).parse(args);
       const response = await proposeEstimation(env, principal.tenantId, id, proposal);
-      return ok(requestId, content(await response.json()));
+      return respondTool(content(await response.json()));
     }
     case "list_known_foods": {
       const rows = await env.DB.prepare(`SELECT * FROM foods WHERE tenant_id = ?
         ORDER BY use_count DESC, last_used_at DESC LIMIT 100`).bind(principal.tenantId).all();
-      return ok(requestId, content({ foods: rows.results.map(r => foodView(r as never)) }));
+      return respondTool(content({ foods: rows.results.map(r => foodView(r as never)) }));
     }
     case "list_food_events": {
       const { after } = z.strictObject({ after: z.number().int().min(0).default(0) }).parse(args);
-      return ok(requestId, content(await listFoodEvents(env, principal.tenantId, after)));
+      return respondTool(content(await listFoodEvents(env, principal.tenantId, after)));
     }
     }
   } catch (cause) {
     if (cause instanceof z.ZodError) return error(requestId, -32602, "Invalid tool input");
     console.error("MCP food tool failed", cause instanceof Error ? cause.message : "unknown error");
-    return ok(requestId, { isError: true, content: [{ type: "text", text: "Could not process food" }] });
+    return respondTool({ isError: true, content: [{ type: "text", text: "Could not process food" }] });
   }
   return error(requestId, -32601, "Unknown tool");
 }

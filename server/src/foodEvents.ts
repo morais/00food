@@ -1,4 +1,5 @@
 import type { Env } from "./api";
+import { webhookDeliveryInsert } from "./mcpWebhookEvents";
 
 export const foodEventsUri = "food://events";
 
@@ -23,12 +24,19 @@ export async function recentFoodEvents(env: Env, tenantId: string): Promise<unkn
 
 export async function recordFoodEvent(env: Env, tenantId: string, eventKey: string, kind: string,
                                       subjectId: string, data: unknown): Promise<void> {
-  const result = await env.DB.prepare(`INSERT OR IGNORE INTO food_events
+  await env.DB.batch([env.DB.prepare(`INSERT OR IGNORE INTO food_events
     (tenant_id, event_key, kind, subject_id, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
-    .bind(tenantId, eventKey, kind, subjectId, JSON.stringify(data), new Date().toISOString()).run();
-  if (!result.meta.changes || !env.FOOD_EVENTS) return;
+    .bind(tenantId, eventKey, kind, subjectId, JSON.stringify(data), new Date().toISOString()),
+  webhookDeliveryInsert(env, tenantId, eventKey)]);
+  await notifyFoodEvent(env, tenantId);
+}
+
+export async function notifyFoodEvent(env: Env, tenantId: string): Promise<void> {
+  if (!env.FOOD_EVENTS) return;
   try {
-    await env.FOOD_EVENTS.getByName(tenantId).fetch("https://events.internal/publish", { method: "POST" });
+    await env.FOOD_EVENTS.getByName(tenantId).fetch("https://events.internal/publish", {
+      method: "POST", headers: { "x-tenant-id": tenantId },
+    });
   } catch (cause) {
     // The D1 event journal is authoritative; connected clients can catch up by cursor.
     console.warn("Food event notification failed", cause instanceof Error ? cause.message : "unknown error");

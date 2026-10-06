@@ -7,6 +7,7 @@ import type { Env } from "./api";
 export async function sweepExpiredAuthData(env: Env, now = new Date()): Promise<void> {
   const cutoff = now.toISOString();
   await env.DB.batch([
+    env.DB.prepare("DELETE FROM mcp_event_subscriptions WHERE expires_at <= ?").bind(cutoff),
     env.DB.prepare("DELETE FROM oauth_flows WHERE expires_at <= ?").bind(cutoff),
     env.DB.prepare("DELETE FROM oauth_codes WHERE expires_at <= ?").bind(cutoff),
     env.DB.prepare("DELETE FROM credentials WHERE expires_at <= ?").bind(cutoff),

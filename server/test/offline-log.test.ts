@@ -13,6 +13,9 @@ describe("offline log replay", () => {
     let log: Record<string, unknown> | null = null;
     let eventCount = 0;
     const db = {
+      async batch(statements: Array<{ run: () => Promise<unknown> }>) {
+        return Promise.all(statements.map(statement => statement.run()));
+      },
       prepare(sql: string) {
         return {
           bind(...args: unknown[]) {
@@ -21,6 +24,9 @@ describe("offline log replay", () => {
                 if (sql.startsWith("SELECT * FROM foods")) return food as T;
                 if (sql.startsWith("SELECT * FROM food_logs")) return log as T | null;
                 if (sql.startsWith("SELECT COUNT(*) AS n FROM food_logs")) return { n: log ? 1 : 0 } as T;
+                if (sql.startsWith("SELECT id, kind, created_at FROM food_events")) {
+                  return eventCount ? { id: 1, kind: "food_logged", created_at: loggedAt } as T : null;
+                }
                 throw new Error(`Unexpected SELECT: ${sql}`);
               },
               async run() {
@@ -39,6 +45,9 @@ describe("offline log replay", () => {
                   const inserted = eventCount === 0;
                   if (inserted) eventCount++;
                   return { meta: { changes: inserted ? 1 : 0 } };
+                }
+                if (sql.startsWith("INSERT OR IGNORE INTO mcp_event_deliveries")) {
+                  return { meta: { changes: 0 } };
                 }
                 throw new Error(`Unexpected write: ${sql}`);
               },

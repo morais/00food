@@ -1,13 +1,19 @@
 import { DurableObject } from "cloudflare:workers";
 import { foodEventsUri } from "./foodEvents";
+import { deliverWebhookEvents } from "./mcpWebhookEvents";
+import type { Env } from "./api";
 
-export class FoodEventStream extends DurableObject {
+export class FoodEventStream extends DurableObject<Env> {
   private listeners = new Map<ReadableStreamDefaultController<Uint8Array>, { tokenHash: string; active: boolean;
     timeout: ReturnType<typeof setTimeout> }>();
   private readonly encoder = new TextEncoder();
 
   async fetch(request: Request): Promise<Response> {
     if (new URL(request.url).pathname === "/publish") {
+      const tenantId = request.headers.get("x-tenant-id");
+      if (!tenantId) return new Response(null, { status: 400 });
+      await this.ctx.storage.put("tenantId", tenantId);
+      await this.ctx.storage.setAlarm(Date.now());
       const notification = `data: ${JSON.stringify({ jsonrpc: "2.0", method: "notifications/resources/updated",
         params: { uri: foodEventsUri } })}\n\n`;
       for (const [listener, subscription] of this.listeners) {
@@ -62,5 +68,12 @@ export class FoodEventStream extends DurableObject {
     });
     return new Response(stream, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform",
       "Connection": "keep-alive" } });
+  }
+
+  async alarm(): Promise<void> {
+    const tenantId = await this.ctx.storage.get<string>("tenantId");
+    if (!tenantId) return;
+    const next = await deliverWebhookEvents(this.env, tenantId);
+    if (next) await this.ctx.storage.setAlarm(next);
   }
 }
