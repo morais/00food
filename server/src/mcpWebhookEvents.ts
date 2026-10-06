@@ -88,9 +88,18 @@ async function verifyCallback(url: URL, secret: string, id: string): Promise<voi
   const body = JSON.stringify({ type: "verification", challenge });
   let response: Response;
   try {
-    response = await fetch(url.toString(), { method: "POST", redirect: "error", signal: AbortSignal.timeout(10_000),
+    response = await fetch(url.toString(), { method: "POST", redirect: "manual", signal: AbortSignal.timeout(10_000),
       headers: await signedHeaders(secret, `msg_verification_${crypto.randomUUID()}`, body, id), body });
-  } catch { throw new McpEventsError(-32015, "Callback verification failed", "timeout"); }
+  } catch (cause) {
+    const name = cause instanceof Error ? cause.name : "unknown";
+    const detail = cause instanceof Error ? cause.message
+      .replace(/https?:\/\/\S+/gi, "[url]")
+      .replace(/[A-Za-z0-9_-]{20,}/g, "[redacted]")
+      .slice(0, 160) : "unknown";
+    console.warn("MCP callback verification transport failed", { host: url.hostname, name, detail });
+    throw new McpEventsError(-32015, "Callback verification failed",
+      name === "TimeoutError" || name === "AbortError" ? "timeout" : "challenge_failed");
+  }
   if (!response.ok) throw new McpEventsError(-32015, "Callback verification failed", "challenge_failed");
   let echoed: unknown;
   try { echoed = (await response.json() as { challenge?: unknown }).challenge; }
@@ -193,7 +202,7 @@ export async function deliverWebhookEvents(env: Env, tenantId: string): Promise<
     let status = 0;
     try {
       const url = validateCallback(row.callback_url);
-      const response = await fetch(url.toString(), { method: "POST", redirect: "error", signal: AbortSignal.timeout(10_000),
+      const response = await fetch(url.toString(), { method: "POST", redirect: "manual", signal: AbortSignal.timeout(10_000),
         headers: await signedHeaders(row.signing_secret, eventId, body, row.subscription_id,
           row.previous_secret_expires_at && row.previous_secret_expires_at > new Date().toISOString()
             ? row.previous_secret : null), body });

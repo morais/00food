@@ -28,7 +28,7 @@ describe("MCP 2.0 webhook events", () => {
     };
     vi.stubGlobal("fetch", vi.fn(async (url: string, options: RequestInit) => {
       expect(url).toBe("https://events.chatgpt.com/00food");
-      expect(options.redirect).toBe("error");
+      expect(options.redirect).toBe("manual");
       const request = new Request(url, options);
       if (phase === "verify") {
         subscriptionId = request.headers.get("x-mcp-subscription-id")!;
