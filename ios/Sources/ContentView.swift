@@ -156,6 +156,9 @@ struct HomeView: View {
     }
     private var selectedLogs: [FoodLog] { store.logs(on: selectedLogDate) }
     private var selectedDayIsToday: Bool { Calendar.current.isDateInToday(selectedLogDate) }
+    private var readyEstimateCount: Int { store.estimations.filter { $0.state == "proposed" }.count }
+    private var offlineEstimateCount: Int { store.estimations.filter { $0.state == "uploading" }.count }
+    private var waitingEstimateCount: Int { store.estimations.count - readyEstimateCount - offlineEstimateCount }
     private var earliestLogDate: Date {
         Calendar.current.date(byAdding: .day, value: -89, to: Calendar.current.startOfDay(for: Date())) ?? Date()
     }
@@ -290,10 +293,23 @@ struct HomeView: View {
                                     eatenKcal: store.consumedToday)
             }
             if !store.estimations.isEmpty {
-                Label("\(store.estimations.count) \(store.estimations.count == 1 ? "food" : "foods") awaiting estimate or review · not counted yet",
-                      systemImage: "clock")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 4) {
+                    if readyEstimateCount > 0 {
+                        Label("\(readyEstimateCount) ready to review", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.blue)
+                    }
+                    if waitingEstimateCount > 0 {
+                        Label("\(waitingEstimateCount) awaiting agent", systemImage: "clock")
+                            .foregroundStyle(.orange)
+                    }
+                    if offlineEstimateCount > 0 {
+                        Label("\(offlineEstimateCount) waiting to send", systemImage: "wifi.slash")
+                            .foregroundStyle(.secondary)
+                    }
+                    Text("Not counted until you review and log them.")
+                        .foregroundStyle(.secondary)
+                }
+                .font(.caption.weight(.medium))
             }
             if !health.requested {
                 Button("Connect Apple Health") { Task { await health.connect() } }
@@ -308,7 +324,7 @@ struct HomeView: View {
 
     private var estimatesSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Waiting for an estimate").font(.title3.bold())
+            Text("Food estimates").font(.title3.bold())
             ForEach(store.estimations) { item in
                 Button { reviewing = item } label: {
                     HStack {
@@ -316,10 +332,7 @@ struct HomeView: View {
                         VStack(alignment: .leading) {
                             Text(item.proposedName ?? (item.description.isEmpty ? "Food photo" : item.description))
                                 .lineLimit(1).foregroundStyle(.primary)
-                            Text(item.state == "proposed" ? "Review estimate" :
-                                 item.state == "uploading" ? "Saved here · sends when online" :
-                                 "Ask your connected agent to estimate it")
-                                .font(.caption).foregroundStyle(.secondary)
+                            estimateStatusBadge(for: item)
                         }
                         Spacer()
                         Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
@@ -328,6 +341,19 @@ struct HomeView: View {
                 }
             }
         }
+    }
+
+    private func estimateStatusBadge(for item: PendingEstimation) -> some View {
+        let ready = item.state == "proposed"
+        let offline = item.state == "uploading"
+        let color: Color = ready ? .blue : offline ? .gray : .orange
+        return Label(ready ? "Ready to review" : offline ? "Saved offline" : "Awaiting agent",
+                     systemImage: ready ? "checkmark.circle.fill" : offline ? "wifi.slash" : "clock")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(color)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(color.opacity(0.12), in: Capsule())
     }
 
     private var hydrationCard: some View {
