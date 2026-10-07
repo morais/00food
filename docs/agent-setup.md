@@ -1,6 +1,6 @@
 # Use 00Food with your AI agent
 
-00Food is a food log built for you and your AI agent. There is no built-in food catalogue or bundled AI agent: your personal library grows from estimates you approve or foods you enter manually. Search covers that personal library.
+00Food is an iPhone food log built for you and your AI agent. There is no built-in food catalogue or bundled AI agent: your personal library grows from estimates you approve or foods you enter manually. Search covers that personal library.
 
 ## Recommended setup: ChatGPT Work
 

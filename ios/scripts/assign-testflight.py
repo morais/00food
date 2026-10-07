@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Assign one processed 00Food build to an internal TestFlight group.
 
+Disable Apple silicon Mac and Apple Vision availability before assignment.
+
 Reads the App Store Connect API key and issuer ID from ~/.appstoreconnect.
 Pass --app-id, --build, and either --group-id or --group-name explicitly.
 Add internal testers in App Store Connect's group page. No account IDs are committed.
@@ -108,7 +110,17 @@ def main():
             }})
             require_ok(status, result, "Creating internal beta group")
             group_id = result["data"]["id"]
-    print(f"Internal group: {group_id}")
+    platform_settings = {"iosBuildsAvailableForAppleSiliconMac": False,
+                         "iosBuildsAvailableForAppleVision": False}
+    status, result = request("PATCH", f"/v1/betaGroups/{group_id}", {"data": {
+        "type": "betaGroups", "id": group_id, "attributes": platform_settings,
+    }})
+    require_ok(status, result, "Disabling Mac and Apple Vision TestFlight availability")
+    status, result = request("GET", f"/v1/betaGroups/{group_id}")
+    require_ok(status, result, "Verifying TestFlight platform settings")
+    if any(result["data"]["attributes"].get(key) != value for key, value in platform_settings.items()):
+        sys.exit("Mac or Apple Vision TestFlight availability is still enabled")
+    print(f"Internal group: {group_id} (Mac and Apple Vision disabled)")
     # App Store Connect's filter[version] selects the marketing version (for
     # example 1.0), not the CFBundleVersion build number supplied here.
     query = urllib.parse.urlencode({"filter[app]": args.app_id, "sort": "-uploadedDate",

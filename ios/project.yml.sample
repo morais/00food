@@ -7,6 +7,11 @@ options:
 settings:
   base:
     SWIFT_VERSION: 5.10
+    TARGETED_DEVICE_FAMILY: "1"
+    SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"
+    SUPPORTS_MACCATALYST: "NO"
+    SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: "NO"
+    SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: "NO"
     MARKETING_VERSION: "1.0"
     CURRENT_PROJECT_VERSION: "1"
     DEVELOPMENT_TEAM: ""
@@ -64,7 +69,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.zerozerofood
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
-        TARGETED_DEVICE_FAMILY: "1,2"
+        TARGETED_DEVICE_FAMILY: "1"
     dependencies:
       - target: ZeroZeroFoodWidgets
         embed: true
@@ -95,7 +100,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.00food.app.widgets
         APPLICATION_EXTENSION_API_ONLY: YES
-        TARGETED_DEVICE_FAMILY: "1,2"
+        TARGETED_DEVICE_FAMILY: "1"
   ZeroZeroFoodTests:
     type: bundle.unit-test
     platform: iOS

@@ -2,7 +2,7 @@
 
 **Your food log. Your AI agent.**
 
-00Food is a food log built for you and your AI agent. Users bring their own compatible agent to estimate foods and help review their day. They approve estimates and build a personal reusable food library. Say “no built-in food catalogue,” rather than “no database”: 00Food stores users’ saved foods. Manual logging is always available.
+00Food is an iPhone food log built for you and your AI agent. Users bring their own compatible agent to estimate foods and help review their day. They approve estimates and build a personal reusable food library. Say “no built-in food catalogue,” rather than “no database”: 00Food stores users’ saved foods. Manual logging is always available.
 
 The App Store name is **00Food: AI Food Companion**, with subtitle **Bring your own AI agent**. Keep these promises consistent in the sign-in screen, first-use guidance, empty states, and marketing copy. Prefer “your agent” to wording that implies a bundled model or automatic estimation without setup. Explain MCP Events through its benefit: the agent can respond to estimate and review requests without being asked to check each time. Recommend ChatGPT Work for the current webhook integration; do not promise equivalent event support in every MCP client.
 

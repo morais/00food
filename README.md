@@ -2,7 +2,7 @@
 
 **Your food log. Your AI agent.**
 
-00Food is a food log built for you and your AI agent, and a sibling to [00Todo](https://github.com/morais/00todo). Connect your favourite compatible MCP agent to estimate new foods from descriptions or photos and help you review your day. You approve the estimates and build your own reusable food library. There is no built-in food catalogue or bundled AI agent; manual logging and fast repeat logging are always available.
+00Food is an iPhone food log built for you and your AI agent, and a sibling to [00Todo](https://github.com/morais/00todo). Connect your favourite compatible MCP agent to estimate new foods from descriptions or photos and help you review your day. You approve the estimates and build your own reusable food library. There is no built-in food catalogue or bundled AI agent; manual logging and fast repeat logging are always available.
 
 ChatGPT Work is the recommended setup for automatic responses through MCP Events. Connecting the server and subscribing to events are separate steps: the app's **Connect your agent** guide provides copyable instructions and shows connection and event-subscription status. Other compatible agents can check pending requests when asked. See the [agent setup guide](docs/agent-setup.md) for setup, optional daily reviews, and compatibility details.
 
