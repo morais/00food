@@ -1,0 +1,15 @@
+# 00Food master artwork
+
+`00food-app-icon-master.png` is the approved option B (the second preview), copied directly from the built-in image generation tool's output. It is the authoritative artwork for the app icon and the in-app mark; the generator only resizes it.
+
+`00food-mark-transparent-master.png` is its transparent companion, also produced with the built-in image generation tool. It is used for the reusable transparent marks. The original 00Widget masters remain as historical references under `00widget-LICENSE`. The two 00Food masters are covered by `../LICENSE`.
+
+## Icon prompt
+
+Use case: precise-object-edit. Asset type: preview-only app icon concept. Input image is the edit target: existing 00Food icon. Edit ONLY the plate, fork, and knife mouth area below the eyes. Remove the plate and existing vertical utensils, cleanly restoring the pale white card surface underneath. Keep the original coral gradient background, exact white fedora shape and hat band, two layered card body silhouette and perspective, blue/purple rim, shadows, scale, placement, and both dark navy slashed-zero eyes absolutely unchanged. Preserve existing teal color for new cutlery and the clean simple flat graphic finish. The new utensils should form a friendly, shallow upward-at-the-corners smile below the eyes, subtly aligned to the tilt of the card. Keep comfortable space below the eyes; the utensil smile should be about the width of both eyes together, smaller than the old plate-plus-cutlery span. No plate, bowl, added face features, text, labels, watermark, or extra objects. Return one square icon, same crop and background as original.
+
+Create a layered cutlery smile: one full-length fork and one full-length knife lying horizontally in two closely spaced parallel shallow U shaped arcs beneath the eyes. The top arc is a slender knife, widened slightly at its right blade end. The lower arc is a slender fork, with three recognizable short tines at its left end. Clearly two separate utensils with a narrow white gap, like a small double-line friendly smile. Keep it compact and subtle, no crossing.
+
+## Transparent companion prompt
+
+Create the transparent-background production companion for this approved icon. Remove coral square background only. Output on the exact same 1254x1254 square canvas, with character preserved in original framing: character bounding box approximately x=200 to1044 and y=230 to1024. Keep the substantial transparent margin above, below and on either side, matching the input. Do NOT zoom the mascot in or recenter it. Preserve all the original artwork, teal stacked fork and knife smile, eye shapes, fedora, two cards, gradients and shading. Perform precise smooth antialiased background extraction: no ragged outlines, no white fringe, no scattered isolated pixels in transparent regions. All background and gaps outside the mascot must be fully transparent. Keep original details and color exactly. The approved square icon should align exactly with this companion when overlaid. No redesign, no text.
