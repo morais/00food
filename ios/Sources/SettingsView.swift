@@ -120,7 +120,14 @@ struct SettingsView: View {
                     if store.connections.isEmpty { Text("No connected agents yet.").foregroundStyle(.secondary) }
                     ForEach(store.connections) { connection in
                         HStack {
-                            Text(connection.clientName)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(connection.clientName)
+                                let dailyAccess = connection.scopes.contains("daily:read")
+                                    && connection.scopes.contains("daily:write")
+                                Text(dailyAccess ? "Daily review access granted" : "Daily review access missing")
+                                    .font(.caption)
+                                    .foregroundStyle(dailyAccess ? Color.green : Color.orange)
+                            }
                             Spacer()
                             Button("Revoke", role: .destructive) { revoke(connection) }
                         }
@@ -133,7 +140,7 @@ struct SettingsView: View {
                     ))
                     Text("When this is on, the next time you open 00Food after a day ends it sends that day and up to six earlier days to your private 00Food account. This includes logged foods and calories, plus available Health totals for water, active and resting energy, weight, and body fat. Your connected agent can read these summaries and write feedback. Turning this off stops automatic requests; you can still request missing days manually. Earlier reviews remain in your account.")
                         .font(.footnote).foregroundStyle(.secondary)
-                    Text("Reconnect your AI agent to grant the new daily review access, then subscribe to day.feedback_requested. Pending requests are also available through list_pending_daily_feedback.")
+                    Text("Rescan the MCP server, then ask your agent to list pending daily feedback. Approve the additional daily permissions when prompted and subscribe to day.feedback_requested. Reconnecting alone may keep the earlier food-only permissions.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
             }

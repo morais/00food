@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { type Principal } from "./auth";
+import { publicOrigin, type Principal, type Scope } from "./auth";
 import { appName, estimationView, findEstimation, foodView, json, proposeEstimation, proposalInput,
   setFoodFruitVegPortions, type Env } from "./api";
 import { authChallenge } from "./oauth";
@@ -63,8 +63,17 @@ const tools = [
     inputSchema: z.toJSONSchema(z.strictObject({ id: uuid, feedback: z.string().trim().min(1).max(4000) }),
       { io: "input" }), readOnly: false,
   },
-].map(tool => ({ ...tool, annotations: { title: tool.title, readOnlyHint: tool.readOnly,
-  openWorldHint: false, destructiveHint: false, idempotentHint: tool.readOnly } }));
+].map(tool => ({ ...tool,
+  securitySchemes: [{ type: "oauth2" as const, scopes: [scopeForTool(tool)] }],
+  annotations: { title: tool.title, readOnlyHint: tool.readOnly,
+    openWorldHint: false, destructiveHint: false, idempotentHint: tool.readOnly } }));
+
+function scopeForTool(tool: { name: string; readOnly: boolean }): Scope {
+  const daily = tool.name === "list_pending_daily_feedback" || tool.name === "get_daily_feedback_request"
+    || tool.name === "submit_daily_feedback";
+  return daily ? tool.readOnly ? "daily:read" : "daily:write"
+    : tool.readOnly ? "food:read" : "food:write";
+}
 
 const ok = (id: unknown, result: unknown): Response => json({ jsonrpc: "2.0", id, result });
 const error = (id: unknown, code: number, message: string): Response => json({ jsonrpc: "2.0", id, error: { code, message } });
@@ -114,8 +123,10 @@ export async function routeMcp(req: Request, env: Env, principal: Principal): Pr
   }
   if (request.method === "events/subscribe" || request.method === "events/unsubscribe") {
     const eventName = (request.params as { name?: unknown } | undefined)?.name;
-    const requiredScope = eventName === "day.feedback_requested" ? "daily:read" : "food:read";
-    if (!principal.scopes.includes(requiredScope)) return authChallenge(env, 403, [requiredScope]);
+    const requiredScope: Scope = eventName === "day.feedback_requested" ? "daily:read" : "food:read";
+    if (!principal.scopes.includes(requiredScope)) {
+      return authChallenge(env, 403, [...new Set([...principal.scopes, requiredScope])]);
+    }
     try {
       const result = request.method === "events/subscribe"
         ? await subscribeWebhookEvent(env, principal, request.params)
@@ -178,12 +189,16 @@ export async function routeMcp(req: Request, env: Env, principal: Principal): Pr
   if (!params || typeof params.name !== "string") return error(requestId, -32602, "Missing tool name");
   const tool = tools.find(item => item.name === params.name);
   if (!tool) return error(requestId, -32602, "Unknown tool");
-  const dailyTool = tool.name === "list_pending_daily_feedback" || tool.name === "get_daily_feedback_request"
-    || tool.name === "submit_daily_feedback";
-  const requiredScope = dailyTool ? tool.readOnly ? "daily:read" : "daily:write"
-    : tool.readOnly ? "food:read" : "food:write";
+  const requiredScope = scopeForTool(tool);
   if (!principal.scopes.includes(requiredScope)) {
-    return authChallenge(env, 403, [requiredScope]);
+    const upgradeScopes = [...new Set([...principal.scopes, requiredScope])];
+    if (!modern) return authChallenge(env, 403, upgradeScopes);
+    const challenge = `Bearer resource_metadata="${publicOrigin(env)}/.well-known/oauth-protected-resource", `
+      + `scope="${upgradeScopes.join(" ")}", error="insufficient_scope", `
+      + `error_description="Additional 00Food permission required"`;
+    return respondTool({ isError: true,
+      content: [{ type: "text", text: `Additional ${requiredScope} permission required` }],
+      _meta: { "mcp/www_authenticate": [challenge] } });
   }
   const args = params.arguments || {};
   try {

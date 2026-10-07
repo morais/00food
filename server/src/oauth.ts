@@ -371,7 +371,10 @@ export async function showConsent(req: Request, env: Env): Promise<Response> {
     : `<p><span class="status warning">Unverified client</span> This name was supplied by the client. Check the callback address before approving.</p>`;
   return html(env, `<h1>Connect ${htmlEscape(clientName)} to ${htmlEscape(appName(env))}?</h1>
     ${trust}
-    <p>This client can read your saved foods, pending descriptions, and submitted food photos${flow.scopes.includes("food:write") ? ", and propose calorie estimates" : ""}. You review each food proposal before it is saved or logged.</p>
+    <p class="detail">Requested permissions: <code>${htmlEscape(flow.scopes)}</code></p>
+    <p>${flow.scopes.includes("food:read")
+      ? `This client can read your saved foods, pending descriptions, and submitted food photos${flow.scopes.includes("food:write") ? ", and propose calorie estimates" : ""}. You review each food proposal before it is saved or logged.`
+      : "This request does not grant access to saved foods or pending food photos."}</p>
     <p>${flow.scopes.includes("daily:read")
       ? "If you enable automatic Daily feedback or request missing days manually in the app, this client can read seven-day summaries of your food logs and Apple Health water, active and resting calories, weight, and body fat. These summaries are saved to your 00Food account."
       : "Apple Health data is not shared with this client."}

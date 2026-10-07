@@ -27,6 +27,7 @@ private struct DailyFeedbackResponse: Decodable { var request: DailyFeedbackRequ
 struct MCPConnection: Decodable, Identifiable {
     var id: String
     var clientName: String
+    var scopes: [String]
     var connectedAt: String
     var lastUsedAt: String?
     var expiresAt: String
