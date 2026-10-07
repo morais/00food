@@ -46,9 +46,6 @@ struct ProgressPlansView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
-                    Text("Your saved calorie plan and Health trends. Dotted lines are illustrations, not predictions. Open Other plans to compare calorie gaps and switch plans.")
-                        .font(.subheadline).foregroundStyle(.secondary)
-
                     if !health.bodyFatRequested {
                         Button("Connect Apple Health for weight & body fat") {
                             Task { await health.connect() }
@@ -76,8 +73,10 @@ struct ProgressPlansView: View {
                         calorieHistoryCard(profile: profile)
                     }
                     fatCard
-                    Text("BMI is an adult screening measure, not a personal diagnosis or target. A fixed calorie gap does not produce a fixed rate of weight loss. Your body adapts, and daily weight and body-fat measurements vary. Use the charts to compare directions, then adjust from your recorded trend.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                    HStack {
+                        Spacer()
+                        InfoDisclosure(title: "About these charts", message: "Dotted lines are illustrations, not predictions.\n\nBMI is an adult screening measure, not a personal diagnosis or target. A fixed calorie gap does not produce a fixed rate of weight loss. Your body adapts, and daily weight and body-fat measurements vary. Use the charts to compare directions, then adjust from your recorded trend.")
+                    }
                 }
                 .padding(20)
             }
@@ -99,7 +98,11 @@ struct ProgressPlansView: View {
         let points = dailyCalorieBalances(profile: profile)
         let today = Calendar.current.startOfDay(for: Date())
         return VStack(alignment: .leading, spacing: 10) {
-            Text("Calories over time").font(.title3.bold())
+            HStack {
+                Text("Calories over time").font(.title3.bold())
+                Spacer()
+                InfoDisclosure(title: "Calories over time", message: "Allowance uses your current food target, including the current resting-energy average, plus each day’s recorded Health active energy. Earlier target changes are not tracked; days without an active-energy record show the base target. Bars show only food logged in 00Food.")
+            }
             Picker("Period", selection: $calorieHistoryDays) {
                 Text("30 days").tag(30)
                 Text("90 days").tag(90)
@@ -110,13 +113,14 @@ struct ProgressPlansView: View {
                     ForEach(points) { point in
                         BarMark(x: .value("Day", point.date), y: .value("Logged food", point.eaten))
                             .foregroundStyle(point.date == today ? Color.purple : Color.orange.opacity(0.75))
-                        LineMark(x: .value("Day", point.date), y: .value("Allowance", point.allowance))
-                            .foregroundStyle(.blue)
-                            .lineStyle(StrokeStyle(lineWidth: 2))
                         if point.date == today {
                             PointMark(x: .value("Day", point.date), y: .value("Today's allowance", point.allowance))
                                 .foregroundStyle(.purple)
                                 .symbolSize(45)
+                        } else {
+                            LineMark(x: .value("Day", point.date), y: .value("Allowance", point.allowance))
+                                .foregroundStyle(.blue)
+                                .lineStyle(StrokeStyle(lineWidth: 2))
                         }
                     }
                 }
@@ -132,8 +136,6 @@ struct ProgressPlansView: View {
             } else {
                 Text("No calorie history yet.").foregroundStyle(.secondary)
             }
-            Text("Today is still in progress. Allowance uses your current food target, including the current resting-energy average, plus each day’s recorded Health active energy. Earlier target changes are not tracked; days without an active-energy record show the base target. Bars show only food logged in 00Food.")
-                .font(.footnote).foregroundStyle(.secondary)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -179,7 +181,7 @@ struct ProgressPlansView: View {
         let resting = health.effectiveRestingKcal(for: profile)
         let gap = profile.effectiveDeficit(for: deficit, resting: resting)
         let healthyRange = healthyWeightRange(for: profile.heightCm)
-        let startingWeight = health.weightHistory.last?.value ?? profile.weightKg
+        let startingWeight = health.usableLatestWeightKg ?? health.weightHistory.last?.value ?? profile.weightKg
         let today = Calendar.current.startOfDay(for: Date())
         let sixMonths = Calendar.current.date(byAdding: .month, value: 6, to: today) ?? today
         let projection = projectedWeight(from: startingWeight, gap: gap,
@@ -213,7 +215,7 @@ struct ProgressPlansView: View {
             Text("Adult BMI 18.5–24.9 at your height: \(healthyRange.lowerBound.formatted(.number.precision(.fractionLength(1))))–\(healthyRange.upperBound.formatted(.number.precision(.fractionLength(1)))) kg")
                 .font(.footnote).foregroundStyle(.secondary)
             if health.weightHistory.isEmpty {
-                Text("No Health weight readings since you joined. The dotted line starts from your saved weight.")
+                Text("No weight readings since you joined. The dotted line starts from your latest recorded weight, or your saved weight if unavailable.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
             if !fullProjection {
@@ -232,7 +234,7 @@ struct ProgressPlansView: View {
                     .foregroundStyle(.green.opacity(0.12))
                 ForEach(health.weightHistory) { point in
                     LineMark(x: .value("Date", point.date), y: .value("Recorded weight", point.value),
-                             series: .value("Series", "Health weight"))
+                             series: .value("Series", "Weight"))
                         .foregroundStyle(.blue)
                     PointMark(x: .value("Date", point.date), y: .value("Recorded weight", point.value))
                         .foregroundStyle(.blue)
@@ -264,7 +266,7 @@ struct ProgressPlansView: View {
                 }
             }
             HStack(spacing: 14) {
-                Label("Health weight", systemImage: "circle.fill").foregroundStyle(.blue)
+                Label("Weight", systemImage: "circle.fill").foregroundStyle(.blue)
                 Label("Illustration", systemImage: "circle.dotted").foregroundStyle(.blue)
                 Label("BMI range", systemImage: "rectangle.fill").foregroundStyle(.green)
             }
@@ -289,25 +291,22 @@ struct ProgressPlansView: View {
         let today = Calendar.current.startOfDay(for: Date())
         let sixMonths = Calendar.current.date(byAdding: .month, value: 6, to: today) ?? today
         return VStack(alignment: .leading, spacing: 10) {
-            Text("Body fat over time").font(.title3.bold())
-            Text("Apple Health readings since \(firstDay.formatted(date: .abbreviated, time: .omitted))")
-                .font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Text("Body fat over time").font(.title3.bold())
+                Spacer()
+                InfoDisclosure(title: "Body fat over time", message: bodyFatExplanation,
+                    linkTitle: aceObesityBoundary == nil ? nil : "ACE body-fat category chart",
+                    linkURL: aceObesityBoundary == nil ? nil : URL(string: "https://www.acefitness.org/fitness-certifications/ace-answers/exam-preparation-blog/3815/anthropometric-measurements-when-to-use-this-assessment/"))
+            }
             Chart {
                 ForEach(visibleACEBoundaries) { boundary in
                     RuleMark(y: .value("ACE category boundary", boundary.percentage))
                         .foregroundStyle(aceColor(for: boundary))
                         .lineStyle(StrokeStyle(lineWidth: boundary.isObesity ? 1.5 : 1, dash: [5, 4]))
-                        .annotation(position: .top, alignment: .trailing) {
-                            Text("ACE \(boundary.category) \(Int(boundary.percentage))%")
-                                .font(.caption2)
-                                .foregroundStyle(aceColor(for: boundary))
-                                .padding(.horizontal, 3)
-                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 3))
-                        }
                 }
                 ForEach(health.bodyFatHistory) { point in
                     LineMark(x: .value("Date", point.date), y: .value("Body fat", point.value),
-                             series: .value("Series", "Health body fat"))
+                             series: .value("Series", "Body fat"))
                         .foregroundStyle(.teal)
                     PointMark(x: .value("Date", point.date), y: .value("Body fat", point.value))
                         .foregroundStyle(.teal)
@@ -331,7 +330,7 @@ struct ProgressPlansView: View {
                 }
             }
             HStack(spacing: 14) {
-                Label("Health", systemImage: "circle.fill").foregroundStyle(.teal)
+                Label("Body fat", systemImage: "circle.fill").foregroundStyle(.teal)
                 Label("Illustration", systemImage: "circle.dotted").foregroundStyle(.teal)
             }
             .font(.caption)
@@ -356,30 +355,28 @@ struct ProgressPlansView: View {
                 }
                 .accessibilityElement(children: .combine)
             }
-            if health.bodyFatHistory.isEmpty {
-                Text("No body-fat readings since you joined. An illustration, if shown, starts from your latest Health reading.")
-                    .foregroundStyle(.secondary)
-            }
-            if projection.isEmpty {
-                Text("Add a body-fat reading in Apple Health to show an illustration.")
-                    .font(.footnote).foregroundStyle(.secondary)
-            } else {
-                Text("The dotted line starts from your latest Health body-fat reading and assumes every kilogram of illustrated weight loss is fat, with lean mass unchanged. It is a rough illustration, not a prediction.")
-                    .font(.footnote).foregroundStyle(.secondary)
-            }
-            if let aceObesityBoundary {
-                Text("ACE’s \(profile?.estimateProfile == "female" ? "female" : "male") body-fat classification places its obesity boundary at \(Int(aceObesityBoundary.percentage))%. Other category boundaries appear when the illustration crosses them.")
-                    .font(.footnote).foregroundStyle(.secondary)
-                Link("ACE body-fat category chart", destination: URL(string: "https://www.acefitness.org/fitness-certifications/ace-answers/exam-preparation-blog/3815/anthropometric-measurements-when-to-use-this-assessment/")!)
-                    .font(.footnote)
-            } else {
-                Text("Choose Female or Male in Your details to show the corresponding ACE classification boundary.")
-                    .font(.footnote).foregroundStyle(.secondary)
-            }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+    }
+
+    private var bodyFatExplanation: String {
+        var paragraphs: [String] = []
+        if health.bodyFatHistory.isEmpty {
+            paragraphs.append("No body-fat readings since you joined. An illustration, if shown, starts from your latest Health reading.")
+        }
+        if projectedBodyFat.isEmpty {
+            paragraphs.append("Add a body-fat reading in Apple Health to show an illustration.")
+        } else {
+            paragraphs.append("The dotted line starts from your latest Health body-fat reading and assumes every kilogram of illustrated weight loss is fat, with lean mass unchanged. It is a rough illustration, not a prediction.")
+        }
+        if let aceObesityBoundary {
+            paragraphs.append("ACE’s \(profile?.estimateProfile == "female" ? "female" : "male") body-fat classification places its obesity boundary at \(Int(aceObesityBoundary.percentage))%. Other category boundaries appear when the illustration crosses them.")
+        } else {
+            paragraphs.append("Choose Female or Male in Your details to show the corresponding ACE classification boundary.")
+        }
+        return paragraphs.joined(separator: "\n\n")
     }
 
     private func aceForecastLabel(for boundary: ACEBodyFatBoundary,
@@ -400,7 +397,7 @@ struct ProgressPlansView: View {
 
     private var projectedBodyFat: [HealthMeasurePoint] {
         guard let profile, let bodyFatPercent = health.latestBodyFatPercent else { return [] }
-        let startingWeight = health.weightHistory.last?.value ?? health.latestWeightKg ?? profile.weightKg
+        let startingWeight = health.usableLatestWeightKg ?? health.weightHistory.last?.value ?? profile.weightKg
         let today = Calendar.current.startOfDay(for: Date())
         let sixMonths = Calendar.current.date(byAdding: .month, value: 6, to: today) ?? today
         return projectedWeight(from: startingWeight, gap: profile.effectiveDeficit(for: profile.deficitKcal,

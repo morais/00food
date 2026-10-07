@@ -56,7 +56,7 @@ struct ActiveDayComparison: View {
                 .foregroundStyle(.secondary)
             }
             .accessibilityElement(children: .combine)
-            .accessibilityHint("The active-day marker uses the hours set in Settings. The food marker uses the base target plus Apple Health active calories earned so far.")
+            .accessibilityHint("The active-day marker uses the hours set in Your details and Health. The food marker uses the base target plus Apple Health active calories earned so far.")
         }
     }
 

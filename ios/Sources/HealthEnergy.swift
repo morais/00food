@@ -65,8 +65,16 @@ private struct DietaryExportState: Codable {
         available && store.authorizationStatus(for: dietaryEnergy) == .sharingAuthorized
     }
 
+    var usableLatestWeightKg: Double? {
+        guard let weight = latestWeightKg, weight.isFinite, (25...400).contains(weight) else { return nil }
+        return weight
+    }
+
     func effectiveRestingKcal(for profile: FoodProfile) -> Int {
-        restingAverageKcal ?? profile.restingKcal
+        if let restingAverageKcal { return restingAverageKcal }
+        var current = profile
+        if let weight = usableLatestWeightKg { current.weightKg = weight }
+        return current.restingKcal
     }
 
     func configureDietaryExport(accountId: String?) {

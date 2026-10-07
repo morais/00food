@@ -375,11 +375,12 @@ struct HomeView: View {
 
     private var dailyFeedbackCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Daily review").font(.title3.bold())
-            if let latest = store.dailyFeedback.first {
-                feedbackRow(latest)
+            Text("Yesterday").font(.title3.bold())
+            if let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date()),
+               let request = store.dailyFeedback.first(where: { $0.localDate == FoodDates.localDate(for: yesterday) }) {
+                feedbackRow(request)
             } else {
-                Text("No daily reviews yet.").font(.subheadline).foregroundStyle(.secondary)
+                Text("No review for yesterday yet.").font(.subheadline).foregroundStyle(.secondary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

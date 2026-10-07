@@ -31,4 +31,21 @@ final class RestingEnergyTests: XCTestCase {
         XCTAssertEqual(profile.target(for: profile.deficitKcal, resting: 1800), 1800)
         XCTAssertEqual(profile.effectiveDeficit(for: profile.deficitKcal, resting: 1800), 0)
     }
+
+    @MainActor
+    func testLatestRecordedWeightUpdatesFallbackWithoutReplacingHealthAverage() {
+        let health = HealthEnergy()
+        var profile = FoodProfile(heightCm: 175, weightKg: 70, estimateProfile: "male",
+                                  deficitKcal: 300, birthYear: 1980)
+        health.latestWeightKg = 80
+        profile.weightKg = 80
+        let latestEstimate = profile.restingKcal
+        profile.weightKg = 70
+        XCTAssertEqual(health.effectiveRestingKcal(for: profile), latestEstimate)
+        health.restingAverageKcal = 1900
+        XCTAssertEqual(health.effectiveRestingKcal(for: profile), 1900)
+        health.restingAverageKcal = nil
+        health.latestWeightKg = .nan
+        XCTAssertEqual(health.effectiveRestingKcal(for: profile), profile.restingKcal)
+    }
 }

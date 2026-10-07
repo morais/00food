@@ -5,13 +5,12 @@ struct SettingsView: View {
     @Environment(FoodStore.self) private var store
     @Environment(HealthEnergy.self) private var health
     @Environment(\.dismiss) private var dismiss
-    @AppStorage("activeDayStartMinutes") private var activeDayStartMinutes = 7 * 60
-    @AppStorage("activeDayEndMinutes") private var activeDayEndMinutes = 23 * 60
     @State private var showingProfile = false
     @State private var showingDeveloper = false
     @State private var showingDelete = false
     @State private var confirmingDelete = false
     @State private var errorText: String?
+    @State private var copiedMCPAddress = false
 
     var body: some View {
         NavigationStack {
@@ -27,16 +26,29 @@ struct SettingsView: View {
                     }
                     Button("Delete account and food data", role: .destructive) { confirmingDelete = true }
                 }
-                Section("Active day") {
-                    DatePicker("Start", selection: startTime, displayedComponents: .hourAndMinute)
-                    DatePicker("End", selection: endTime, displayedComponents: .hourAndMinute)
-                    Text("Sets the active-day marker on the home screen. The food marker uses your current allowance, including Health active energy so far.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
                 Section("AI agent connection") {
                     Text("Remote MCP address").font(.caption).foregroundStyle(.secondary)
-                    Text(store.mcpAddress).font(.footnote).textSelection(.enabled)
-                    Button("Copy MCP address") { UIPasteboard.general.string = store.mcpAddress }
+                    HStack(alignment: .top, spacing: 12) {
+                        Text(store.mcpAddress)
+                            .font(.footnote.monospaced()).textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Button {
+                            UIPasteboard.general.string = store.mcpAddress
+                            copiedMCPAddress = true
+                        } label: {
+                            Image(systemName: copiedMCPAddress ? "checkmark" : "doc.on.doc")
+                                .imageScale(.large)
+                        }
+                        .frame(minWidth: 44, minHeight: 44)
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel(copiedMCPAddress ? "MCP address copied" : "Copy MCP address")
+                        .task(id: copiedMCPAddress) {
+                            guard copiedMCPAddress else { return }
+                            do { try await Task.sleep(for: .seconds(2)); copiedMCPAddress = false }
+                            catch { }
+                        }
+                    }
                     Text("Add this address in your AI client’s remote MCP settings, then sign in with the same Apple account. Ask the agent to list pending foods, inspect any photo, and propose an estimate.")
                         .font(.footnote).foregroundStyle(.secondary)
                     if store.connections.isEmpty { Text("No connected agents yet.").foregroundStyle(.secondary) }
@@ -91,30 +103,6 @@ struct SettingsView: View {
                 Button("OK", role: .cancel) {}
             } message: { Text(errorText ?? "") }
         }
-    }
-
-    private var startTime: Binding<Date> {
-        Binding(
-            get: { Self.today(at: activeDayStartMinutes) },
-            set: { activeDayStartMinutes = Self.minutes(in: $0) }
-        )
-    }
-
-    private var endTime: Binding<Date> {
-        Binding(
-            get: { Self.today(at: activeDayEndMinutes) },
-            set: { activeDayEndMinutes = Self.minutes(in: $0) }
-        )
-    }
-
-    private static func today(at minutes: Int) -> Date {
-        Calendar.current.date(byAdding: .minute, value: minutes,
-                              to: Calendar.current.startOfDay(for: Date())) ?? Date()
-    }
-
-    private static func minutes(in date: Date) -> Int {
-        let parts = Calendar.current.dateComponents([.hour, .minute], from: date)
-        return (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
     }
 
     private func revoke(_ connection: MCPConnection) {
@@ -200,7 +188,7 @@ struct ManualWeightView: View {
                         .disabled(busy || !weightKg.isFinite || !(25...400).contains(weightKg))
                 }
             }
-            .onAppear { weightKg = health.latestWeightKg ?? store.profile?.weightKg ?? 70 }
+            .onAppear { weightKg = health.usableLatestWeightKg ?? store.profile?.weightKg ?? 70 }
             .alert("Could not log weight", isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: { Text(errorText ?? "") }

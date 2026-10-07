@@ -4,15 +4,19 @@ struct ProfileView: View {
     @Environment(FoodStore.self) private var store
     @Environment(HealthEnergy.self) private var health
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("activeDayStartMinutes") private var storedActiveDayStartMinutes = 7 * 60
+    @AppStorage("activeDayEndMinutes") private var storedActiveDayEndMinutes = 23 * 60
     var isOnboarding: Bool = false
     @State private var heightCm = 170.0
-    @State private var weightKg = 70.0
+    @State private var savedWeightKg: Double?
     @State private var estimateProfile = "neutral"
     @State private var deficitKcal = 300
     @State private var birthYear = ""
     @State private var busy = false
     @State private var errorText: String?
     @State private var showingManualWeight = false
+    @State private var activeDayStartMinutes = 7 * 60
+    @State private var activeDayEndMinutes = 23 * 60
 
     var body: some View {
         NavigationStack {
@@ -28,10 +32,10 @@ struct ProfileView: View {
                     HStack {
                         Text("Weight")
                         Spacer()
-                        TextField("kg", value: $weightKg, format: .number.precision(.fractionLength(1)))
-                            .multilineTextAlignment(.trailing).keyboardType(.decimalPad)
-                        Text("kg").foregroundStyle(.secondary)
+                        Text(recordedWeightKg.map { "\($0.formatted(.number.precision(.fractionLength(1)))) kg" } ?? "Not recorded")
+                            .foregroundStyle(.secondary)
                     }
+                    Button("Log weight manually") { showingManualWeight = true }
                     Picker("Estimate setting", selection: $estimateProfile) {
                         Text("Neutral").tag("neutral")
                         Text("Female").tag("female")
@@ -44,59 +48,34 @@ struct ProfileView: View {
                             .multilineTextAlignment(.trailing)
                             .keyboardType(.numberPad)
                     }
+                    HStack {
+                        Text("Resting estimate")
+                        Spacer()
+                        Text(recordedWeightKg == nil ? "Add weight first" : "\(preview.restingKcal) kcal/day")
+                            .foregroundStyle(.secondary)
+                        InfoDisclosure(title: "Resting estimate from your details", message: restingExplanation)
+                    }
                 } header: { Text("Your details") } footer: {
                     Text("Birth year improves the fallback resting estimate. Leave it empty to use age 35 as a reference.")
                 }
                 Section {
                     HStack {
-                        Text("Resting energy · Health")
+                        Text("Resting energy")
                         Spacer()
                         Text(health.restingAverageKcal.map { "\($0) kcal/day" } ?? "Not enough data")
                             .foregroundStyle(.secondary)
-                    }
-                    HStack {
-                        Text("Resting estimate · details")
-                        Spacer()
-                        Text("\(preview.restingKcal) kcal/day").foregroundStyle(.secondary)
-                    }
-                    if let average = health.restingAverageKcal {
-                        let difference = average - preview.restingKcal
-                        Text("Your food target uses the Health average: \(difference >= 0 ? "+" : "")\(difference) kcal/day compared with the estimate from your details. Based on \(health.restingDaysUsed) of the last 7 completed days.")
-                            .font(.footnote).foregroundStyle(.secondary)
-                    } else {
-                        Text("Your food target uses the estimate from your details until at least 5 of the last 7 completed days have readable resting energy (currently \(health.restingDaysUsed)).")
-                            .font(.footnote).foregroundStyle(.secondary)
+                        InfoDisclosure(title: "Resting energy", message: restingExplanation)
                     }
                     HStack {
                         Text("Active energy today")
                         Spacer()
                         Text("\(health.activeKcal) kcal").foregroundStyle(.secondary)
                     }
-                    if let weight = health.latestWeightKg, let date = health.latestWeightDate {
-                        HStack {
-                            Text("Latest recorded weight")
-                            Spacer()
-                            Text("\(weight.formatted(.number.precision(.fractionLength(1)))) kg")
-                                .foregroundStyle(.secondary)
-                        }
-                        Button("Use latest weight: \(weight.formatted(.number.precision(.fractionLength(1)))) kg") {
-                            if (25...400).contains(weight) { weightKg = weight }
-                            else { errorText = "The Health weight is outside the supported range." }
-                        }
-                        Text("Recorded \(date.formatted(date: .abbreviated, time: .omitted)). You can edit the weight above before continuing.")
-                            .font(.footnote).foregroundStyle(.secondary)
-                    } else {
-                        if !health.weightRequested {
-                            Button("Connect Apple Health and get weight") {
-                                Task { await health.connect() }
-                            }
-                        }
-                        if health.weightRequested {
-                            Text("No readable weight entry was found. You can enter your weight above.")
-                                .font(.footnote).foregroundStyle(.secondary)
+                    if !health.requested || !health.weightRequested {
+                        Button("Connect Apple Health") {
+                            Task { await health.connect() }
                         }
                     }
-                    Button("Log weight manually") { showingManualWeight = true }
                     if let fat = health.latestBodyFatPercent {
                         HStack {
                             Text("Latest body fat")
@@ -114,17 +93,23 @@ struct ProfileView: View {
                         Text(error).font(.footnote).foregroundStyle(.red)
                     }
                 } header: { Text("Apple Health") } footer: {
-                    Text("00Food reads weight, body fat, water, and active and resting energy. Logging weight manually also updates your 00Food profile; water entries stay in Apple Health. Health history stays on this device unless you request Daily feedback.")
+                    Text("00Food uses your latest recorded weight. Saving these details also saves that weight in your 00Food profile. Logging weight manually updates Apple Health and your profile; water entries stay in Apple Health. Other Health history stays on this device unless you request Daily feedback.")
+                }
+                Section {
+                    DatePicker("Start", selection: startTime, displayedComponents: .hourAndMinute)
+                    DatePicker("End", selection: endTime, displayedComponents: .hourAndMinute)
+                } header: {
+                    HStack {
+                        Text("Active day")
+                        Spacer()
+                        InfoDisclosure(title: "Active day", message: "Sets the active-day marker on the home screen. The food marker uses your current allowance, including Health active energy so far.")
+                    }
                 }
                 if isOnboarding {
                     Section {
                         Button("Start logging") { save() }
                             .frame(maxWidth: .infinity).disabled(busy || !valid)
                     }
-                }
-                Section {
-                    Text("When available, your target uses recent Apple Health resting energy. Otherwise it uses a directional estimate from your details. It does not account for health conditions or body composition.")
-                        .font(.footnote).foregroundStyle(.secondary)
                 }
             }
             .navigationTitle(isOnboarding ? "Set up 00Food" : "Your details")
@@ -142,9 +127,11 @@ struct ProfileView: View {
                 }
             }
             .onAppear {
+                activeDayStartMinutes = storedActiveDayStartMinutes
+                activeDayEndMinutes = storedActiveDayEndMinutes
                 if let profile = store.profile {
                     heightCm = profile.heightCm
-                    weightKg = profile.weightKg
+                    savedWeightKg = profile.weightKg
                     estimateProfile = profile.estimateProfile
                     deficitKcal = profile.deficitKcal
                     birthYear = profile.birthYear.map(String.init) ?? ""
@@ -152,10 +139,10 @@ struct ProfileView: View {
             }
             .task {
                 health.setHistoryStart(store.accountStartedAt)
-                if health.requested { await health.refresh() }
+                await health.refresh()
             }
             .sheet(isPresented: $showingManualWeight) {
-                ManualWeightView { weightKg = $0 }
+                ManualWeightView { savedWeightKg = $0 }
             }
             .alert("Could not save details", isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
                 Button("OK", role: .cancel) {}
@@ -166,13 +153,44 @@ struct ProfileView: View {
     private var valid: Bool {
         let year = birthYear.trimmingCharacters(in: .whitespacesAndNewlines)
         let currentYear = Calendar.current.component(.year, from: Date())
-        return (100...250).contains(heightCm) && (25...400).contains(weightKg) &&
+        return (100...250).contains(heightCm) && recordedWeightKg != nil &&
             (year.isEmpty || (Int(year).map { (1900...(currentYear - 18)).contains($0) } ?? false))
     }
     private var preview: FoodProfile {
-        FoodProfile(heightCm: heightCm, weightKg: weightKg,
+        FoodProfile(heightCm: heightCm, weightKg: recordedWeightKg ?? 70,
                     estimateProfile: estimateProfile, deficitKcal: deficitKcal,
                     birthYear: Int(birthYear.trimmingCharacters(in: .whitespacesAndNewlines)))
+    }
+
+    private var recordedWeightKg: Double? { health.usableLatestWeightKg ?? savedWeightKg }
+
+    private var restingExplanation: String {
+        let introduction = "When available, your target uses recent Apple Health resting energy. Otherwise it uses a directional estimate from your details and latest recorded weight. It does not account for health conditions or body composition."
+        if let average = health.restingAverageKcal, recordedWeightKg != nil {
+            let difference = average - preview.restingKcal
+            return introduction + "\n\nThe Health average is \(difference >= 0 ? "+" : "")\(difference) kcal/day compared with your details estimate, based on \(health.restingDaysUsed) of the last 7 completed days."
+        }
+        return introduction + "\n\nThe Health average needs at least 5 of the last 7 completed days with readable resting energy (currently \(health.restingDaysUsed)). Birth year improves the details estimate; without it, age 35 is used as a reference."
+    }
+
+    private var startTime: Binding<Date> {
+        Binding(get: { Self.today(at: activeDayStartMinutes) },
+                set: { activeDayStartMinutes = Self.minutes(in: $0) })
+    }
+
+    private var endTime: Binding<Date> {
+        Binding(get: { Self.today(at: activeDayEndMinutes) },
+                set: { activeDayEndMinutes = Self.minutes(in: $0) })
+    }
+
+    private static func today(at minutes: Int) -> Date {
+        Calendar.current.date(byAdding: .minute, value: minutes,
+                              to: Calendar.current.startOfDay(for: Date())) ?? Date()
+    }
+
+    private static func minutes(in date: Date) -> Int {
+        let parts = Calendar.current.dateComponents([.hour, .minute], from: date)
+        return (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
     }
     private func save() {
         guard !busy, valid else { return }
@@ -181,6 +199,8 @@ struct ProfileView: View {
             defer { busy = false }
             do {
                 try await store.saveProfile(preview)
+                storedActiveDayStartMinutes = activeDayStartMinutes
+                storedActiveDayEndMinutes = activeDayEndMinutes
                 if !isOnboarding { dismiss() }
             } catch { errorText = error.localizedDescription }
         }
