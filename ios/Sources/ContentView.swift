@@ -50,6 +50,7 @@ struct RootView: View {
             if phase == .active && store.signedIn {
                 Task {
                     try? await store.refresh()
+                    try? await store.refreshConnections()
                     health.setHistoryStart(store.accountStartedAt)
                     await health.refresh()
                     syncDietaryEnergy()
@@ -163,6 +164,7 @@ struct HomeView: View {
     @State private var shortcuts = FoodQuickActions.shared
     @State private var addLaunch: FoodQuickLaunch?
     @State private var showingSettings = false
+    @State private var showingAgentSetup = false
     @State private var showingProgress = false
     @State private var reviewing: PendingEstimation?
     @State private var errorText: String?
@@ -208,6 +210,17 @@ struct HomeView: View {
                         if store.isOffline || store.pendingSyncCount > 0 || store.syncError != nil {
                             syncStatus
                         }
+                        if store.hasLoadedConnections && store.connections.isEmpty {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Your food log. Your AI agent.").font(.headline)
+                                Text("Connect your agent to estimate new foods and help you review your day. Your personal food library grows from estimates you approve.")
+                                    .font(.subheadline).foregroundStyle(.secondary)
+                                Button("Connect your agent") { showingAgentSetup = true }
+                                    .buttonStyle(.borderedProminent)
+                                Text("You can also log foods manually.").font(.footnote).foregroundStyle(.secondary)
+                            }
+                            .padding().background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                        }
                         balanceCard
                         Button { addLaunch = .log } label: {
                             Label("Log food", systemImage: "plus.circle.fill")
@@ -241,6 +254,7 @@ struct HomeView: View {
                 QuickAddView(openCameraOnAppear: launch == .camera)
             }
             .sheet(isPresented: $showingSettings) { SettingsView() }
+            .sheet(isPresented: $showingAgentSetup) { AgentSetupView() }
             .sheet(isPresented: $showingProgress) { ProgressPlansView() }
             .sheet(item: $reviewing) { ReviewEstimationView(estimation: $0) }
             .sheet(isPresented: $showingSelectedFeedback) { selectedFeedbackSheet }
@@ -249,11 +263,13 @@ struct HomeView: View {
             } message: { Text(errorText ?? "") }
             .refreshable {
                 try? await store.refresh()
+                try? await store.refreshConnections()
                 health.setHistoryStart(store.accountStartedAt)
                 await health.refresh()
                 await loadSelectedWater(on: selectedLogDate)
             }
             .task {
+                try? await store.refreshConnections()
                 health.setHistoryStart(store.accountStartedAt)
                 await health.refresh()
             }
@@ -271,10 +287,11 @@ struct HomeView: View {
     private func openPendingShortcut() {
         guard let launch = shortcuts.pendingLaunch else { return }
         shortcuts.pendingLaunch = nil
-        let hasPresentedSheet = addLaunch != nil || showingSettings || showingProgress || reviewing != nil
+        let hasPresentedSheet = addLaunch != nil || showingSettings || showingAgentSetup || showingProgress || reviewing != nil
         if hasPresentedSheet {
             addLaunch = nil
             showingSettings = false
+            showingAgentSetup = false
             showingProgress = false
             reviewing = nil
             Task {

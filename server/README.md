@@ -41,7 +41,7 @@ App routes use `Authorization: Bearer <app token>`:
 | `DELETE /v1/estimations/:id` | Discard a pending estimate and its photo |
 | `GET /v1/daily-feedback` | List recent pending and completed daily reviews |
 | `POST /v1/daily-feedback` | Queue one completed day with up to seven days of Health aggregates; idempotent by account and local day |
-| `GET /v1/account/mcp-connections` | List connected agents |
+| `GET /v1/account/mcp-connections` | List connected agents and their active webhook event names (`activeEvents`), excluding expired subscriptions |
 | `DELETE /v1/account/mcp-connections/:id` | Revoke an agent |
 | `POST /v1/auth/delete-account` | Reauthenticate and remove account data |
 

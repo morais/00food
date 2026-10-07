@@ -67,8 +67,8 @@ struct QuickAddView: View {
                             }
                         } else {
                             Section {
-                                Text(query.isEmpty ? "Your saved foods will appear here after you log one." :
-                                     "No saved food matches your search.")
+                                Text(query.isEmpty ? "Your food library starts with you and your agent. Approve an estimate or log a food manually to save it here." :
+                                     "No saved food matches your search. Search covers your personal library, not a built-in food catalogue.")
                                     .foregroundStyle(.secondary)
                                 Button(query.isEmpty ? "Add your first food" : "Add \"\(query)\" as new food") {
                                     selectedTab = .new

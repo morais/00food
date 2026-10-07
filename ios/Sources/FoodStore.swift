@@ -31,6 +31,7 @@ struct MCPConnection: Decodable, Identifiable {
     var connectedAt: String
     var lastUsedAt: String?
     var expiresAt: String
+    var activeEvents: [String]?
 }
 private struct ConnectionsResponse: Decodable { var connections: [MCPConnection] }
 
@@ -42,6 +43,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     var dailyFeedback: [DailyFeedbackRequest] = []
     var dailyFeedbackEnabled = false
     var connections: [MCPConnection] = []
+    var hasLoadedConnections = false
     var accountEmail: String?
     var accountId: String?
     var startedAt: String?
@@ -349,6 +351,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     func refreshConnections() async throws {
         let response: ConnectionsResponse = try await call("/v1/account/mcp-connections")
         connections = response.connections
+        hasLoadedConnections = true
     }
 
     func revokeConnection(_ connection: MCPConnection) async throws {
@@ -377,6 +380,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         estimations = []
         dailyFeedback = []
         connections = []
+        hasLoadedConnections = false
         syncError = nil
         hasLoadedSnapshot = false
     }
@@ -401,6 +405,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         estimations = []
         dailyFeedback = []
         connections = []
+        hasLoadedConnections = false
         operations = []
         syncError = nil
         hasLoadedSnapshot = false

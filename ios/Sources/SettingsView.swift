@@ -10,7 +10,8 @@ struct SettingsView: View {
     @State private var showingDelete = false
     @State private var confirmingDelete = false
     @State private var errorText: String?
-    @State private var copiedMCPAddress = false
+    @State private var showingAgentSetup = false
+    @State private var connectionError: String?
 
     var body: some View {
         NavigationStack {
@@ -26,44 +27,22 @@ struct SettingsView: View {
                     }
                     Button("Delete account and food data", role: .destructive) { confirmingDelete = true }
                 }
-                Section("AI agent connection") {
-                    Text("Remote MCP address").font(.caption).foregroundStyle(.secondary)
-                    HStack(alignment: .top, spacing: 12) {
-                        Text(store.mcpAddress)
-                            .font(.footnote.monospaced()).textSelection(.enabled)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        Button {
-                            UIPasteboard.general.string = store.mcpAddress
-                            copiedMCPAddress = true
-                        } label: {
-                            Image(systemName: copiedMCPAddress ? "checkmark" : "doc.on.doc")
-                                .imageScale(.large)
-                        }
-                        .frame(minWidth: 44, minHeight: 44)
-                        .buttonStyle(.borderless)
-                        .accessibilityLabel(copiedMCPAddress ? "MCP address copied" : "Copy MCP address")
-                        .task(id: copiedMCPAddress) {
-                            guard copiedMCPAddress else { return }
-                            do { try await Task.sleep(for: .seconds(2)); copiedMCPAddress = false }
-                            catch { }
-                        }
-                    }
-                    Text("Add this address in your AI client’s remote MCP settings, then sign in with the same Apple account. Ask the agent to list pending foods, inspect any photo, and propose an estimate.")
+                Section("Your AI agent") {
+                    Text("Bring your own agent to estimate foods and help you review your day. ChatGPT Work is recommended for automatic responses through MCP Events.")
                         .font(.footnote).foregroundStyle(.secondary)
-                    if store.connections.isEmpty { Text("No connected agents yet.").foregroundStyle(.secondary) }
-                    ForEach(store.connections) { connection in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(connection.clientName)
-                                let dailyAccess = connection.scopes.contains("daily:read")
-                                    && connection.scopes.contains("daily:write")
-                                Text(dailyAccess ? "Daily review access granted" : "Daily review access missing")
-                                    .font(.caption)
-                                    .foregroundStyle(dailyAccess ? Color.green : Color.orange)
+                    Button("Connect your agent & set up events") { showingAgentSetup = true }
+                    if let connectionError {
+                        Text(connectionError).font(.footnote).foregroundStyle(.orange)
+                    } else if store.hasLoadedConnections && store.connections.isEmpty {
+                        Text("No connected agents yet.").foregroundStyle(.secondary)
+                    }
+                    if connectionError == nil {
+                        ForEach(store.connections) { connection in
+                            HStack(alignment: .top) {
+                                AgentConnectionDetails(connection: connection)
+                                Spacer()
+                                Button("Revoke", role: .destructive) { revoke(connection) }
                             }
-                            Spacer()
-                            Button("Revoke", role: .destructive) { revoke(connection) }
                         }
                     }
                 }
@@ -89,6 +68,7 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
+            .sheet(isPresented: $showingAgentSetup) { AgentSetupView() }
             .sheet(isPresented: $showingProfile) { ProfileView() }
             .sheet(isPresented: $showingDeveloper) { DeveloperView() }
             .sheet(isPresented: $showingDelete) { DeleteAccountView() }
@@ -97,7 +77,8 @@ struct SettingsView: View {
             } message: { Text("This removes your profile, foods, logs, estimates, photos, and agent connections.") }
             .task {
                 health.configureDietaryExport(accountId: store.accountId)
-                try? await store.refreshConnections()
+                do { try await store.refreshConnections(); connectionError = nil }
+                catch { connectionError = "Could not check current agent connections. Open setup and refresh to try again." }
             }
             .alert("Could not update settings", isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
                 Button("OK", role: .cancel) {}

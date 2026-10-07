@@ -9,14 +9,18 @@ type ConnectionRow = {
   created_at: string;
   last_used_at: string | null;
   expires_at: string;
+  active_events: string | null;
 };
 
 export async function listMcpConnections(env: Env, principal: Principal): Promise<Response> {
   if (principal.kind !== "app") return json({ error: "Forbidden" }, 403);
-  const rows = await env.DB.prepare(`SELECT id, label, scopes, created_at, last_used_at, expires_at
-    FROM credentials WHERE tenant_id = ? AND kind = 'mcp'
-      AND revoked_at IS NULL AND expires_at > ?
-    ORDER BY created_at DESC`).bind(principal.tenantId, new Date().toISOString()).all<ConnectionRow>();
+  const now = new Date().toISOString();
+  const rows = await env.DB.prepare(`SELECT c.id, c.label, c.scopes, c.created_at, c.last_used_at, c.expires_at,
+      (SELECT GROUP_CONCAT(DISTINCT s.name) FROM mcp_event_subscriptions s
+        WHERE s.token_hash = c.token_hash AND s.tenant_id = c.tenant_id AND s.expires_at > ?) AS active_events
+    FROM credentials c WHERE c.tenant_id = ? AND c.kind = 'mcp'
+      AND c.revoked_at IS NULL AND c.expires_at > ?
+    ORDER BY c.created_at DESC`).bind(now, principal.tenantId, now).all<ConnectionRow>();
   return json({ connections: rows.results.map((row) => ({
     id: row.id,
     clientName: row.label.startsWith("MCP · ") ? row.label.slice("MCP · ".length) : row.label,
@@ -24,6 +28,7 @@ export async function listMcpConnections(env: Env, principal: Principal): Promis
     connectedAt: row.created_at,
     lastUsedAt: row.last_used_at,
     expiresAt: row.expires_at,
+    activeEvents: row.active_events?.split(",").sort() ?? [],
   })) });
 }
 
