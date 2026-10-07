@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { routeMcp } from "../src/mcp";
+import { verifiedClientName } from "../src/oauth";
 import type { Env } from "../src/api";
 import type { Principal } from "../src/auth";
 
@@ -14,6 +15,18 @@ const request = (method: string, params?: unknown) => new Request("https://api.0
 });
 
 describe("MCP daily feedback scope upgrade", () => {
+  it("recognizes only ChatGPT's exact stable callback", () => {
+    const configured = {
+      MCP_VERIFIED_CLIENTS: '{"https://chatgpt.com/connector_platform_oauth_redirect":"ChatGPT"}',
+    } as Env;
+    expect(verifiedClientName(configured, "https://chatgpt.com/connector_platform_oauth_redirect"))
+      .toBe("ChatGPT");
+    expect(verifiedClientName(configured, "https://chatgpt.com.evil.example/connector_platform_oauth_redirect"))
+      .toBeUndefined();
+    expect(verifiedClientName(configured, "https://chatgpt.com/connector_platform_oauth_redirect?next=evil"))
+      .toBeUndefined();
+  });
+
   it("declares daily permissions on the relevant tools", async () => {
     const response = await routeMcp(request("tools/list"), env, foodOnly);
     const payload = await response.json() as { result: { tools: Array<{

@@ -16,7 +16,7 @@ npm run typecheck
 npm run deploy
 ```
 
-Install `APPLE_PRIVATE_KEY` and `OAUTH_SIGNING_SECRET` as Wrangler secrets. Never put private key material in `wrangler.toml`, Git, or app code. The Sign in with Apple key must be associated with the app's primary App ID or Apple sign-in group. For MCP web sign-in, register a Services ID with the API host and `https://<API host>/auth/apple/callback` in Apple Developer.
+Install `APPLE_PRIVATE_KEY` and `OAUTH_SIGNING_SECRET` as Wrangler secrets. Never put private key material in `wrangler.toml`, Git, or app code. The Sign in with Apple key must be associated with the app's primary App ID or Apple sign-in group. For MCP web sign-in, register a Services ID with the API host and `https://<API host>/auth/apple/callback` in Apple Developer. `MCP_VERIFIED_CLIENTS` maps exact HTTPS callback addresses to names shown on the consent page. The sample recognizes ChatGPT's stable callback; other callbacks remain marked unverified. The page also shows only the scopes requested by that authorization. An existing food-only connection has no daily or Health access until the daily tools request an upgrade and the user approves it.
 
 For local work, use a separate ignored `wrangler.toml` with `PUBLIC_ORIGIN = "http://localhost:8787"`, `workers_dev = true`, and no custom-domain route. Apply `npx wrangler d1 migrations apply 00food --local`, start `npm run dev`, and run `node scripts/smoke-local.mjs` in another terminal. The smoke test inserts disposable local credentials and checks profile saving, idempotent logging, photo upload, MCP photo retrieval, agent proposal, and user acceptance. Native Apple login needs a deployed HTTPS origin to test end to end.
 

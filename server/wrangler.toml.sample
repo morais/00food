@@ -12,6 +12,7 @@ APPLE_WEB_CLIENT_ID = "com.example.zerozerofood.signin"
 APPLE_WEB_REDIRECT_URI = "https://api.example.com/auth/apple/callback"
 APPLE_TEAM_ID = "REPLACE_WITH_APPLE_TEAM_ID"
 APPLE_KEY_ID = "REPLACE_WITH_SIGN_IN_WITH_APPLE_KEY_ID"
+MCP_VERIFIED_CLIENTS = '{"https://chatgpt.com/connector_platform_oauth_redirect":"ChatGPT"}'
 
 [[routes]]
 pattern = "api.example.com"

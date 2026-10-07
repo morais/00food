@@ -367,7 +367,7 @@ export async function showConsent(req: Request, env: Env): Promise<Response> {
   const verifiedName = verifiedClientName(env, flow.redirect_uri);
   const clientName = verifiedName ?? flow.client_name;
   const trust = verifiedName
-    ? `<p><span class="status good">Verified client</span> ${htmlEscape(appName(env))} recognizes this exact callback address.</p>`
+    ? `<p><span class="status good">Recognized callback</span> ${htmlEscape(appName(env))} recognizes this exact ${htmlEscape(verifiedName)} callback address.</p>`
     : `<p><span class="status warning">Unverified client</span> This name was supplied by the client. Check the callback address before approving.</p>`;
   return html(env, `<h1>Connect ${htmlEscape(clientName)} to ${htmlEscape(appName(env))}?</h1>
     ${trust}
