@@ -13,6 +13,8 @@ import SwiftUI
                 switch ScreenshotFixtures.scenario {
                 case "library", "new-food": QuickAddView()
                 case "estimate", "clarification": ReviewEstimationView(estimation: store.estimations[0])
+                case "sign-in": SignInView()
+                case "setup": AgentSetupView()
                 default: HomeView()
                 }
             }

@@ -6,7 +6,7 @@
 
 The App Store name is **00Food: AI Food Companion**, with subtitle **Bring your own AI agent**. Keep these promises consistent in the sign-in screen, first-use guidance, empty states, and marketing copy. Prefer “your agent” to wording that implies a bundled model or automatic estimation without setup. Explain MCP Events through its benefit: the agent can respond to estimate and review requests without being asked to check each time. Recommend ChatGPT Work for the current webhook integration; do not promise equivalent event support in every MCP client.
 
-Store copy is maintained in [app-store.json](app-store.json). Setup and compatibility are documented in [the agent guide](../agent-setup.md).
+App Store copy, screenshots, and the capture pipeline are maintained in the `00food-www` repository under `marketing/`. Setup and compatibility are documented in [the agent guide](../agent-setup.md).
 
 00Food keeps the 00Widget and 00Todo two-card agent, white fedora, slashed-zero eyes, blue edge, and teal accent. Two horizontal, gently curved utensils form a stacked smile: a knife above a fork, with no plate. A warm coral field distinguishes its icon from its siblings. The wordmark uses the same blue `00` and Avenir Next typography.
 

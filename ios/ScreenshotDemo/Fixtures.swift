@@ -49,8 +49,9 @@ enum ScreenshotFixtures {
         store.hasLoadedSnapshot = true
         store.hasLoadedConnections = true
         store.connections = [MCPConnection(id: "fictional-agent", clientName: "ChatGPT Work",
-            scopes: ["food:read", "food:write"], connectedAt: stamp(yesterday), lastUsedAt: stamp(now),
-            expiresAt: "2099-01-01T00:00:00Z", activeEvents: ["food.estimation.requested", "food.daily_feedback.requested"])]
+            scopes: ["food:read", "food:write", "daily:read", "daily:write"], connectedAt: stamp(yesterday), lastUsedAt: stamp(now),
+            expiresAt: "2099-01-01T00:00:00Z", activeEvents: ["food.estimate_requested", "food.clarification_added",
+                                                             "food.logged", "day.feedback_requested"])]
         if scenario == "estimate" || scenario == "clarification" {
             let revised = scenario == "clarification"
             store.estimations = [PendingEstimation(id: "sample-yogurt-estimate",

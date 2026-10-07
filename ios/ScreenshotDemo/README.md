@@ -30,28 +30,16 @@ data directory using `xcrun simctl install DEVICE APP_PATH`. Launch with:
 xcrun simctl launch --terminate-running-process DEVICE com.00food.screenshots --scene overview
 ```
 
-Scenes: `overview`, `library`, `new-food`, `estimate`, `clarification`, `review`.
+Scenes: `overview`, `library`, `new-food`, `estimate`, `clarification`, `review`, `sign-in`, `setup`.
 They render the existing app screens; only initial state and data are seeded.
 The reviewed yogurt bowl goes from 190 to 230 kcal after adding two teaspoons of
 honey. Neither unapproved estimate is included in the log. Today totals 1,465
 kcal; yesterday totals 1,715. The fictional resting estimate is 1,850 kcal and
 active energy is 420, giving 805 kcal remaining today with a zero calorie gap.
 
-Capture portrait RGB JPEGs using `xcrun simctl io DEVICE screenshot --type=jpeg
-OUTPUT.jpg` after visually checking that the screen has finished rendering.
-Use the iPhone 18 Pro Max (1320 × 2868) and override the status bar to 18:41,
-full battery and Wi-Fi. Never install this demo onto a physical device or upload
-its binary to TestFlight. Final assets live in `docs/brand/screenshots`.
-
-Upload the manifest's ordered images to an existing App Store draft, using the
-local App Store Connect API credentials configured for `assign-testflight.py`:
-
-```sh
-python3 ios/scripts/upload-store-screenshots.py --app-id APP_ID --version 1.0
-python3 ios/scripts/upload-store-screenshots.py --app-id APP_ID --version 1.0 --verify-only
-```
-
-Set `ASC_KEY_PATH` to the key file path if multiple local keys are installed.
-The helper verifies each uploaded checksum, completed processing, and final
-order. `--verify-only` performs no draft changes. It never submits the version
-for review and never creates an iPad screenshot set.
+The promotional and App Store screenshots are captured, composed, and uploaded
+from the `00food-www` repository: run `marketing/screenshots/capture-ios.sh`
+there with this checkout at `../00food`. It runs the helper above, installs the
+demo on the iPhone 18 Pro and Pro Max simulators with an 18:41 status bar,
+captures each scene, and uninstalls it. Never install this demo onto a physical
+device or upload its binary to TestFlight.
