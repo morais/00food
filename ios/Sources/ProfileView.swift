@@ -78,7 +78,7 @@ struct ProfileView: View {
                         Text(error).font(.footnote).foregroundStyle(.red)
                     }
                 } header: { Text("Apple Health") } footer: {
-                    Text("00Food reads weight, body fat, and active and resting energy. A weight you choose to use is saved in your 00Food profile. Health history stays on this device unless you enable Daily feedback in Settings.")
+                    Text("00Food reads weight, body fat, and active and resting energy. A weight you choose to use is saved in your 00Food profile. Health history stays on this device unless you request Daily feedback.")
                 }
                 if isOnboarding {
                     Section {

@@ -84,6 +84,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     var consumedToday: Int { todaysLogs.reduce(0) { $0 + $1.kcal } }
     var fruitVegToday: Int { min(5, todaysLogs.reduce(0) { $0 + $1.countedFruitVegPortions }) }
     var pendingDailyFeedbackCount: Int { dailyFeedback.filter { $0.state == "pending" }.count }
+    var missingDailyFeedbackCount: Int { missingDailyFeedbackDates(includeHistory: true).count }
     var dailyFeedbackEnabledAt: String? {
         guard let accountId else { return nil }
         return UserDefaults.standard.string(forKey: "dailyFeedback.enabledAt.\(accountId)")
@@ -104,7 +105,59 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         let request = DailyFeedbackRequest(id: upload.id, localDate: upload.localDate,
                                            state: "pending", feedback: nil,
                                            createdAt: now, updatedAt: now)
-        try stage(.requestDailyFeedback(upload)) { dailyFeedback.insert(request, at: 0) }
+        try stage(.requestDailyFeedback(upload)) {
+            dailyFeedback.append(request)
+            dailyFeedback.sort { $0.localDate > $1.localDate }
+        }
+    }
+
+    func requestMissingDailyFeedback(using health: HealthEnergy, includeHistory: Bool) async throws -> Int {
+        let dates = missingDailyFeedbackDates(includeHistory: includeHistory)
+        guard let first = dates.first, let last = dates.last else { return 0 }
+        let calendar = Calendar.current
+        let healthStart = calendar.date(byAdding: .day, value: -6, to: first) ?? first
+        let healthHistory = await health.dailyFeedbackHealth(from: healthStart, through: last)
+        let timeZone = TimeZone.current.identifier
+        var queued = 0
+        for date in dates {
+            let key = FoodDates.localDate(for: date)
+            let firstHealthDate = FoodDates.localDate(for:
+                calendar.date(byAdding: .day, value: -6, to: date) ?? date)
+            let healthDays = healthHistory.filter { $0.localDate >= firstHealthDate && $0.localDate <= key }
+            let upload = DailyFeedbackUpload(id: UUID().uuidString.lowercased(), localDate: key,
+                                             timeZone: timeZone, healthDays: healthDays)
+            guard !dailyFeedback.contains(where: { $0.localDate == key }) else { continue }
+            try requestDailyFeedback(upload)
+            queued += 1
+        }
+        return queued
+    }
+
+    private func missingDailyFeedbackDates(includeHistory: Bool) -> [Date] {
+        guard signedIn, hasLoadedSnapshot else { return [] }
+        if !includeHistory && !dailyFeedbackEnabled { return [] }
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        guard let firstCompleted = calendar.date(byAdding: .day, value: -1, to: today),
+              let accountStart = accountStartedAt.map({ calendar.startOfDay(for: $0) }) else { return [] }
+        let dayLimit = includeHistory ? 30 : 7
+        guard let limitStart = calendar.date(byAdding: .day, value: -dayLimit, to: today) else { return [] }
+        // October 3 was cleared as a test day; October 4 is this app's first real day.
+        let firstRealDay = FoodDates.parseLocalDate("2026-10-04") ?? accountStart
+        var earliest = max(max(accountStart, limitStart), firstRealDay)
+        if !includeHistory {
+            guard let enabledAt = dailyFeedbackEnabledAt.flatMap(FoodDates.parseLocalDate),
+                  let firstEnabledDay = calendar.date(byAdding: .day, value: -1, to: enabledAt) else { return [] }
+            earliest = max(earliest, firstEnabledDay)
+        }
+        guard earliest <= firstCompleted else { return [] }
+        let count = (calendar.dateComponents([.day], from: earliest, to: firstCompleted).day ?? 0) + 1
+        let existing = Set(dailyFeedback.map(\.localDate))
+        return (0..<count).compactMap { offset in
+            guard let day = calendar.date(byAdding: .day, value: offset, to: earliest),
+                  !existing.contains(FoodDates.localDate(for: day)) else { return nil }
+            return day
+        }
     }
     func logs(on date: Date) -> [FoodLog] {
         let day = FoodDates.localDate(for: date)

@@ -97,28 +97,11 @@ struct RootView: View {
     }
 
     private func queueDailyFeedback() async {
-        guard store.signedIn, store.hasLoadedSnapshot, store.dailyFeedbackEnabled,
-              !feedbackSyncing, let enabledAt = store.dailyFeedbackEnabledAt else { return }
+        guard !feedbackSyncing else { return }
         feedbackSyncing = true
         defer { feedbackSyncing = false }
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
-        guard let firstCompletedDay = calendar.date(byAdding: .day, value: -1, to: today) else { return }
-        let firstAllowed = calendar.date(byAdding: .day, value: -1, to:
-            calendar.startOfDay(for: FoodDates.parseLocalDate(enabledAt) ?? today)) ?? today
-        let accountDay = store.accountStartedAt.map { calendar.startOfDay(for: $0) } ?? today
-        for offset in (0..<7).reversed() {
-            guard let date = calendar.date(byAdding: .day, value: -offset, to: firstCompletedDay),
-                  date >= firstAllowed, date >= accountDay else { continue }
-            let key = FoodDates.localDate(for: date)
-            guard !store.dailyFeedback.contains(where: { $0.localDate == key }) else { continue }
-            let healthDays = await health.dailyFeedbackHealth(through: key)
-            let upload = DailyFeedbackUpload(id: UUID().uuidString.lowercased(), localDate: key,
-                                             timeZone: TimeZone.current.identifier,
-                                             healthDays: healthDays)
-            do { try store.requestDailyFeedback(upload) }
-            catch { store.syncError = "Could not save daily feedback request: \(error.localizedDescription)" }
-        }
+        do { _ = try await store.requestMissingDailyFeedback(using: health, includeHistory: false) }
+        catch { store.syncError = "Could not save daily feedback request: \(error.localizedDescription)" }
     }
 
     private var accountLoadView: some View {
@@ -187,6 +170,8 @@ struct HomeView: View {
     @State private var selectedLogDate = Calendar.current.startOfDay(for: Date())
     @State private var showingBalanceDetails = false
     @State private var showingEarlierFeedback = false
+    @State private var requestingEarlierFeedback = false
+    @State private var feedbackRequestStatus: String?
 
     private var remaining: Int {
         guard let profile = store.profile else { return 0 }
@@ -218,7 +203,9 @@ struct HomeView: View {
                     .buttonStyle(.borderedProminent)
                     hydrationCard
                     fiveADayCard
-                    if !store.dailyFeedback.isEmpty { dailyFeedbackCard }
+                    if store.dailyFeedbackEnabled || !store.dailyFeedback.isEmpty || store.missingDailyFeedbackCount > 0 {
+                        dailyFeedbackCard
+                    }
 
                     if !store.estimations.isEmpty { estimatesSection }
                     foodLogSection
@@ -368,15 +355,40 @@ struct HomeView: View {
             Text("Daily review").font(.title3.bold())
             if let latest = store.dailyFeedback.first {
                 feedbackRow(latest)
+            } else {
+                Text("No daily reviews yet.").font(.subheadline).foregroundStyle(.secondary)
             }
             if store.dailyFeedback.count > 1 {
                 DisclosureGroup("Earlier reviews", isExpanded: $showingEarlierFeedback) {
-                    ForEach(Array(store.dailyFeedback.dropFirst().prefix(6))) { request in
+                    ForEach(Array(store.dailyFeedback.dropFirst())) { request in
                         feedbackRow(request)
                             .padding(.top, 8)
                     }
                 }
                 .font(.subheadline)
+            }
+            if store.missingDailyFeedbackCount > 0 {
+                Button {
+                    requestingEarlierFeedback = true
+                    Task {
+                        defer { requestingEarlierFeedback = false }
+                        do {
+                            let count = try await store.requestMissingDailyFeedback(using: health, includeHistory: true)
+                            feedbackRequestStatus = count == 0 ? "All available days are already requested."
+                                : "Requested \(count) earlier \(count == 1 ? "day" : "days")."
+                        } catch { errorText = error.localizedDescription }
+                    }
+                } label: {
+                    Label("Request feedback for \(store.missingDailyFeedbackCount) missing \(store.missingDailyFeedbackCount == 1 ? "day" : "days")",
+                          systemImage: "clock.arrow.circlepath")
+                }
+                .buttonStyle(.bordered)
+                .disabled(requestingEarlierFeedback)
+                Text("Includes completed days from your last 30 days in 00Food. Available Health totals are shared with your connected agent.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if let feedbackRequestStatus {
+                Text(feedbackRequestStatus).font(.caption).foregroundStyle(.secondary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

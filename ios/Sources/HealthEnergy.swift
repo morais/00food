@@ -219,13 +219,12 @@ private struct DietaryExportState: Codable {
         return healthError.domain == HKErrorDomain && healthError.code == HKError.Code.errorNoData.rawValue
     }
 
-    func dailyFeedbackHealth(through localDate: String) async -> [DailyHealthDay] {
+    func dailyFeedbackHealth(from startDate: Date, through endDate: Date) async -> [DailyHealthDay] {
         guard available else { return [] }
-        let parts = localDate.split(separator: "-").compactMap { Int($0) }
-        guard parts.count == 3,
-              let day = Calendar.current.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])),
-              let start = Calendar.current.date(byAdding: .day, value: -6, to: day),
-              let end = Calendar.current.date(byAdding: .day, value: 1, to: day) else { return [] }
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: startDate)
+        guard let end = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: endDate)),
+              start < end else { return [] }
         func values(_ points: [HealthMeasurePoint]) -> [String: Double] {
             Dictionary(points.map { (FoodDates.localDate(for: $0.date), $0.value) },
                        uniquingKeysWith: { _, latest in latest })
@@ -238,8 +237,9 @@ private struct DietaryExportState: Codable {
                                                to: end, unit: .gramUnit(with: .kilo), scale: 1)) ?? []) : [:]
         let fat = bodyFatRequested ? values((try? await dailyHistory(of: bodyFat, from: start,
                                            to: end, unit: .percent(), scale: 100)) ?? []) : [:]
-        return (0..<7).compactMap { offset in
-            guard let date = Calendar.current.date(byAdding: .day, value: offset, to: start) else { return nil }
+        let dayCount = calendar.dateComponents([.day], from: start, to: end).day ?? 0
+        return (0..<dayCount).compactMap { offset in
+            guard let date = calendar.date(byAdding: .day, value: offset, to: start) else { return nil }
             let key = FoodDates.localDate(for: date)
             return DailyHealthDay(localDate: key,
                                   activeKcal: active[key].map { max(0, Int($0.rounded())) },

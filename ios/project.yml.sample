@@ -35,7 +35,7 @@ targets:
               - zerozerofood
         FoodServerBaseURL: https://api.example.com
         NSCameraUsageDescription: "00Food uses the camera to capture a meal for an estimate you review."
-        NSHealthShareUsageDescription: "00Food reads resting and active energy, weight, body-fat percentage, and water to show your daily balance and progress. If you enable Daily feedback, seven-day Health summaries are sent to your private account for your connected agent to review."
+        NSHealthShareUsageDescription: "00Food reads resting and active energy, weight, body-fat percentage, and water to show your daily balance and progress. If you request Daily feedback, seven-day Health summaries are sent to your private account for your connected agent to review."
         NSHealthUpdateUsageDescription: "00Food writes water and manually logged weight to Apple Health when you log them. It writes food calories as Dietary Energy only after you enable export in Settings."
         UIApplicationShortcutItems:
           - UIApplicationShortcutItemType: com.00food.quick-add.log
