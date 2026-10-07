@@ -134,6 +134,28 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         return queued
     }
 
+    func canRequestDailyFeedback(on date: Date) -> Bool {
+        let key = FoodDates.localDate(for: date)
+        return missingDailyFeedbackDates(includeHistory: true).contains {
+            FoodDates.localDate(for: $0) == key
+        }
+    }
+
+    @discardableResult
+    func requestDailyFeedback(on date: Date, using health: HealthEnergy) async throws -> Bool {
+        guard canRequestDailyFeedback(on: date) else { return false }
+        let calendar = Calendar.current
+        let first = calendar.date(byAdding: .day, value: -6, to: date) ?? date
+        let key = FoodDates.localDate(for: date)
+        let firstKey = FoodDates.localDate(for: first)
+        let healthDays = await health.dailyFeedbackHealth(from: first, through: date)
+            .filter { $0.localDate >= firstKey && $0.localDate <= key }
+        guard canRequestDailyFeedback(on: date) else { return false }
+        try requestDailyFeedback(DailyFeedbackUpload(id: UUID().uuidString.lowercased(),
+            localDate: key, timeZone: TimeZone.current.identifier, healthDays: healthDays))
+        return true
+    }
+
     private func missingDailyFeedbackDates(includeHistory: Bool) -> [Date] {
         guard signedIn, hasLoadedSnapshot else { return [] }
         if !includeHistory && !dailyFeedbackEnabled { return [] }
@@ -141,7 +163,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         let today = calendar.startOfDay(for: Date())
         guard let firstCompleted = calendar.date(byAdding: .day, value: -1, to: today),
               let accountStart = accountStartedAt.map({ calendar.startOfDay(for: $0) }) else { return [] }
-        let dayLimit = includeHistory ? 30 : 7
+        let dayLimit = includeHistory ? 90 : 7
         guard let limitStart = calendar.date(byAdding: .day, value: -dayLimit, to: today) else { return [] }
         // October 3 was cleared as a test day; October 4 is this app's first real day.
         let firstRealDay = FoodDates.parseLocalDate("2026-10-04") ?? accountStart

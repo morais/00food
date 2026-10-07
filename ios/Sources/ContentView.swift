@@ -172,9 +172,8 @@ struct HomeView: View {
     @State private var selectedWaterError: String?
     @State private var selectedWaterRequestID = UUID()
     @State private var showingBalanceDetails = false
-    @State private var showingEarlierFeedback = false
-    @State private var requestingEarlierFeedback = false
-    @State private var feedbackRequestStatus: String?
+    @State private var showingSelectedFeedback = false
+    @State private var requestingSelectedFeedback = false
 
     private var remaining: Int {
         guard let profile = store.profile else { return 0 }
@@ -183,6 +182,9 @@ struct HomeView: View {
             + health.activeKcal - store.consumedToday
     }
     private var selectedLogs: [FoodLog] { store.logs(on: selectedLogDate) }
+    private var selectedFeedback: DailyFeedbackRequest? {
+        store.dailyFeedback.first { $0.localDate == FoodDates.localDate(for: selectedLogDate) }
+    }
     private var selectedDayIsToday: Bool { Calendar.current.isDateInToday(selectedLogDate) }
     private var selectedFruitVegPortions: Int {
         min(5, selectedLogs.reduce(0) { $0 + $1.countedFruitVegPortions })
@@ -200,27 +202,30 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    if store.isOffline || store.pendingSyncCount > 0 || store.syncError != nil {
-                        syncStatus
-                    }
-                    balanceCard
-                    Button { addLaunch = .log } label: {
-                        Label("Log food", systemImage: "plus.circle.fill")
-                            .font(.headline).frame(maxWidth: .infinity).frame(height: 48)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    hydrationCard
-                    fiveADayCard
-                    if store.dailyFeedbackEnabled || !store.dailyFeedback.isEmpty || store.missingDailyFeedbackCount > 0 {
-                        dailyFeedbackCard
-                    }
+            GeometryReader { geometry in
+                ScrollView(.vertical) {
+                    VStack(alignment: .leading, spacing: 24) {
+                        if store.isOffline || store.pendingSyncCount > 0 || store.syncError != nil {
+                            syncStatus
+                        }
+                        balanceCard
+                        Button { addLaunch = .log } label: {
+                            Label("Log food", systemImage: "plus.circle.fill")
+                                .font(.headline).frame(maxWidth: .infinity).frame(height: 48)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        hydrationCard
+                        fiveADayCard
+                        if store.dailyFeedbackEnabled || !store.dailyFeedback.isEmpty {
+                            dailyFeedbackCard
+                        }
 
-                    if !store.estimations.isEmpty { estimatesSection }
-                    foodLogSection
+                        if !store.estimations.isEmpty { estimatesSection }
+                        foodLogSection
+                    }
+                    .frame(width: max(0, geometry.size.width - 40), alignment: .leading)
+                    .padding(.horizontal, 20).padding(.bottom, 28)
                 }
-                .padding(.horizontal, 20).padding(.bottom, 28)
             }
             .swipeActionsContainer()
             .navigationTitle("00Food")
@@ -238,6 +243,7 @@ struct HomeView: View {
             .sheet(isPresented: $showingSettings) { SettingsView() }
             .sheet(isPresented: $showingProgress) { ProgressPlansView() }
             .sheet(item: $reviewing) { ReviewEstimationView(estimation: $0) }
+            .sheet(isPresented: $showingSelectedFeedback) { selectedFeedbackSheet }
             .alert("Something went wrong", isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: { Text(errorText ?? "") }
@@ -375,38 +381,6 @@ struct HomeView: View {
             } else {
                 Text("No daily reviews yet.").font(.subheadline).foregroundStyle(.secondary)
             }
-            if store.dailyFeedback.count > 1 {
-                DisclosureGroup("Earlier reviews", isExpanded: $showingEarlierFeedback) {
-                    ForEach(Array(store.dailyFeedback.dropFirst())) { request in
-                        feedbackRow(request)
-                            .padding(.top, 8)
-                    }
-                }
-                .font(.subheadline)
-            }
-            if store.missingDailyFeedbackCount > 0 {
-                Button {
-                    requestingEarlierFeedback = true
-                    Task {
-                        defer { requestingEarlierFeedback = false }
-                        do {
-                            let count = try await store.requestMissingDailyFeedback(using: health, includeHistory: true)
-                            feedbackRequestStatus = count == 0 ? "All available days are already requested."
-                                : "Requested \(count) earlier \(count == 1 ? "day" : "days")."
-                        } catch { errorText = error.localizedDescription }
-                    }
-                } label: {
-                    Label("Request feedback for \(store.missingDailyFeedbackCount) missing \(store.missingDailyFeedbackCount == 1 ? "day" : "days")",
-                          systemImage: "clock.arrow.circlepath")
-                }
-                .buttonStyle(.bordered)
-                .disabled(requestingEarlierFeedback)
-                Text("Includes completed days from your last 30 days in 00Food. Available Health totals are shared with your connected agent.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            if let feedbackRequestStatus {
-                Text(feedbackRequestStatus).font(.caption).foregroundStyle(.secondary)
-            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
@@ -425,6 +399,24 @@ struct HomeView: View {
                     .font(.subheadline).foregroundStyle(.secondary)
             }
         }
+    }
+
+    private var selectedFeedbackSheet: some View {
+        NavigationStack {
+            ScrollView {
+                if let selectedFeedback {
+                    feedbackRow(selectedFeedback)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(20)
+                }
+            }
+            .navigationTitle("Daily review")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) {
+                Button("Done") { showingSelectedFeedback = false }
+            } }
+        }
+        .presentationDetents([.medium, .large])
     }
 
     private var estimatesSection: some View {
@@ -532,32 +524,27 @@ struct HomeView: View {
                 .disabled(selectedDayIsToday)
                 .accessibilityLabel("Next day")
             }
-            DatePicker("Food log date", selection: $selectedLogDate,
-                       in: earliestLogDate...Date(), displayedComponents: .date)
-                .datePickerStyle(.compact)
+            HStack {
+                Text("Date")
+                Spacer(minLength: 0)
+                DatePicker("Food log date", selection: $selectedLogDate,
+                           in: earliestLogDate...Date(), displayedComponents: .date)
+                    .datePickerStyle(.compact)
+                    .labelsHidden()
+                    .accessibilityLabel("Food log date")
+            }
             if !selectedDayIsToday {
-                HStack(spacing: 14) {
-                    Text("\(selectedLogs.reduce(0) { $0 + $1.kcal }) kcal")
-                        .accessibilityLabel("\(selectedLogs.reduce(0) { $0 + $1.kcal }) calories logged")
-                    HStack(spacing: 3) {
-                        WaterGlassIcon(filled: true)
-                            .scaleEffect(0.58)
-                            .frame(width: 17, height: 20)
-                        Text(selectedWaterGlasses)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 12) {
+                        selectedDayMetrics
+                        Spacer(minLength: 0)
+                        selectedDayFeedbackAction
                     }
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(selectedWaterMl == nil ? "Water unavailable" :
-                        "\(selectedWaterGlasses) glasses of water")
-                    HStack(spacing: 4) {
-                        Image(systemName: "leaf.fill").foregroundStyle(.green)
-                        Text("\(selectedFruitVegPortions)/5")
+                    VStack(alignment: .leading, spacing: 8) {
+                        selectedDayMetrics
+                        selectedDayFeedbackAction
                     }
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("\(selectedFruitVegPortions) of 5 fruit and vegetable portions")
                 }
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
                 if let selectedWaterError {
                     Text("Water from Apple Health: \(selectedWaterError)")
                         .font(.caption).foregroundStyle(.secondary)
@@ -595,6 +582,67 @@ struct HomeView: View {
                         .disabled(deletingLogID != nil)
                 }
             }
+        }
+    }
+
+    private var selectedDayMetrics: some View {
+        HStack(spacing: 12) {
+            Text("\(selectedLogs.reduce(0) { $0 + $1.kcal }) kcal")
+                .accessibilityLabel("\(selectedLogs.reduce(0) { $0 + $1.kcal }) calories logged")
+            HStack(spacing: 3) {
+                WaterGlassIcon(filled: true)
+                    .scaleEffect(0.58)
+                    .frame(width: 17, height: 20)
+                Text(selectedWaterGlasses)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(selectedWaterMl == nil ? "Water unavailable" :
+                "\(selectedWaterGlasses) glasses of water")
+            HStack(spacing: 4) {
+                Image(systemName: "leaf.fill").foregroundStyle(.green)
+                if selectedFruitVegPortions >= 5 {
+                    Image(systemName: "checkmark")
+                } else {
+                    Text("\(selectedFruitVegPortions)/5")
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(selectedFruitVegPortions) of 5 fruit and vegetable portions")
+        }
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    @ViewBuilder
+    private var selectedDayFeedbackAction: some View {
+        if let feedback = selectedFeedback {
+            Button {
+                showingSelectedFeedback = true
+            } label: {
+                Label(feedback.state == "ready" ? "Review" : "Review pending",
+                      systemImage: feedback.state == "ready" ? "text.bubble" : "clock")
+            }
+            .font(.subheadline)
+            .fixedSize(horizontal: true, vertical: false)
+            .accessibilityLabel(feedback.state == "ready" ? "Read daily review" : "Daily review pending")
+        } else if store.canRequestDailyFeedback(on: selectedLogDate) {
+            Button {
+                requestingSelectedFeedback = true
+                Task {
+                    defer { requestingSelectedFeedback = false }
+                    do { _ = try await store.requestDailyFeedback(on: selectedLogDate, using: health) }
+                    catch { errorText = error.localizedDescription }
+                }
+            } label: {
+                if requestingSelectedFeedback { ProgressView() }
+                else { Label("Request review", systemImage: "text.bubble") }
+            }
+            .font(.subheadline)
+            .fixedSize(horizontal: true, vertical: false)
+            .disabled(requestingSelectedFeedback)
+            .accessibilityLabel("Request a daily review for this day")
         }
     }
 

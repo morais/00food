@@ -53,7 +53,7 @@ struct QuickAddView: View {
                                 .submitLabel(.search)
                         }
                         if !matches.isEmpty {
-                            Section(query.isEmpty ? "Recently used · one tap to log" : "Matching foods · one tap to log") {
+                            Section(query.isEmpty ? "Most used · one tap to log" : "Matching foods · one tap to log") {
                                 ForEach(matches) { food in
                                     Button { log(food) } label: { foodRow(food) }
                                         .disabled(busy)
@@ -104,9 +104,22 @@ struct QuickAddView: View {
                             }
                             if loadingPhoto { ProgressView("Preparing photo…") }
                             Button { requestEstimate() } label: {
-                                Label(estimateButtonTitle, systemImage: "sparkles")
+                                HStack {
+                                    Spacer()
+                                    if busy { ProgressView().tint(.white) }
+                                    else { Image(systemName: "sparkles") }
+                                    Text(busy ? "Sending to your agent…" : "Ask my agent to estimate")
+                                        .fontWeight(.semibold)
+                                    Spacer()
+                                }
                             }
-                            .disabled(busy || loadingPhoto || (descriptionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && photoData == nil))
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.large)
+                            .disabled(!canRequestEstimate)
+                            if !canRequestEstimate && !busy && !loadingPhoto {
+                                Text("Add a description or photo to enable estimation.")
+                                    .font(.footnote).foregroundStyle(.secondary)
+                            }
                             Text("Your agent receives the description and attached photo together, then you review its estimate before logging.")
                                 .font(.footnote).foregroundStyle(.secondary)
                         }
@@ -164,11 +177,9 @@ struct QuickAddView: View {
         }
     }
 
-    private var estimateButtonTitle: String {
-        if photoData != nil && !descriptionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return "Estimate photo + description"
-        }
-        return "Ask my agent to estimate"
+    private var canRequestEstimate: Bool {
+        !busy && !loadingPhoto &&
+            (!descriptionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || photoData != nil)
     }
 
     private func foodRow(_ food: FoodItem) -> some View {

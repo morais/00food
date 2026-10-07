@@ -41,18 +41,36 @@ struct ActiveDayComparison: View {
                     }
                 }
                 .frame(height: 20)
-                HStack(spacing: 5) {
-                    Circle().strokeBorder(.secondary, lineWidth: 2).frame(width: 10, height: 10)
-                    Text("\(dayPercent)% active day")
-                    Spacer(minLength: 8)
-                    Circle().fill(foodColor).frame(width: 10, height: 10)
-                    Text("\(foodPercent)% allowance used")
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 5) {
+                        dayLabel(dayPercent)
+                        Spacer(minLength: 8)
+                        foodLabel(foodPercent, color: foodColor)
+                    }
+                    VStack(alignment: .leading, spacing: 5) {
+                        dayLabel(dayPercent)
+                        foodLabel(foodPercent, color: foodColor)
+                    }
                 }
                 .font(.system(size: paceLabelSize))
                 .foregroundStyle(.secondary)
             }
             .accessibilityElement(children: .combine)
             .accessibilityHint("The active-day marker uses the hours set in Settings. The food marker uses the base target plus Apple Health active calories earned so far.")
+        }
+    }
+
+    private func dayLabel(_ percent: Int) -> some View {
+        HStack(spacing: 5) {
+            Circle().strokeBorder(.secondary, lineWidth: 2).frame(width: 10, height: 10)
+            Text("\(percent)% active day")
+        }
+    }
+
+    private func foodLabel(_ percent: Int, color: Color) -> some View {
+        HStack(spacing: 5) {
+            Circle().fill(color).frame(width: 10, height: 10)
+            Text("\(percent)% allowance used")
         }
     }
 }

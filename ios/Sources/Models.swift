@@ -32,10 +32,11 @@ struct FoodProfile: Codable, Equatable {
 }
 
 enum DeficitLevel: Int, CaseIterable, Identifiable {
-    case gentle = 300, steady = 450, faster = 600
+    case maintain = 0, gentle = 300, steady = 450, faster = 600
     var id: Int { rawValue }
     var title: String {
         switch self {
+        case .maintain: "Maintain"
         case .gentle: "Gentle"
         case .steady: "Steady"
         case .faster: "Faster"

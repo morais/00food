@@ -12,6 +12,7 @@ struct ProfileView: View {
     @State private var birthYear = ""
     @State private var busy = false
     @State private var errorText: String?
+    @State private var showingManualWeight = false
 
     var body: some View {
         NavigationStack {
@@ -46,19 +47,38 @@ struct ProfileView: View {
                 } header: { Text("Your details") } footer: {
                     Text("Birth year improves the fallback resting estimate. Leave it empty to use age 35 as a reference.")
                 }
-                Section("Daily target") {
-                    Picker("Calorie gap", selection: $deficitKcal) {
-                        ForEach(DeficitLevel.allCases) { level in
-                            Text("\(level.title) · \(level.rawValue) kcal/day").tag(level.rawValue)
-                        }
-                    }
-                    Text("Resting estimate \(health.effectiveRestingKcal(for: preview)) − calorie gap = \(preview.target(for: deficitKcal, resting: health.effectiveRestingKcal(for: preview))) kcal/day, plus Apple Health active energy.")
-                        .font(.subheadline).foregroundStyle(.secondary)
-                    Text("The minimum food target is 1,200 kcal. The actual gap may be smaller at that floor.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
                 Section {
+                    HStack {
+                        Text("Resting energy · Health")
+                        Spacer()
+                        Text(health.restingAverageKcal.map { "\($0) kcal/day" } ?? "Not enough data")
+                            .foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        Text("Resting estimate · details")
+                        Spacer()
+                        Text("\(preview.restingKcal) kcal/day").foregroundStyle(.secondary)
+                    }
+                    if let average = health.restingAverageKcal {
+                        let difference = average - preview.restingKcal
+                        Text("Your food target uses the Health average: \(difference >= 0 ? "+" : "")\(difference) kcal/day compared with the estimate from your details. Based on \(health.restingDaysUsed) of the last 7 completed days.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    } else {
+                        Text("Your food target uses the estimate from your details until at least 5 of the last 7 completed days have readable resting energy (currently \(health.restingDaysUsed)).")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        Text("Active energy today")
+                        Spacer()
+                        Text("\(health.activeKcal) kcal").foregroundStyle(.secondary)
+                    }
                     if let weight = health.latestWeightKg, let date = health.latestWeightDate {
+                        HStack {
+                            Text("Latest recorded weight")
+                            Spacer()
+                            Text("\(weight.formatted(.number.precision(.fractionLength(1)))) kg")
+                                .foregroundStyle(.secondary)
+                        }
                         Button("Use latest weight: \(weight.formatted(.number.precision(.fractionLength(1)))) kg") {
                             if (25...400).contains(weight) { weightKg = weight }
                             else { errorText = "The Health weight is outside the supported range." }
@@ -66,19 +86,35 @@ struct ProfileView: View {
                         Text("Recorded \(date.formatted(date: .abbreviated, time: .omitted)). You can edit the weight above before continuing.")
                             .font(.footnote).foregroundStyle(.secondary)
                     } else {
-                        Button(health.weightRequested ? "Refresh Apple Health weight" : "Connect Apple Health and get weight") {
-                            Task { if health.weightRequested { await health.refresh() } else { await health.connect() } }
+                        if !health.weightRequested {
+                            Button("Connect Apple Health and get weight") {
+                                Task { await health.connect() }
+                            }
                         }
                         if health.weightRequested {
                             Text("No readable weight entry was found. You can enter your weight above.")
                                 .font(.footnote).foregroundStyle(.secondary)
                         }
                     }
+                    Button("Log weight manually") { showingManualWeight = true }
+                    if let fat = health.latestBodyFatPercent {
+                        HStack {
+                            Text("Latest body fat")
+                            Spacer()
+                            Text("\(fat.formatted(.number.precision(.fractionLength(1))))%")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    HStack {
+                        Text("Water today")
+                        Spacer()
+                        Text("\(health.waterMlToday.formatted()) mL").foregroundStyle(.secondary)
+                    }
                     if let error = health.errorMessage {
                         Text(error).font(.footnote).foregroundStyle(.red)
                     }
                 } header: { Text("Apple Health") } footer: {
-                    Text("00Food reads weight, body fat, and active and resting energy. A weight you choose to use is saved in your 00Food profile. Health history stays on this device unless you request Daily feedback.")
+                    Text("00Food reads weight, body fat, water, and active and resting energy. Logging weight manually also updates your 00Food profile; water entries stay in Apple Health. Health history stays on this device unless you request Daily feedback.")
                 }
                 if isOnboarding {
                     Section {
@@ -110,13 +146,16 @@ struct ProfileView: View {
                     heightCm = profile.heightCm
                     weightKg = profile.weightKg
                     estimateProfile = profile.estimateProfile
-                    deficitKcal = DeficitLevel.nearest(to: profile.deficitKcal).rawValue
+                    deficitKcal = profile.deficitKcal
                     birthYear = profile.birthYear.map(String.init) ?? ""
                 }
             }
             .task {
                 health.setHistoryStart(store.accountStartedAt)
                 if health.requested { await health.refresh() }
+            }
+            .sheet(isPresented: $showingManualWeight) {
+                ManualWeightView { weightKg = $0 }
             }
             .alert("Could not save details", isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
                 Button("OK", role: .cancel) {}

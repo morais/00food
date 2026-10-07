@@ -23,4 +23,12 @@ final class RestingEnergyTests: XCTestCase {
         XCTAssertEqual(profile.target(for: 600, resting: summary.averageKcal), 1200)
         XCTAssertEqual(profile.effectiveDeficit(for: 600, resting: 1600), 400)
     }
+
+    func testMaintainPlanHasNoCalorieGap() {
+        let profile = FoodProfile(heightCm: 175, weightKg: 80, estimateProfile: "male",
+                                  deficitKcal: DeficitLevel.maintain.rawValue, birthYear: 1980)
+        XCTAssertEqual(DeficitLevel.maintain.title, "Maintain")
+        XCTAssertEqual(profile.target(for: profile.deficitKcal, resting: 1800), 1800)
+        XCTAssertEqual(profile.effectiveDeficit(for: profile.deficitKcal, resting: 1800), 0)
+    }
 }

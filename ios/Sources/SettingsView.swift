@@ -8,7 +8,7 @@ struct SettingsView: View {
     @AppStorage("activeDayStartMinutes") private var activeDayStartMinutes = 7 * 60
     @AppStorage("activeDayEndMinutes") private var activeDayEndMinutes = 23 * 60
     @State private var showingProfile = false
-    @State private var showingManualWeight = false
+    @State private var showingDeveloper = false
     @State private var showingDelete = false
     @State private var confirmingDelete = false
     @State private var errorText: String?
@@ -18,7 +18,7 @@ struct SettingsView: View {
             Form {
                 Section("Account") {
                     if let email = store.accountEmail { Text(email).foregroundStyle(.secondary) }
-                    Button("Your details & target") { showingProfile = true }
+                    Button("Your details & Health") { showingProfile = true }
                     Button("Sign out") {
                         Task {
                             do { try await store.signOut(); dismiss() }
@@ -27,88 +27,10 @@ struct SettingsView: View {
                     }
                     Button("Delete account and food data", role: .destructive) { confirmingDelete = true }
                 }
-                Section("Apple Health") {
-                    if let profile = store.profile {
-                        HStack {
-                            Text("Resting energy · Health")
-                            Spacer()
-                            Text(health.restingAverageKcal.map { "\($0) kcal/day" } ?? "Not enough data")
-                                .foregroundStyle(.secondary)
-                        }
-                        HStack {
-                            Text("Resting estimate · details")
-                            Spacer()
-                            Text("\(profile.restingKcal) kcal/day").foregroundStyle(.secondary)
-                        }
-                        if let average = health.restingAverageKcal {
-                            let difference = average - profile.restingKcal
-                            Text("Your food target uses the Health average: \(difference >= 0 ? "+" : "")\(difference) kcal/day compared with the estimate from your details. Based on \(health.restingDaysUsed) of the last 7 completed days.")
-                                .font(.footnote).foregroundStyle(.secondary)
-                        } else {
-                            Text("Your food target uses the estimate from your details until at least 5 of the last 7 completed days have readable resting energy (currently \(health.restingDaysUsed)).")
-                                .font(.footnote).foregroundStyle(.secondary)
-                        }
-                    }
-                    HStack {
-                        Text("Active energy today")
-                        Spacer()
-                        Text("\(health.activeKcal) kcal").foregroundStyle(.secondary)
-                    }
-                    if let weight = health.latestWeightKg {
-                        HStack {
-                            Text("Latest recorded weight")
-                            Spacer()
-                            Text("\(weight.formatted(.number.precision(.fractionLength(1)))) kg")
-                                .foregroundStyle(.secondary)
-                        }
-                        if let profile = store.profile, abs(profile.weightKg - weight) > 0.05 {
-                            Text("Open Your details & target to use this weight in your daily target.")
-                                .font(.footnote).foregroundStyle(.secondary)
-                        }
-                    }
-                    Button("Log weight manually") { showingManualWeight = true }
-                    if let fat = health.latestBodyFatPercent {
-                        HStack {
-                            Text("Latest body fat")
-                            Spacer()
-                            Text("\(fat.formatted(.number.precision(.fractionLength(1))))%")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    HStack {
-                        Text("Water today")
-                        Spacer()
-                        Text("\(health.waterMlToday.formatted()) mL").foregroundStyle(.secondary)
-                    }
-                    Button(health.bodyFatRequested ? "Refresh Health data" : "Connect Apple Health") {
-                        Task {
-                            if health.bodyFatRequested { await health.refresh() }
-                            else { await health.connect() }
-                        }
-                    }
-                    if let accountId = store.accountId {
-                        if health.dietaryExportEnabled && health.dietaryExportAuthorized {
-                            Label("Dietary Energy export is on", systemImage: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                        } else {
-                            Button("Write new food logs to Apple Health") {
-                                Task { await health.enableDietaryExport(accountId: accountId, logs: store.logs) }
-                            }
-                        }
-                        Text("After you enable export, new 00Food logs are written as Dietary Energy. Deleting a log removes its matching Health entry. Earlier logs are not exported.")
-                            .font(.footnote).foregroundStyle(.secondary)
-                    }
-                    if let error = health.dietaryErrorMessage {
-                        Text(error).font(.footnote).foregroundStyle(.red)
-                    }
-                    if let error = health.errorMessage { Text(error).font(.footnote).foregroundStyle(.red) }
-                    Text("Health history stays on this device unless you request Daily feedback. Logging weight manually also updates your 00Food profile weight; water entries stay in Apple Health.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
                 Section("Active day") {
                     DatePicker("Start", selection: startTime, displayedComponents: .hourAndMinute)
                     DatePicker("End", selection: endTime, displayedComponents: .hourAndMinute)
-                    Text("Sets the time marker on Today's rough balance. The food marker uses your current allowance, including Health active energy so far.")
+                    Text("Sets the active-day marker on the home screen. The food marker uses your current allowance, including Health active energy so far.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("AI agent connection") {
@@ -138,16 +60,25 @@ struct SettingsView: View {
                         get: { store.dailyFeedbackEnabled },
                         set: { store.setDailyFeedbackEnabled($0) }
                     ))
-                    Text("When this is on, the next time you open 00Food after a day ends it sends that day and up to six earlier days to your private 00Food account. This includes logged foods and calories, plus available Health totals for water, active and resting energy, weight, and body fat. Your connected agent can read these summaries and write feedback. Turning this off stops automatic requests; you can still request missing days manually. Earlier reviews remain in your account.")
+                    Text("When this is on, the next time you open 00Food after a day ends it sends that day and up to six earlier days to your private 00Food account. This includes logged foods and calories, plus available Health totals for water, active and resting energy, weight, and body fat. Your connected agent can read these summaries and write feedback. Turning this off stops automatic requests; you can still request past days from the food log.")
                         .font(.footnote).foregroundStyle(.secondary)
-                    Text("Rescan the MCP server, then ask your agent to list pending daily feedback. Approve the additional daily permissions when prompted and subscribe to day.feedback_requested. Reconnecting alone may keep the earlier food-only permissions.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                }
+                Section {
+                    Button { showingDeveloper = true } label: {
+                        HStack {
+                            Text("Version")
+                            Spacer()
+                            Text("\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"))")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             .navigationTitle("Settings")
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
             .sheet(isPresented: $showingProfile) { ProfileView() }
-            .sheet(isPresented: $showingManualWeight) { ManualWeightView() }
+            .sheet(isPresented: $showingDeveloper) { DeveloperView() }
             .sheet(isPresented: $showingDelete) { DeleteAccountView() }
             .confirmationDialog("Delete your account and all food data?", isPresented: $confirmingDelete) {
                 Button("Continue to Apple verification", role: .destructive) { showingDelete = true }
@@ -194,13 +125,57 @@ struct SettingsView: View {
     }
 }
 
-private struct ManualWeightView: View {
+private struct DeveloperView: View {
+    @Environment(FoodStore.self) private var store
+    @Environment(HealthEnergy.self) private var health
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Apple Health") {
+                    Button("Refresh Health data") {
+                        Task {
+                            if health.requested { await health.refresh() }
+                            else { await health.connect() }
+                        }
+                    }
+                    if let error = health.errorMessage {
+                        Text(error).font(.footnote).foregroundStyle(.red)
+                    }
+                }
+                Section("Dietary Energy") {
+                    if let accountId = store.accountId {
+                        if health.dietaryExportEnabled && health.dietaryExportAuthorized {
+                            Label("New food logs are written to Apple Health", systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                        } else {
+                            Button("Write new food logs to Apple Health") {
+                                Task { await health.enableDietaryExport(accountId: accountId, logs: store.logs) }
+                            }
+                        }
+                        Text("After you enable export, new 00Food logs are written as Dietary Energy. Deleting a log removes its matching Health entry. Earlier logs are not exported.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                    if let error = health.dietaryErrorMessage {
+                        Text(error).font(.footnote).foregroundStyle(.red)
+                    }
+                }
+            }
+            .navigationTitle("Developer")
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
+        }
+    }
+}
+
+struct ManualWeightView: View {
     @Environment(FoodStore.self) private var store
     @Environment(HealthEnergy.self) private var health
     @Environment(\.dismiss) private var dismiss
     @State private var weightKg = 70.0
     @State private var busy = false
     @State private var errorText: String?
+    var onLogged: (Double) -> Void = { _ in }
 
     var body: some View {
         NavigationStack {
@@ -243,6 +218,7 @@ private struct ManualWeightView: View {
                     profile.weightKg = weightKg
                     try await store.saveProfile(profile)
                 }
+                onLogged(weightKg)
                 dismiss()
             } catch { errorText = error.localizedDescription }
         }

@@ -184,7 +184,7 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
       env.DB.prepare("SELECT * FROM foods WHERE tenant_id = ? ORDER BY use_count DESC, last_used_at DESC, created_at DESC LIMIT 1000").bind(tenantId).all<FoodRow>(),
       env.DB.prepare("SELECT * FROM food_logs WHERE tenant_id = ? AND local_date >= date('now','-90 days') ORDER BY logged_at DESC LIMIT 5000").bind(tenantId).all<LogRow>(),
       env.DB.prepare("SELECT * FROM pending_estimations WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 100").bind(tenantId).all<EstimationRow>(),
-      env.DB.prepare("SELECT * FROM daily_feedback_requests WHERE tenant_id = ? ORDER BY local_date DESC LIMIT 30")
+      env.DB.prepare("SELECT * FROM daily_feedback_requests WHERE tenant_id = ? ORDER BY local_date DESC LIMIT 90")
         .bind(tenantId).all<DailyFeedbackRow>(),
     ]);
     return json({ startedAt: tenant?.created_at ?? null, profile: profile ? profileView(profile) : null,
@@ -193,7 +193,7 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
       dailyFeedback: dailyFeedback.results.map(dailyFeedbackView), serverTime: new Date().toISOString() });
   }
   if (path === "/v1/daily-feedback" && method === "GET") {
-    const rows = await env.DB.prepare("SELECT * FROM daily_feedback_requests WHERE tenant_id = ? ORDER BY local_date DESC LIMIT 30")
+    const rows = await env.DB.prepare("SELECT * FROM daily_feedback_requests WHERE tenant_id = ? ORDER BY local_date DESC LIMIT 90")
       .bind(tenantId).all<DailyFeedbackRow>();
     return json({ requests: rows.results.map(dailyFeedbackView) });
   }
@@ -202,7 +202,7 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     let today: string;
     try { today = localToday(input.timeZone); }
     catch { throw new APIError(400, "Invalid time zone"); }
-    if (input.localDate >= today || input.localDate < dateBefore(today, 30) || !validHealthWindow(input)) {
+    if (input.localDate >= today || input.localDate < dateBefore(today, 90) || !validHealthWindow(input)) {
       throw new APIError(400, "Feedback must be for a completed day with at most seven matching Health days");
     }
     const existing = await env.DB.prepare("SELECT * FROM daily_feedback_requests WHERE tenant_id = ? AND local_date = ?")
