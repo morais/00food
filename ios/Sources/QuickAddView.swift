@@ -116,10 +116,6 @@ struct QuickAddView: View {
                             .buttonStyle(.borderedProminent)
                             .controlSize(.large)
                             .disabled(!canRequestEstimate)
-                            if !canRequestEstimate && !busy && !loadingPhoto {
-                                Text("Add a description or photo to enable estimation.")
-                                    .font(.footnote).foregroundStyle(.secondary)
-                            }
                             Text("Your agent receives the description and attached photo together, then you review its estimate before logging.")
                                 .font(.footnote).foregroundStyle(.secondary)
                         }

@@ -99,11 +99,9 @@ struct ProfileView: View {
                     DatePicker("Start", selection: startTime, displayedComponents: .hourAndMinute)
                     DatePicker("End", selection: endTime, displayedComponents: .hourAndMinute)
                 } header: {
-                    HStack {
-                        Text("Active day")
-                        Spacer()
-                        InfoDisclosure(title: "Active day", message: "Sets the active-day marker on the home screen. The food marker uses your current allowance, including Health active energy so far.")
-                    }
+                    Text("Active day")
+                } footer: {
+                    Text("Sets the active-day marker on the home screen. The food marker uses your current allowance, including Health active energy so far.")
                 }
                 if isOnboarding {
                     Section {
@@ -115,10 +113,6 @@ struct ProfileView: View {
             .navigationTitle(isOnboarding ? "Set up 00Food" : "Your details")
             .toolbar {
                 if !isOnboarding {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button("Cancel") { dismiss() }
-                            .disabled(busy)
-                    }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("Done") { save() }
                             .fontWeight(.semibold)

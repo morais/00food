@@ -73,10 +73,6 @@ struct ProgressPlansView: View {
                         calorieHistoryCard(profile: profile)
                     }
                     fatCard
-                    HStack {
-                        Spacer()
-                        InfoDisclosure(title: "About these charts", message: "Dotted lines are illustrations, not predictions.\n\nBMI is an adult screening measure, not a personal diagnosis or target. A fixed calorie gap does not produce a fixed rate of weight loss. Your body adapts, and daily weight and body-fat measurements vary. Use the charts to compare directions, then adjust from your recorded trend.")
-                    }
                 }
                 .padding(20)
             }
@@ -196,6 +192,7 @@ struct ProgressPlansView: View {
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(title).font(.title3.bold())
+                InfoDisclosure(title: "About these charts", message: "Dotted lines are illustrations, not predictions.\n\nBMI is an adult screening measure, not a personal diagnosis or target. A fixed calorie gap does not produce a fixed rate of weight loss. Your body adapts, and daily weight and body-fat measurements vary. Use the charts to compare directions, then adjust from your recorded trend.")
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
                     if isCurrent { Text("Current plan").font(.caption).foregroundStyle(.tint) }
@@ -272,7 +269,7 @@ struct ProgressPlansView: View {
             }
             .font(.caption)
             if let bmiEntryDate {
-                Text("Estimated entry into the adult BMI range: \(bmiEntryDate.formatted(date: .abbreviated, time: .omitted))")
+                Text("Estimated entry into the BMI range: \(bmiEntryDate.formatted(date: .abbreviated, time: .omitted))")
                     .font(.subheadline.weight(.medium))
             }
             if !isCurrent {
