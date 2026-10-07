@@ -1,7 +1,7 @@
 import type { Env } from "./api";
 
 export type CredentialKind = "app" | "mcp";
-export type Scope = "food:read" | "food:write";
+export type Scope = "food:read" | "food:write" | "daily:read" | "daily:write";
 export interface Principal {
   tenantId: string;
   kind: CredentialKind;
@@ -79,7 +79,8 @@ export async function authenticate(req: Request, env: Env, kind: CredentialKind)
   const row = await env.DB.prepare("SELECT * FROM credentials WHERE token_hash = ?")
     .bind(hash).first<CredentialRow>();
   if (!row || row.kind !== kind || row.audience !== audience(env, kind) || row.revoked_at || row.expires_at <= new Date().toISOString()) return null;
-  const scopes = row.scopes.split(" ").filter((value): value is Scope => value === "food:read" || value === "food:write");
+  const scopes = row.scopes.split(" ").filter((value): value is Scope =>
+    value === "food:read" || value === "food:write" || value === "daily:read" || value === "daily:write");
   // Agents make many calls in a row; recording each one would be a D1 write
   // per request. An hourly resolution is plenty for the connections screen.
   if (kind === "mcp" && lastUseIsStale(row.last_used_at)) {

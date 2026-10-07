@@ -1,7 +1,9 @@
 import { z } from "zod";
 import { tenantForPrincipal, type Principal } from "./auth";
-import { notifyFoodEvent, recordFoodEvent } from "./foodEvents";
-import { webhookDeliveryInsert } from "./mcpWebhookEvents";
+import { notifyDailyFeedbackEvent, notifyFoodEvent, recordFoodEvent } from "./foodEvents";
+import { dailyFeedbackInput, dailyFeedbackView, dateBefore, localToday, validHealthWindow,
+  type DailyFeedbackRow } from "./dailyFeedback";
+import { dailyFeedbackDeliveryInsert, webhookDeliveryInsert } from "./mcpWebhookEvents";
 
 export interface Env {
   DB: D1Database;
@@ -176,16 +178,49 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     return json({ id: tenant?.id, email: tenant?.email });
   }
   if (path === "/v1/snapshot" && method === "GET") {
-    const [tenant, profile, foods, logs, estimations] = await Promise.all([
+    const [tenant, profile, foods, logs, estimations, dailyFeedback] = await Promise.all([
       env.DB.prepare("SELECT created_at FROM tenants WHERE id = ?").bind(tenantId).first<{ created_at: string }>(),
       env.DB.prepare("SELECT * FROM profiles WHERE tenant_id = ?").bind(tenantId).first<ProfileRow>(),
       env.DB.prepare("SELECT * FROM foods WHERE tenant_id = ? ORDER BY use_count DESC, last_used_at DESC, created_at DESC LIMIT 1000").bind(tenantId).all<FoodRow>(),
       env.DB.prepare("SELECT * FROM food_logs WHERE tenant_id = ? AND local_date >= date('now','-90 days') ORDER BY logged_at DESC LIMIT 5000").bind(tenantId).all<LogRow>(),
       env.DB.prepare("SELECT * FROM pending_estimations WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 100").bind(tenantId).all<EstimationRow>(),
+      env.DB.prepare("SELECT * FROM daily_feedback_requests WHERE tenant_id = ? ORDER BY local_date DESC LIMIT 30")
+        .bind(tenantId).all<DailyFeedbackRow>(),
     ]);
     return json({ startedAt: tenant?.created_at ?? null, profile: profile ? profileView(profile) : null,
       foods: foods.results.map(foodView), logs: logs.results.map(logView),
-      estimations: estimations.results.map(estimationView), serverTime: new Date().toISOString() });
+      estimations: estimations.results.map(estimationView),
+      dailyFeedback: dailyFeedback.results.map(dailyFeedbackView), serverTime: new Date().toISOString() });
+  }
+  if (path === "/v1/daily-feedback" && method === "GET") {
+    const rows = await env.DB.prepare("SELECT * FROM daily_feedback_requests WHERE tenant_id = ? ORDER BY local_date DESC LIMIT 30")
+      .bind(tenantId).all<DailyFeedbackRow>();
+    return json({ requests: rows.results.map(dailyFeedbackView) });
+  }
+  if (path === "/v1/daily-feedback" && method === "POST") {
+    const input = dailyFeedbackInput.parse(await body(req));
+    let today: string;
+    try { today = localToday(input.timeZone); }
+    catch { throw new APIError(400, "Invalid time zone"); }
+    if (input.localDate >= today || input.localDate < dateBefore(today, 30) || !validHealthWindow(input)) {
+      throw new APIError(400, "Feedback must be for a completed day with at most seven matching Health days");
+    }
+    const existing = await env.DB.prepare("SELECT * FROM daily_feedback_requests WHERE tenant_id = ? AND local_date = ?")
+      .bind(tenantId, input.localDate).first<DailyFeedbackRow>();
+    if (existing) return json({ request: dailyFeedbackView(existing) }, 201);
+    const now = new Date().toISOString();
+    await env.DB.batch([
+      env.DB.prepare(`INSERT OR IGNORE INTO daily_feedback_requests
+        (id, tenant_id, local_date, time_zone, health_json, state, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`).bind(input.id, tenantId, input.localDate,
+          input.timeZone, JSON.stringify(input.healthDays), now, now),
+      dailyFeedbackDeliveryInsert(env, tenantId, input.id),
+    ]);
+    const row = await env.DB.prepare("SELECT * FROM daily_feedback_requests WHERE tenant_id = ? AND local_date = ?")
+      .bind(tenantId, input.localDate).first<DailyFeedbackRow>();
+    if (!row) throw new APIError(409, "Feedback request ID is already in use");
+    if (row.id === input.id) await notifyDailyFeedbackEvent(env, tenantId);
+    return json({ request: dailyFeedbackView(row) }, 201);
   }
   if (path === "/v1/profile" && method === "PUT") {
     const input = profileInput.parse(await body(req));

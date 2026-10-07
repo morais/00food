@@ -11,6 +11,7 @@ enum OfflineFoodOperation: Codable {
     case estimate(PendingEstimation, Data?)
     case clarifyEstimate(String, String, String)
     case deleteEstimate(String)
+    case requestDailyFeedback(DailyFeedbackUpload)
 }
 
 struct OfflineFoodState: Codable {

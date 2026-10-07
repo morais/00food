@@ -142,6 +142,32 @@ struct FoodSnapshot: Codable {
     var foods: [FoodItem]
     var logs: [FoodLog]
     var estimations: [PendingEstimation]
+    var dailyFeedback: [DailyFeedbackRequest]? = nil
+}
+
+struct DailyHealthDay: Codable {
+    var localDate: String
+    var activeKcal: Int?
+    var restingKcal: Int?
+    var waterMl: Int?
+    var weightKg: Double?
+    var bodyFatPercent: Double?
+}
+
+struct DailyFeedbackRequest: Codable, Identifiable, Equatable {
+    var id: String
+    var localDate: String
+    var state: String
+    var feedback: String?
+    var createdAt: String
+    var updatedAt: String
+}
+
+struct DailyFeedbackUpload: Codable {
+    var id: String
+    var localDate: String
+    var timeZone: String
+    var healthDays: [DailyHealthDay]
 }
 
 enum FoodDates {
@@ -152,6 +178,12 @@ enum FoodDates {
     static func localDate(for date: Date) -> String {
         let p = Calendar.current.dateComponents([.year, .month, .day], from: date)
         return String(format: "%04d-%02d-%02d", p.year ?? 0, p.month ?? 0, p.day ?? 0)
+    }
+
+    static func parseLocalDate(_ value: String) -> Date? {
+        let parts = value.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        return Calendar.current.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
     }
 
     static func parseTimestamp(_ value: String?) -> Date? {

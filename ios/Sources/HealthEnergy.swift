@@ -51,6 +51,7 @@ private struct DietaryExportState: Codable {
     private var dietaryAccountId: String?
     private var dietarySyncing = false
     private var queuedDietaryLogs: [FoodLog]?
+    private var waterDay = FoodDates.today()
     private let store = HKHealthStore()
     private let energy = HKObjectType.quantityType(forIdentifier: .activeEnergyBurned)!
     private let restingEnergy = HKObjectType.quantityType(forIdentifier: .basalEnergyBurned)!
@@ -107,6 +108,7 @@ private struct DietaryExportState: Codable {
     }
 
     func refresh() async {
+        resetWaterForNewDay()
         guard available else { return }
         if !requested {
             if weightRequested { try? await refreshWeight() }
@@ -124,13 +126,19 @@ private struct DietaryExportState: Codable {
         do {
             let start = Calendar.current.startOfDay(for: Date())
             let today = HKQuery.predicateForSamples(withStart: start, end: Date())
-            let active = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Double, Error>) in
-                let query = HKStatisticsQuery(quantityType: energy, quantitySamplePredicate: today,
-                                              options: .cumulativeSum) { _, statistics, error in
-                    if let error { continuation.resume(throwing: error) }
-                    else { continuation.resume(returning: statistics?.sumQuantity()?.doubleValue(for: .kilocalorie()) ?? 0) }
+            let active: Double
+            do {
+                active = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Double, Error>) in
+                    let query = HKStatisticsQuery(quantityType: energy, quantitySamplePredicate: today,
+                                                  options: .cumulativeSum) { _, statistics, error in
+                        if let error { continuation.resume(throwing: error) }
+                        else { continuation.resume(returning: statistics?.sumQuantity()?.doubleValue(for: .kilocalorie()) ?? 0) }
+                    }
+                    store.execute(query)
                 }
-                store.execute(query)
+            } catch {
+                if Self.isNoData(error) { active = 0 }
+                else { throw error }
             }
             activeKcal = max(0, Int(active.rounded()))
             let sevenDaysAgo = Calendar.current.date(byAdding: .day, value: -7, to: start) ?? start
@@ -171,6 +179,7 @@ private struct DietaryExportState: Codable {
     }
 
     func refreshWater() async {
+        resetWaterForNewDay()
         guard waterRequested && available else { return }
         let start = Calendar.current.startOfDay(for: Date())
         let predicate = HKQuery.predicateForSamples(withStart: start, end: Date(), options: [.strictStartDate])
@@ -187,7 +196,57 @@ private struct DietaryExportState: Codable {
             }
             waterMlToday = max(0, Int(milliliters.rounded()))
             waterErrorMessage = nil
-        } catch { waterErrorMessage = error.localizedDescription }
+        } catch {
+            if Self.isNoData(error) {
+                waterMlToday = 0
+                waterErrorMessage = nil
+            } else {
+                waterErrorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func resetWaterForNewDay() {
+        let today = FoodDates.today()
+        guard waterDay != today else { return }
+        waterDay = today
+        waterMlToday = 0
+        waterErrorMessage = nil
+    }
+
+    private static func isNoData(_ error: Error) -> Bool {
+        let healthError = error as NSError
+        return healthError.domain == HKErrorDomain && healthError.code == HKError.Code.errorNoData.rawValue
+    }
+
+    func dailyFeedbackHealth(through localDate: String) async -> [DailyHealthDay] {
+        guard available else { return [] }
+        let parts = localDate.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3,
+              let day = Calendar.current.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])),
+              let start = Calendar.current.date(byAdding: .day, value: -6, to: day),
+              let end = Calendar.current.date(byAdding: .day, value: 1, to: day) else { return [] }
+        func values(_ points: [HealthMeasurePoint]) -> [String: Double] {
+            Dictionary(points.map { (FoodDates.localDate(for: $0.date), $0.value) },
+                       uniquingKeysWith: { _, latest in latest })
+        }
+        let active = requested ? values((try? await dailyCumulativeEnergy(of: energy, from: start, to: end)) ?? []) : [:]
+        let resting = restingRequested ? values((try? await dailyCumulativeEnergy(of: restingEnergy, from: start, to: end)) ?? []) : [:]
+        let waterValues = waterRequested ? values((try? await dailyCumulative(of: water, from: start, to: end,
+                                              unit: .literUnit(with: .milli))) ?? []) : [:]
+        let weights = weightRequested ? values((try? await dailyHistory(of: bodyMass, from: start,
+                                               to: end, unit: .gramUnit(with: .kilo), scale: 1)) ?? []) : [:]
+        let fat = bodyFatRequested ? values((try? await dailyHistory(of: bodyFat, from: start,
+                                           to: end, unit: .percent(), scale: 100)) ?? []) : [:]
+        return (0..<7).compactMap { offset in
+            guard let date = Calendar.current.date(byAdding: .day, value: offset, to: start) else { return nil }
+            let key = FoodDates.localDate(for: date)
+            return DailyHealthDay(localDate: key,
+                                  activeKcal: active[key].map { max(0, Int($0.rounded())) },
+                                  restingKcal: resting[key].map { max(0, Int($0.rounded())) },
+                                  waterMl: waterValues[key].map { max(0, Int($0.rounded())) },
+                                  weightKg: weights[key], bodyFatPercent: fat[key])
+        }
     }
 
     func logWaterCup() async {
@@ -337,6 +396,11 @@ private struct DietaryExportState: Codable {
 
     private func dailyCumulativeEnergy(of type: HKQuantityType, from start: Date,
                                        to end: Date) async throws -> [HealthMeasurePoint] {
+        try await dailyCumulative(of: type, from: start, to: end, unit: .kilocalorie())
+    }
+
+    private func dailyCumulative(of type: HKQuantityType, from start: Date,
+                                 to end: Date, unit: HKUnit) async throws -> [HealthMeasurePoint] {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[HealthMeasurePoint], Error>) in
             let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: [.strictStartDate])
             let query = HKStatisticsCollectionQuery(quantityType: type, quantitySamplePredicate: predicate,
@@ -348,7 +412,7 @@ private struct DietaryExportState: Codable {
                     let points = collection?.statistics().compactMap { day -> HealthMeasurePoint? in
                         guard let quantity = day.sumQuantity() else { return nil }
                         return HealthMeasurePoint(date: day.startDate,
-                                                  value: quantity.doubleValue(for: .kilocalorie()))
+                                                  value: quantity.doubleValue(for: unit))
                     } ?? []
                     continuation.resume(returning: points)
                 }
@@ -390,10 +454,10 @@ private struct DietaryExportState: Codable {
         }
     }
 
-    private func dailyHistory(of type: HKQuantityType, from start: Date,
+    private func dailyHistory(of type: HKQuantityType, from start: Date, to end: Date = Date(),
                               unit: HKUnit, scale: Double) async throws -> [HealthMeasurePoint] {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[HealthMeasurePoint], Error>) in
-            let predicate = HKQuery.predicateForSamples(withStart: start, end: Date(), options: [.strictStartDate])
+            let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: [.strictStartDate])
             let query = HKStatisticsCollectionQuery(quantityType: type, quantitySamplePredicate: predicate,
                                                     options: .discreteAverage, anchorDate: start,
                                                     intervalComponents: DateComponents(day: 1))

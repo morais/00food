@@ -6,7 +6,7 @@ import {
 } from "./auth";
 import { appName, json, type Env } from "./api";
 
-const scopes: Scope[] = ["food:read", "food:write"];
+const scopes: Scope[] = ["food:read", "food:write", "daily:read", "daily:write"];
 const flowLifetimeMs = 10 * 60000;
 const codeLifetimeMs = 5 * 60000;
 
@@ -371,7 +371,11 @@ export async function showConsent(req: Request, env: Env): Promise<Response> {
     : `<p><span class="status warning">Unverified client</span> This name was supplied by the client. Check the callback address before approving.</p>`;
   return html(env, `<h1>Connect ${htmlEscape(clientName)} to ${htmlEscape(appName(env))}?</h1>
     ${trust}
-    <p>This client can read your saved foods, pending descriptions, and submitted food photos${flow.scopes.includes("food:write") ? ", and propose calorie estimates" : ""}. You review each proposal before it is saved or logged. Apple Health data is never shared.</p>
+    <p>This client can read your saved foods, pending descriptions, and submitted food photos${flow.scopes.includes("food:write") ? ", and propose calorie estimates" : ""}. You review each food proposal before it is saved or logged.</p>
+    <p>${flow.scopes.includes("daily:read")
+      ? "If you enable Daily feedback in the app, this client can read seven-day summaries of your food logs and Apple Health water, active and resting calories, weight, and body fat. These summaries are saved to your 00Food account."
+      : "Apple Health data is not shared with this client."}
+      ${flow.scopes.includes("daily:write") ? "This client can also write daily feedback for you to read in 00Food." : ""}</p>
     <p class="detail"><span>Redirects to</span><code>${htmlEscape(flow.redirect_uri)}</code></p>
     <form method="post" action="/oauth/consent">
       <input type="hidden" name="flow" value="${htmlEscape(flowId)}">

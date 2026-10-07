@@ -22,6 +22,7 @@ private struct ProfileResponse: Decodable { var profile: FoodProfile }
 private struct EstimationResponse: Decodable { var estimation: PendingEstimation }
 private struct OKResponse: Decodable { var ok: Bool? }
 private struct AcceptedResponse: Decodable { var foodId: String; var logId: String }
+private struct DailyFeedbackResponse: Decodable { var request: DailyFeedbackRequest }
 
 struct MCPConnection: Decodable, Identifiable {
     var id: String
@@ -37,6 +38,8 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     var foods: [FoodItem] = []
     var logs: [FoodLog] = []
     var estimations: [PendingEstimation] = []
+    var dailyFeedback: [DailyFeedbackRequest] = []
+    var dailyFeedbackEnabled = false
     var connections: [MCPConnection] = []
     var accountEmail: String?
     var accountId: String?
@@ -80,6 +83,29 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     var todaysLogs: [FoodLog] { logs(on: Date()) }
     var consumedToday: Int { todaysLogs.reduce(0) { $0 + $1.kcal } }
     var fruitVegToday: Int { min(5, todaysLogs.reduce(0) { $0 + $1.countedFruitVegPortions }) }
+    var pendingDailyFeedbackCount: Int { dailyFeedback.filter { $0.state == "pending" }.count }
+    var dailyFeedbackEnabledAt: String? {
+        guard let accountId else { return nil }
+        return UserDefaults.standard.string(forKey: "dailyFeedback.enabledAt.\(accountId)")
+    }
+
+    func setDailyFeedbackEnabled(_ enabled: Bool) {
+        guard let accountId else { return }
+        dailyFeedbackEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: "dailyFeedback.enabled.\(accountId)")
+        if enabled {
+            UserDefaults.standard.set(FoodDates.today(), forKey: "dailyFeedback.enabledAt.\(accountId)")
+        }
+    }
+
+    func requestDailyFeedback(_ upload: DailyFeedbackUpload) throws {
+        guard !dailyFeedback.contains(where: { $0.localDate == upload.localDate }) else { return }
+        let now = Self.now()
+        let request = DailyFeedbackRequest(id: upload.id, localDate: upload.localDate,
+                                           state: "pending", feedback: nil,
+                                           createdAt: now, updatedAt: now)
+        try stage(.requestDailyFeedback(upload)) { dailyFeedback.insert(request, at: 0) }
+    }
     func logs(on date: Date) -> [FoodLog] {
         let day = FoodDates.localDate(for: date)
         return logs.filter { $0.localDate == day }.sorted { $0.loggedAt > $1.loggedAt }
@@ -273,6 +299,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         foods = []
         logs = []
         estimations = []
+        dailyFeedback = []
         connections = []
         syncError = nil
         hasLoadedSnapshot = false
@@ -296,6 +323,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         foods = []
         logs = []
         estimations = []
+        dailyFeedback = []
         connections = []
         operations = []
         syncError = nil
@@ -312,7 +340,8 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
 
     private func snapshot() -> FoodSnapshot {
         FoodSnapshot(accountId: accountId, startedAt: startedAt, profile: profile,
-                     foods: foods, logs: logs, estimations: estimations)
+                     foods: foods, logs: logs, estimations: estimations,
+                     dailyFeedback: dailyFeedback)
     }
 
     private func apply(_ snapshot: FoodSnapshot) {
@@ -322,6 +351,8 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         foods = snapshot.foods
         logs = snapshot.logs
         estimations = snapshot.estimations
+        dailyFeedback = snapshot.dailyFeedback ?? []
+        dailyFeedbackEnabled = accountId.map { UserDefaults.standard.bool(forKey: "dailyFeedback.enabled.\($0)") } ?? false
     }
 
     private func persist() throws {
@@ -390,6 +421,19 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         case .deleteEstimate(let id):
             do { let _: OKResponse = try await call("/v1/estimations/\(id)", method: "DELETE") }
             catch let error as FoodServiceError where error.status == 404 { break }
+        case .requestDailyFeedback(let upload):
+            let healthDays = upload.healthDays.map { day -> [String: Any] in
+                ["localDate": day.localDate,
+                 "activeKcal": day.activeKcal as Any? ?? NSNull(),
+                 "restingKcal": day.restingKcal as Any? ?? NSNull(),
+                 "waterMl": day.waterMl as Any? ?? NSNull(),
+                 "weightKg": day.weightKg as Any? ?? NSNull(),
+                 "bodyFatPercent": day.bodyFatPercent as Any? ?? NSNull()]
+            }
+            let _: DailyFeedbackResponse = try await call("/v1/daily-feedback", method: "POST", body: [
+                "id": upload.id, "localDate": upload.localDate,
+                "timeZone": upload.timeZone, "healthDays": healthDays,
+            ])
         }
     }
 

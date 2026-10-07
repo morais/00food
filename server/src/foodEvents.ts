@@ -43,6 +43,18 @@ export async function notifyFoodEvent(env: Env, tenantId: string): Promise<void>
   }
 }
 
+export async function notifyDailyFeedbackEvent(env: Env, tenantId: string): Promise<void> {
+  if (!env.FOOD_EVENTS) return;
+  try {
+    await env.FOOD_EVENTS.getByName(tenantId).fetch("https://events.internal/publish-daily", {
+      method: "POST", headers: { "x-tenant-id": tenantId },
+    });
+  } catch (cause) {
+    // Pending requests remain available through the MCP list tool on reconnect.
+    console.warn("Daily feedback event notification failed", cause instanceof Error ? cause.message : "unknown error");
+  }
+}
+
 export async function closeFoodEventStream(env: Env, tenantId: string, tokenHash: string): Promise<void> {
   if (!env.FOOD_EVENTS) return;
   try {

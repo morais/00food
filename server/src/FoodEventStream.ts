@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { foodEventsUri } from "./foodEvents";
-import { deliverWebhookEvents } from "./mcpWebhookEvents";
+import { deliverDailyFeedbackEvents, deliverWebhookEvents } from "./mcpWebhookEvents";
 import type { Env } from "./api";
 
 export class FoodEventStream extends DurableObject<Env> {
@@ -9,6 +9,13 @@ export class FoodEventStream extends DurableObject<Env> {
   private readonly encoder = new TextEncoder();
 
   async fetch(request: Request): Promise<Response> {
+    if (new URL(request.url).pathname === "/publish-daily") {
+      const tenantId = request.headers.get("x-tenant-id");
+      if (!tenantId) return new Response(null, { status: 400 });
+      await this.ctx.storage.put("tenantId", tenantId);
+      await this.ctx.storage.setAlarm(Date.now());
+      return new Response(null, { status: 204 });
+    }
     if (new URL(request.url).pathname === "/publish") {
       const tenantId = request.headers.get("x-tenant-id");
       if (!tenantId) return new Response(null, { status: 400 });
@@ -73,7 +80,13 @@ export class FoodEventStream extends DurableObject<Env> {
   async alarm(): Promise<void> {
     const tenantId = await this.ctx.storage.get<string>("tenantId");
     if (!tenantId) return;
-    const next = await deliverWebhookEvents(this.env, tenantId);
+    const deliveries = await Promise.allSettled([
+      deliverWebhookEvents(this.env, tenantId), deliverDailyFeedbackEvents(this.env, tenantId),
+    ]);
+    const due = deliveries.map(result => result.status === "fulfilled" ? result.value : Date.now() + 30000);
+    if (deliveries.some(result => result.status === "rejected")) console.warn("MCP event delivery will retry");
+    const next = due.filter((value): value is number => value !== null)
+      .reduce<number | null>((earliest, value) => earliest === null ? value : Math.min(earliest, value), null);
     if (next) await this.ctx.storage.setAlarm(next);
   }
 }

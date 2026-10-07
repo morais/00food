@@ -9,6 +9,7 @@ const otherTenant = randomUUID();
 const appToken = `fd_app_${randomBytes(32).toString("base64url")}`;
 const otherToken = `fd_app_${randomBytes(32).toString("base64url")}`;
 const mcpToken = `fd_mcp_${randomBytes(32).toString("base64url")}`;
+const dailyMcpToken = `fd_mcp_${randomBytes(32).toString("base64url")}`;
 const hash = value => createHash("sha256").update(value).digest("hex");
 const now = new Date().toISOString();
 const expires = new Date(Date.now() + 3600000).toISOString();
@@ -18,9 +19,11 @@ INSERT INTO credentials (token_hash,id,tenant_id,kind,audience,scopes,label,crea
 VALUES ('${hash(appToken)}','${randomUUID()}','${tenant}','app','${origin}/v1','food:read food:write','Local smoke','${now}','${expires}');
 INSERT INTO credentials (token_hash,id,tenant_id,kind,audience,scopes,label,created_at,expires_at)
 VALUES ('${hash(mcpToken)}','${randomUUID()}','${tenant}','mcp','${origin}/mcp','food:read food:write','Local smoke','${now}','${expires}');`;
+const dailySQL = `INSERT INTO credentials (token_hash,id,tenant_id,kind,audience,scopes,label,created_at,expires_at)
+VALUES ('${hash(dailyMcpToken)}','${randomUUID()}','${tenant}','mcp','${origin}/mcp','food:read daily:read daily:write','Local daily smoke','${now}','${expires}');`;
 const otherSQL = `INSERT INTO credentials (token_hash,id,tenant_id,kind,audience,scopes,label,created_at,expires_at)
 VALUES ('${hash(otherToken)}','${randomUUID()}','${otherTenant}','app','${origin}/v1','food:read food:write','Local smoke','${now}','${expires}');`;
-for (const command of [sql, otherSQL]) {
+for (const command of [sql, otherSQL, dailySQL]) {
   try {
     execFileSync("npx", ["wrangler", "d1", "execute", "00food", "--local", "--command", command]);
   } catch (error) {
@@ -103,6 +106,49 @@ assert(loggedEvents.length === 1, "retry duplicated the food log event");
 const afterLog = await request("/v1/snapshot");
 assert(afterLog.foods[0].useCount === 1 && afterLog.logs.length === 1, "log retry was not idempotent");
 assert(afterLog.logs[0].fruitVegPortions === 1, "logged fruit/veg portions were not saved");
+const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+const dailyLog = (await request("/v1/logs", "POST", {
+  id: randomUUID(), foodId: food.id, quantity: 1, localDate: yesterday,
+})).log;
+const dailyId = randomUUID();
+const dailyBody = { id: dailyId, localDate: yesterday, timeZone: "UTC", healthDays: [{
+  localDate: yesterday, activeKcal: 420, restingKcal: 1650, waterMl: 1500,
+  weightKg: 76.2, bodyFatPercent: 27.1,
+}] };
+const dailyRequest = (await request("/v1/daily-feedback", "POST", dailyBody)).request;
+assert(dailyRequest.id === dailyId && dailyRequest.state === "pending", "daily request was not saved");
+const dailyRetry = (await request("/v1/daily-feedback", "POST", { ...dailyBody, id: randomUUID() })).request;
+assert(dailyRetry.id === dailyId, "daily retry duplicated the day");
+assert((await request("/v1/snapshot")).dailyFeedback.some(item => item.id === dailyId),
+  "daily request was missing from snapshot");
+assert((await request("/v1/daily-feedback")).requests.some(item => item.id === dailyId),
+  "daily request endpoint omitted the day");
+assert(!(await request("/v1/daily-feedback", "GET", undefined, otherToken)).requests.some(item => item.id === dailyId),
+  "another account saw the daily request");
+const deniedDaily = await fetch(origin + "/mcp", { method: "POST", headers: {
+  Authorization: `Bearer ${mcpToken}`, "Content-Type": "application/json",
+}, body: JSON.stringify({ jsonrpc: "2.0", id: 41, method: "tools/call",
+  params: { name: "get_daily_feedback_request", arguments: { id: dailyId } } }) });
+assert(deniedDaily.status === 403, "old MCP credential could read Health summary");
+const pendingDaily = await request("/mcp", "POST", { jsonrpc: "2.0", id: 42,
+  method: "tools/call", params: { name: "list_pending_daily_feedback", arguments: {} } }, dailyMcpToken);
+assert(JSON.parse(pendingDaily.result.content[0].text).requests.some(item => item.id === dailyId),
+  "agent could not find pending daily feedback");
+const contextResult = await request("/mcp", "POST", { jsonrpc: "2.0", id: 43,
+  method: "tools/call", params: { name: "get_daily_feedback_request", arguments: { id: dailyId } } }, dailyMcpToken);
+const dailyContext = JSON.parse(contextResult.result.content[0].text).context;
+const feedbackDay = dailyContext.days.find(day => day.localDate === yesterday);
+assert(feedbackDay.health.waterMl === 1500 && feedbackDay.health.activeKcal === 420 &&
+  feedbackDay.health.restingKcal === 1650 && feedbackDay.health.weightKg === 76.2 &&
+  feedbackDay.health.bodyFatPercent === 27.1 &&
+  feedbackDay.foods.some(item => item.id === dailyLog.id && item.kcal === 105),
+  "daily context lost foods or Health values");
+await request("/mcp", "POST", { jsonrpc: "2.0", id: 44,
+  method: "tools/call", params: { name: "submit_daily_feedback", arguments: {
+    id: dailyId, feedback: "A directional review of the day.",
+  } } }, dailyMcpToken);
+assert((await request("/v1/daily-feedback")).requests.find(item => item.id === dailyId)?.state === "ready",
+  "agent feedback was not saved");
 const portionUpdate = await request("/mcp", "POST", { jsonrpc: "2.0", id: 18,
   method: "tools/call", params: { name: "set_food_fruit_veg_portions",
     arguments: { id: food.id, fruitVegPortions: 2 } } }, mcpToken);
@@ -174,7 +220,7 @@ await request("/mcp", "POST", { jsonrpc: "2.0", id: 14, method: "tools/call",
   } } }, mcpToken);
 await request(`/v1/estimations/${estimate.id}/accept`, "POST");
 const final = await request("/v1/snapshot");
-assert(final.foods.length === 2 && final.logs.length === 2 && final.estimations.length === 0,
+assert(final.foods.length === 2 && final.logs.length === 3 && final.estimations.length === 0,
   "review did not save food and log");
 assert(final.foods.some(item => item.name === "Berries and yogurt" && item.fruitVegPortions === 1) &&
   final.logs.some(item => item.foodName === "Berries and yogurt" && item.fruitVegPortions === 1),

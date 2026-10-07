@@ -6,8 +6,10 @@ const eventNames = {
   food_logged: "food.logged",
   estimate_requested: "food.estimate_requested",
   clarification_added: "food.clarification_added",
+  daily_feedback_requested: "day.feedback_requested",
 } as const;
 type EventName = typeof eventNames[keyof typeof eventNames];
+type FoodEventKind = "food_logged" | "estimate_requested" | "clarification_added";
 
 const emptyArguments = { type: "object", properties: {}, additionalProperties: false };
 const schema = (properties: Record<string, unknown>, required: string[]) =>
@@ -27,12 +29,15 @@ export const eventDefinitions = [
   { name: "food.clarification_added", description: "The person added context to a pending food estimate. Read the pending food and revise the estimate.",
     delivery: ["webhook"], inputSchema: emptyArguments,
     payloadSchema: schema({ estimation_id: string, clarification: string }, ["estimation_id", "clarification"]) },
+  { name: "day.feedback_requested", description: "A completed day is ready for a short food and activity reflection. Call get_daily_feedback_request for its seven-day context, then submit_daily_feedback.",
+    delivery: ["webhook"], inputSchema: emptyArguments,
+    payloadSchema: schema({ request_id: string, local_date: string }, ["request_id", "local_date"]) },
 ];
 
 // MCP clients may attach transport metadata to method parameters. Validate the
 // fields we use, while ignoring extensions outside the event's filter arguments.
 const subscriptionInput = z.object({
-  name: z.enum(["food.logged", "food.estimate_requested", "food.clarification_added"]),
+  name: z.enum(["food.logged", "food.estimate_requested", "food.clarification_added", "day.feedback_requested"]),
   arguments: z.strictObject({}).default({}),
   delivery: z.object({ mode: z.literal("webhook"), url: z.url(), secret: z.string().optional() }),
   cursor: z.null().optional(), ttlMs: z.number().int().positive().optional().nullable(),
@@ -43,7 +48,7 @@ export class McpEventsError extends Error {
 }
 
 type SubscriptionRow = { id: string; callback_url: string; signing_secret: string; name: EventName };
-type DeliveryRow = { id: string; event_id: number; kind: keyof typeof eventNames; subject_id: string;
+type DeliveryRow = { id: string; event_id: number; kind: FoodEventKind; subject_id: string;
   payload_json: string; created_at: string; attempts: number; subscription_id: string;
   callback_url: string; signing_secret: string; previous_secret: string | null;
   previous_secret_expires_at: string | null; name: EventName };
@@ -116,7 +121,8 @@ async function subscriptionId(principal: Principal, name: EventName, callbackUrl
 
 export async function subscribeWebhookEvent(env: Env, principal: Principal, raw: unknown): Promise<unknown> {
   const input = subscriptionInput.parse(raw);
-  if (!principal.scopes.includes("food:read")) throw new McpEventsError(-32003, "food:read scope required");
+  const requiredScope = input.name === "day.feedback_requested" ? "daily:read" : "food:read";
+  if (!principal.scopes.includes(requiredScope)) throw new McpEventsError(-32003, `${requiredScope} scope required`);
   const url = validateCallback(input.delivery.url);
   if (!input.delivery.secret) throw new McpEventsError(-32602, "Signing secret required");
   secretBytes(input.delivery.secret);
@@ -149,6 +155,8 @@ export async function subscribeWebhookEvent(env: Env, principal: Principal, raw:
 
 export async function unsubscribeWebhookEvent(env: Env, principal: Principal, raw: unknown): Promise<unknown> {
   const input = subscriptionInput.parse(raw);
+  const requiredScope = input.name === "day.feedback_requested" ? "daily:read" : "food:read";
+  if (!principal.scopes.includes(requiredScope)) throw new McpEventsError(-32003, `${requiredScope} scope required`);
   const url = validateCallback(input.delivery.url);
   const id = await subscriptionId(principal, input.name, url.toString());
   await env.DB.prepare("DELETE FROM mcp_event_subscriptions WHERE id = ? AND tenant_id = ? AND token_hash = ?")
@@ -171,6 +179,20 @@ export function webhookDeliveryInsert(env: Env, tenantId: string, eventKey: stri
       AND s.created_at <= e.created_at
       AND s.expires_at > ? AND c.revoked_at IS NULL AND c.expires_at > ?`)
     .bind(now, tenantId, eventKey, now, now);
+}
+
+export function dailyFeedbackDeliveryInsert(env: Env, tenantId: string, requestId: string): D1PreparedStatement {
+  const now = new Date().toISOString();
+  return env.DB.prepare(`INSERT OR IGNORE INTO daily_feedback_deliveries
+    (id, tenant_id, request_id, subscription_id, next_attempt_at)
+    SELECT 'daily:' || r.id || ':' || s.id, r.tenant_id, r.id, s.id, ?
+    FROM daily_feedback_requests r JOIN mcp_event_subscriptions s ON s.tenant_id = r.tenant_id
+    JOIN credentials c ON c.token_hash = s.token_hash
+    WHERE r.tenant_id = ? AND r.id = ? AND s.name = 'day.feedback_requested'
+      AND s.created_at <= r.created_at AND s.expires_at > ?
+      AND c.revoked_at IS NULL AND c.expires_at > ?
+      AND instr(' ' || c.scopes || ' ', ' daily:read ') > 0`)
+    .bind(now, tenantId, requestId, now, now);
 }
 
 function eventData(row: DeliveryRow): unknown {
@@ -226,6 +248,58 @@ export async function deliverWebhookEvents(env: Env, tenantId: string): Promise<
     JOIN credentials c ON c.token_hash = s.token_hash
     WHERE d.tenant_id = ? AND d.delivered_at IS NULL AND d.failed_at IS NULL
       AND s.expires_at > ? AND c.revoked_at IS NULL AND c.expires_at > ?`)
+    .bind(tenantId, new Date().toISOString(), new Date().toISOString()).first<{ due: string | null }>();
+  return next?.due ? Math.max(Date.now() + 1000, Date.parse(next.due)) : null;
+}
+
+type DailyDeliveryRow = { id: string; request_id: string; local_date: string; created_at: string;
+  attempts: number; subscription_id: string; callback_url: string; signing_secret: string;
+  previous_secret: string | null; previous_secret_expires_at: string | null };
+
+export async function deliverDailyFeedbackEvents(env: Env, tenantId: string): Promise<number | null> {
+  const now = new Date().toISOString();
+  const rows = await env.DB.prepare(`SELECT d.id, d.request_id, d.attempts, d.subscription_id,
+    r.local_date, r.created_at, s.callback_url, s.signing_secret,
+    s.previous_secret, s.previous_secret_expires_at
+    FROM daily_feedback_deliveries d
+    JOIN daily_feedback_requests r ON r.id = d.request_id
+    JOIN mcp_event_subscriptions s ON s.id = d.subscription_id
+    JOIN credentials c ON c.token_hash = s.token_hash
+    WHERE d.tenant_id = ? AND d.delivered_at IS NULL AND d.failed_at IS NULL
+      AND d.next_attempt_at <= ? AND s.expires_at > ? AND c.revoked_at IS NULL AND c.expires_at > ?
+      AND instr(' ' || c.scopes || ' ', ' daily:read ') > 0
+    ORDER BY r.created_at ASC LIMIT 10`).bind(tenantId, now, now, now).all<DailyDeliveryRow>();
+  for (const row of rows.results) {
+    const eventId = `evt_daily_${row.request_id.replaceAll("-", "")}_${row.subscription_id.slice(4, 16)}`;
+    const payload = JSON.stringify({ eventId, name: "day.feedback_requested", timestamp: row.created_at,
+      data: { request_id: row.request_id, local_date: row.local_date }, cursor: null });
+    let status = 0;
+    try {
+      const url = validateCallback(row.callback_url);
+      const response = await fetch(url.toString(), { method: "POST", redirect: "manual", signal: AbortSignal.timeout(10_000),
+        headers: await signedHeaders(row.signing_secret, eventId, payload, row.subscription_id,
+          row.previous_secret_expires_at && row.previous_secret_expires_at > new Date().toISOString()
+            ? row.previous_secret : null), body: payload });
+      status = response.status;
+    } catch { /* retry transient network failure */ }
+    if (status >= 200 && status < 300) {
+      await env.DB.prepare("UPDATE daily_feedback_deliveries SET delivered_at = ?, attempts = attempts + 1 WHERE id = ?")
+        .bind(new Date().toISOString(), row.id).run();
+    } else if (status === 410 || status === 413 || status >= 400 && status < 500 && status !== 429 || row.attempts >= 4) {
+      await env.DB.prepare("UPDATE daily_feedback_deliveries SET failed_at = ?, attempts = attempts + 1 WHERE id = ?")
+        .bind(new Date().toISOString(), row.id).run();
+    } else {
+      const delay = Math.min(3600000, 30000 * 2 ** row.attempts);
+      await env.DB.prepare("UPDATE daily_feedback_deliveries SET next_attempt_at = ?, attempts = attempts + 1 WHERE id = ?")
+        .bind(new Date(Date.now() + delay).toISOString(), row.id).run();
+    }
+  }
+  const next = await env.DB.prepare(`SELECT MIN(d.next_attempt_at) AS due FROM daily_feedback_deliveries d
+    JOIN mcp_event_subscriptions s ON s.id = d.subscription_id
+    JOIN credentials c ON c.token_hash = s.token_hash
+    WHERE d.tenant_id = ? AND d.delivered_at IS NULL AND d.failed_at IS NULL
+      AND s.expires_at > ? AND c.revoked_at IS NULL AND c.expires_at > ?
+      AND instr(' ' || c.scopes || ' ', ' daily:read ') > 0`)
     .bind(tenantId, new Date().toISOString(), new Date().toISOString()).first<{ due: string | null }>();
   return next?.due ? Math.max(Date.now() + 1000, Date.parse(next.due)) : null;
 }

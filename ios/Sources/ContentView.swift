@@ -10,6 +10,7 @@ struct RootView: View {
     @AppStorage(FoodWidgetSnapshotStore.pendingLaunchKey, store: FoodWidgetSnapshotStore.sharedDefaults)
     private var pendingWidgetLaunch = ""
     @State private var errorText: String?
+    @State private var feedbackSyncing = false
 
     private var widgetSnapshot: FoodWidgetSnapshot? {
         guard store.signedIn, let profile = store.profile else { return nil }
@@ -39,6 +40,7 @@ struct RootView: View {
                 health.setHistoryStart(store.accountStartedAt)
                 await health.refresh()
                 syncDietaryEnergy()
+                await queueDailyFeedback()
             }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -51,8 +53,20 @@ struct RootView: View {
                     health.setHistoryStart(store.accountStartedAt)
                     await health.refresh()
                     syncDietaryEnergy()
+                    await queueDailyFeedback()
                 }
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
+            guard store.signedIn else { return }
+            Task {
+                try? await store.refresh()
+                await health.refresh()
+                await queueDailyFeedback()
+            }
+        }
+        .onChange(of: store.dailyFeedbackEnabled) { _, enabled in
+            if enabled { Task { await queueDailyFeedback() } }
         }
         .onOpenURL { url in
             if let launch = FoodQuickLaunch(url: url) { FoodQuickActions.shared.pendingLaunch = launch }
@@ -80,6 +94,31 @@ struct RootView: View {
         health.configureDietaryExport(accountId: accountId)
         let logs = store.logs
         Task { await health.syncDietaryEnergy(logs: logs, accountId: accountId) }
+    }
+
+    private func queueDailyFeedback() async {
+        guard store.signedIn, store.hasLoadedSnapshot, store.dailyFeedbackEnabled,
+              !feedbackSyncing, let enabledAt = store.dailyFeedbackEnabledAt else { return }
+        feedbackSyncing = true
+        defer { feedbackSyncing = false }
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        guard let firstCompletedDay = calendar.date(byAdding: .day, value: -1, to: today) else { return }
+        let firstAllowed = calendar.date(byAdding: .day, value: -1, to:
+            calendar.startOfDay(for: FoodDates.parseLocalDate(enabledAt) ?? today)) ?? today
+        let accountDay = store.accountStartedAt.map { calendar.startOfDay(for: $0) } ?? today
+        for offset in (0..<7).reversed() {
+            guard let date = calendar.date(byAdding: .day, value: -offset, to: firstCompletedDay),
+                  date >= firstAllowed, date >= accountDay else { continue }
+            let key = FoodDates.localDate(for: date)
+            guard !store.dailyFeedback.contains(where: { $0.localDate == key }) else { continue }
+            let healthDays = await health.dailyFeedbackHealth(through: key)
+            let upload = DailyFeedbackUpload(id: UUID().uuidString.lowercased(), localDate: key,
+                                             timeZone: TimeZone.current.identifier,
+                                             healthDays: healthDays)
+            do { try store.requestDailyFeedback(upload) }
+            catch { store.syncError = "Could not save daily feedback request: \(error.localizedDescription)" }
+        }
     }
 
     private var accountLoadView: some View {
@@ -147,6 +186,7 @@ struct HomeView: View {
     @State private var deletingLogID: String?
     @State private var selectedLogDate = Calendar.current.startOfDay(for: Date())
     @State private var showingBalanceDetails = false
+    @State private var showingEarlierFeedback = false
 
     private var remaining: Int {
         guard let profile = store.profile else { return 0 }
@@ -178,6 +218,7 @@ struct HomeView: View {
                     .buttonStyle(.borderedProminent)
                     hydrationCard
                     fiveADayCard
+                    if !store.dailyFeedback.isEmpty { dailyFeedbackCard }
 
                     if !store.estimations.isEmpty { estimatesSection }
                     foodLogSection
@@ -320,6 +361,41 @@ struct HomeView: View {
         .padding(20)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
         .padding(.top, 8)
+    }
+
+    private var dailyFeedbackCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Daily review").font(.title3.bold())
+            if let latest = store.dailyFeedback.first {
+                feedbackRow(latest)
+            }
+            if store.dailyFeedback.count > 1 {
+                DisclosureGroup("Earlier reviews", isExpanded: $showingEarlierFeedback) {
+                    ForEach(Array(store.dailyFeedback.dropFirst().prefix(6))) { request in
+                        feedbackRow(request)
+                            .padding(.top, 8)
+                    }
+                }
+                .font(.subheadline)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+    }
+
+    private func feedbackRow(_ request: DailyFeedbackRequest) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            let date = FoodDates.parseLocalDate(request.localDate)
+            Text(date?.formatted(.dateTime.month(.abbreviated).day()) ?? request.localDate)
+                .font(.subheadline.weight(.semibold))
+            if request.state == "ready", let feedback = request.feedback {
+                Text(feedback).font(.subheadline).textSelection(.enabled)
+            } else {
+                Label("Waiting for your agent", systemImage: "clock")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            }
+        }
     }
 
     private var estimatesSection: some View {

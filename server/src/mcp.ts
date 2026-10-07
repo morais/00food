@@ -3,6 +3,8 @@ import { type Principal } from "./auth";
 import { appName, estimationView, findEstimation, foodView, json, proposeEstimation, proposalInput,
   setFoodFruitVegPortions, type Env } from "./api";
 import { authChallenge } from "./oauth";
+import { dailyFeedbackContext, dailyFeedbackView, findDailyFeedback, saveDailyFeedback,
+  type DailyFeedbackRow } from "./dailyFeedback";
 import { closeFoodEventStream, foodEventsUri, listFoodEvents, recentFoodEvents } from "./foodEvents";
 import { eventDefinitions, McpEventsError, subscribeWebhookEvent, unsubscribeWebhookEvent } from "./mcpWebhookEvents";
 
@@ -44,6 +46,22 @@ const tools = [
     name: "list_food_events", title: "List Food Events",
     description: "Read new food logs, estimate requests, and user clarifications after a cursor. Call after a food-events resource notification or on reconnect. Follow estimate requests and clarifications with get_pending_food.",
     inputSchema: z.toJSONSchema(z.strictObject({ after: z.number().int().min(0).default(0) }), { io: "input" }), readOnly: true,
+  },
+  {
+    name: "list_pending_daily_feedback", title: "List Pending Daily Feedback",
+    description: "List completed days awaiting a short daily reflection. Call get_daily_feedback_request for the full seven-day food and Health context.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false }, readOnly: true,
+  },
+  {
+    name: "get_daily_feedback_request", title: "Get Daily Feedback Request",
+    description: "Read one day's foods and tracked calories alongside the previous seven days of available Health water, active and resting energy, weight, and body fat. Missing Health values are null; pending foods are not in calorie totals.",
+    inputSchema: z.toJSONSchema(z.strictObject({ id: uuid }), { io: "input" }), readOnly: true,
+  },
+  {
+    name: "submit_daily_feedback", title: "Submit Daily Feedback",
+    description: "Write a brief, supportive reflection on the completed day. Use directional language, note missing or pending data, and avoid diagnoses or prescriptive calorie advice.",
+    inputSchema: z.toJSONSchema(z.strictObject({ id: uuid, feedback: z.string().trim().min(1).max(4000) }),
+      { io: "input" }), readOnly: false,
   },
 ].map(tool => ({ ...tool, annotations: { title: tool.title, readOnlyHint: tool.readOnly,
   openWorldHint: false, destructiveHint: false, idempotentHint: tool.readOnly } }));
@@ -89,11 +107,15 @@ export async function routeMcp(req: Request, env: Env, principal: Principal): Pr
     _meta: { serverInfo: { name: appName(env), version: "0.2.0" } },
   });
   if (request.method === "events/list") {
-    if (!principal.scopes.includes("food:read")) return authChallenge(env, 403, ["food:read"]);
+    if (!principal.scopes.includes("food:read") && !principal.scopes.includes("daily:read")) {
+      return authChallenge(env, 403, ["food:read", "daily:read"]);
+    }
     return ok(requestId, { events: eventDefinitions });
   }
   if (request.method === "events/subscribe" || request.method === "events/unsubscribe") {
-    if (!principal.scopes.includes("food:read")) return authChallenge(env, 403, ["food:read"]);
+    const eventName = (request.params as { name?: unknown } | undefined)?.name;
+    const requiredScope = eventName === "day.feedback_requested" ? "daily:read" : "food:read";
+    if (!principal.scopes.includes(requiredScope)) return authChallenge(env, 403, [requiredScope]);
     try {
       const result = request.method === "events/subscribe"
         ? await subscribeWebhookEvent(env, principal, request.params)
@@ -156,8 +178,12 @@ export async function routeMcp(req: Request, env: Env, principal: Principal): Pr
   if (!params || typeof params.name !== "string") return error(requestId, -32602, "Missing tool name");
   const tool = tools.find(item => item.name === params.name);
   if (!tool) return error(requestId, -32602, "Unknown tool");
-  if (tool.readOnly && !principal.scopes.includes("food:read") || !tool.readOnly && !principal.scopes.includes("food:write")) {
-    return authChallenge(env, 403, [tool.readOnly ? "food:read" : "food:write"]);
+  const dailyTool = tool.name === "list_pending_daily_feedback" || tool.name === "get_daily_feedback_request"
+    || tool.name === "submit_daily_feedback";
+  const requiredScope = dailyTool ? tool.readOnly ? "daily:read" : "daily:write"
+    : tool.readOnly ? "food:read" : "food:write";
+  if (!principal.scopes.includes(requiredScope)) {
+    return authChallenge(env, 403, [requiredScope]);
   }
   const args = params.arguments || {};
   try {
@@ -206,6 +232,25 @@ export async function routeMcp(req: Request, env: Env, principal: Principal): Pr
     case "list_food_events": {
       const { after } = z.strictObject({ after: z.number().int().min(0).default(0) }).parse(args);
       return respondTool(content(await listFoodEvents(env, principal.tenantId, after)));
+    }
+    case "list_pending_daily_feedback": {
+      const rows = await env.DB.prepare(`SELECT * FROM daily_feedback_requests
+        WHERE tenant_id = ? AND state = 'pending' ORDER BY local_date DESC LIMIT 30`)
+        .bind(principal.tenantId).all<DailyFeedbackRow>();
+      return respondTool(content({ requests: rows.results.map(dailyFeedbackView) }));
+    }
+    case "get_daily_feedback_request": {
+      const { id } = z.strictObject({ id: uuid }).parse(args);
+      const row = await findDailyFeedback(env, principal.tenantId, id);
+      if (!row) return respondTool({ isError: true, content: [{ type: "text", text: "Feedback request not found" }] });
+      return respondTool(content({ request: dailyFeedbackView(row), context: await dailyFeedbackContext(env, row) }));
+    }
+    case "submit_daily_feedback": {
+      const { id, feedback } = z.strictObject({ id: uuid,
+        feedback: z.string().trim().min(1).max(4000) }).parse(args);
+      const row = await saveDailyFeedback(env, principal.tenantId, id, feedback);
+      if (!row) return respondTool({ isError: true, content: [{ type: "text", text: "Feedback request not found" }] });
+      return respondTool(content({ request: dailyFeedbackView(row) }));
     }
     }
   } catch (cause) {

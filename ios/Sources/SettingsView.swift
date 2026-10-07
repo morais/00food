@@ -102,7 +102,7 @@ struct SettingsView: View {
                         Text(error).font(.footnote).foregroundStyle(.red)
                     }
                     if let error = health.errorMessage { Text(error).font(.footnote).foregroundStyle(.red) }
-                    Text("Health history stays on this device. Logging weight manually also updates your 00Food profile weight; water stays in Apple Health.")
+                    Text("Health history stays on this device unless you enable Daily feedback below. Logging weight manually also updates your 00Food profile weight; water entries stay in Apple Health.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("Active day") {
@@ -125,6 +125,16 @@ struct SettingsView: View {
                             Button("Revoke", role: .destructive) { revoke(connection) }
                         }
                     }
+                }
+                Section("Daily feedback") {
+                    Toggle("Request a daily review", isOn: Binding(
+                        get: { store.dailyFeedbackEnabled },
+                        set: { store.setDailyFeedbackEnabled($0) }
+                    ))
+                    Text("After each day ends, the next time you open 00Food it sends that day and up to six earlier days to your private 00Food account. This includes logged foods and calories, plus available Health totals for water, active and resting energy, weight, and body fat. Your connected agent can read these summaries and write feedback. Turning this off stops new requests; earlier reviews remain in your account.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    Text("Reconnect your AI agent to grant the new daily review access, then subscribe to day.feedback_requested. Pending requests are also available through list_pending_daily_feedback.")
+                        .font(.footnote).foregroundStyle(.secondary)
                 }
             }
             .navigationTitle("Settings")
