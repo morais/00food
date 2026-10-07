@@ -182,7 +182,23 @@ private struct DietaryExportState: Codable {
         resetWaterForNewDay()
         guard waterRequested && available else { return }
         let start = Calendar.current.startOfDay(for: Date())
-        let predicate = HKQuery.predicateForSamples(withStart: start, end: Date(), options: [.strictStartDate])
+        do {
+            waterMlToday = try await waterMilliliters(from: start, to: Date())
+            waterErrorMessage = nil
+        } catch {
+            waterErrorMessage = error.localizedDescription
+        }
+    }
+
+    func waterMl(on date: Date) async throws -> Int? {
+        guard available, waterRequested else { return nil }
+        let start = Calendar.current.startOfDay(for: date)
+        guard let nextDay = Calendar.current.date(byAdding: .day, value: 1, to: start) else { return nil }
+        return try await waterMilliliters(from: start, to: min(nextDay, Date()))
+    }
+
+    private func waterMilliliters(from start: Date, to end: Date) async throws -> Int {
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: [.strictStartDate])
         do {
             let milliliters = try await withCheckedThrowingContinuation {
                 (continuation: CheckedContinuation<Double, Error>) in
@@ -194,15 +210,10 @@ private struct DietaryExportState: Codable {
                 }
                 store.execute(query)
             }
-            waterMlToday = max(0, Int(milliliters.rounded()))
-            waterErrorMessage = nil
+            return max(0, Int(milliliters.rounded()))
         } catch {
-            if Self.isNoData(error) {
-                waterMlToday = 0
-                waterErrorMessage = nil
-            } else {
-                waterErrorMessage = error.localizedDescription
-            }
+            if Self.isNoData(error) { return 0 }
+            throw error
         }
     }
 

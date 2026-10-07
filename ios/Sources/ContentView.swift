@@ -168,6 +168,9 @@ struct HomeView: View {
     @State private var errorText: String?
     @State private var deletingLogID: String?
     @State private var selectedLogDate = Calendar.current.startOfDay(for: Date())
+    @State private var selectedWaterMl: Int?
+    @State private var selectedWaterError: String?
+    @State private var selectedWaterRequestID = UUID()
     @State private var showingBalanceDetails = false
     @State private var showingEarlierFeedback = false
     @State private var requestingEarlierFeedback = false
@@ -181,6 +184,13 @@ struct HomeView: View {
     }
     private var selectedLogs: [FoodLog] { store.logs(on: selectedLogDate) }
     private var selectedDayIsToday: Bool { Calendar.current.isDateInToday(selectedLogDate) }
+    private var selectedFruitVegPortions: Int {
+        min(5, selectedLogs.reduce(0) { $0 + $1.countedFruitVegPortions })
+    }
+    private var selectedWaterGlasses: String {
+        guard let selectedWaterMl else { return "—" }
+        return (Double(selectedWaterMl) / 250).formatted(.number.precision(.fractionLength(0...1)))
+    }
     private var readyEstimateCount: Int { store.estimations.filter { $0.state == "proposed" }.count }
     private var offlineEstimateCount: Int { store.estimations.filter { $0.state == "uploading" }.count }
     private var waitingEstimateCount: Int { store.estimations.count - readyEstimateCount - offlineEstimateCount }
@@ -235,12 +245,19 @@ struct HomeView: View {
                 try? await store.refresh()
                 health.setHistoryStart(store.accountStartedAt)
                 await health.refresh()
+                await loadSelectedWater(on: selectedLogDate)
             }
             .task {
                 health.setHistoryStart(store.accountStartedAt)
                 await health.refresh()
             }
             .onAppear { openPendingShortcut() }
+            .task(id: FoodDates.localDate(for: selectedLogDate)) {
+                await loadSelectedWater(on: selectedLogDate)
+            }
+            .onChange(of: health.waterRequested) { _, _ in
+                Task { await loadSelectedWater(on: selectedLogDate) }
+            }
             .onChange(of: shortcuts.pendingLaunch) { _, _ in openPendingShortcut() }
         }
     }
@@ -519,8 +536,35 @@ struct HomeView: View {
                        in: earliestLogDate...Date(), displayedComponents: .date)
                 .datePickerStyle(.compact)
             if !selectedDayIsToday {
-                Text("\(selectedLogs.reduce(0) { $0 + $1.kcal }) kcal logged")
-                    .font(.subheadline).foregroundStyle(.secondary)
+                HStack(spacing: 14) {
+                    Text("\(selectedLogs.reduce(0) { $0 + $1.kcal }) kcal")
+                        .accessibilityLabel("\(selectedLogs.reduce(0) { $0 + $1.kcal }) calories logged")
+                    HStack(spacing: 3) {
+                        WaterGlassIcon(filled: true)
+                            .scaleEffect(0.58)
+                            .frame(width: 17, height: 20)
+                        Text(selectedWaterGlasses)
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(selectedWaterMl == nil ? "Water unavailable" :
+                        "\(selectedWaterGlasses) glasses of water")
+                    HStack(spacing: 4) {
+                        Image(systemName: "leaf.fill").foregroundStyle(.green)
+                        Text("\(selectedFruitVegPortions)/5")
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(selectedFruitVegPortions) of 5 fruit and vegetable portions")
+                }
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                if let selectedWaterError {
+                    Text("Water from Apple Health: \(selectedWaterError)")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else if selectedWaterMl == nil && !health.waterRequested {
+                    Text("Connect Apple Health to show water for past days.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
             if selectedLogs.isEmpty {
                 Text("Nothing logged yet.").foregroundStyle(.secondary)
@@ -557,6 +601,25 @@ struct HomeView: View {
     private func shiftLogDate(by days: Int) {
         guard let date = Calendar.current.date(byAdding: .day, value: days, to: selectedLogDate) else { return }
         selectedLogDate = min(max(date, earliestLogDate), Calendar.current.startOfDay(for: Date()))
+    }
+
+    private func loadSelectedWater(on date: Date) async {
+        let requestID = UUID()
+        selectedWaterRequestID = requestID
+        selectedWaterMl = nil
+        selectedWaterError = nil
+        guard !Calendar.current.isDateInToday(date) else { return }
+        let requestedDay = FoodDates.localDate(for: date)
+        do {
+            let milliliters = try await health.waterMl(on: date)
+            guard !Task.isCancelled, selectedWaterRequestID == requestID,
+                  FoodDates.localDate(for: selectedLogDate) == requestedDay else { return }
+            selectedWaterMl = milliliters
+        } catch {
+            guard !Task.isCancelled, selectedWaterRequestID == requestID,
+                  FoodDates.localDate(for: selectedLogDate) == requestedDay else { return }
+            selectedWaterError = error.localizedDescription
+        }
     }
 
     private func delete(_ log: FoodLog) {
