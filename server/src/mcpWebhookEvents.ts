@@ -177,7 +177,8 @@ export function webhookDeliveryInsert(env: Env, tenantId: string, eventKey: stri
         WHEN 'estimate_requested' THEN 'food.estimate_requested'
         WHEN 'clarification_added' THEN 'food.clarification_added' END
       AND s.created_at <= e.created_at
-      AND s.expires_at > ? AND c.revoked_at IS NULL AND c.expires_at > ?`)
+      AND s.expires_at > ? AND c.revoked_at IS NULL AND c.expires_at > ?
+      AND instr(' ' || c.scopes || ' ', ' food:read ') > 0`)
     .bind(now, tenantId, eventKey, now, now);
 }
 
@@ -217,6 +218,7 @@ export async function deliverWebhookEvents(env: Env, tenantId: string): Promise<
     JOIN credentials c ON c.token_hash = s.token_hash
     WHERE d.tenant_id = ? AND d.delivered_at IS NULL AND d.failed_at IS NULL
       AND d.next_attempt_at <= ? AND s.expires_at > ? AND c.revoked_at IS NULL AND c.expires_at > ?
+      AND instr(' ' || c.scopes || ' ', ' food:read ') > 0
     ORDER BY d.event_id ASC LIMIT 10`).bind(tenantId, now, now, now).all<DeliveryRow>();
   for (const row of rows.results) {
     const eventId = `evt_${row.event_id}_${row.subscription_id.slice(4, 16)}`;
@@ -247,7 +249,8 @@ export async function deliverWebhookEvents(env: Env, tenantId: string): Promise<
     JOIN mcp_event_subscriptions s ON s.id = d.subscription_id
     JOIN credentials c ON c.token_hash = s.token_hash
     WHERE d.tenant_id = ? AND d.delivered_at IS NULL AND d.failed_at IS NULL
-      AND s.expires_at > ? AND c.revoked_at IS NULL AND c.expires_at > ?`)
+      AND s.expires_at > ? AND c.revoked_at IS NULL AND c.expires_at > ?
+      AND instr(' ' || c.scopes || ' ', ' food:read ') > 0`)
     .bind(tenantId, new Date().toISOString(), new Date().toISOString()).first<{ due: string | null }>();
   return next?.due ? Math.max(Date.now() + 1000, Date.parse(next.due)) : null;
 }
