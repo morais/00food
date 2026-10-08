@@ -59,7 +59,7 @@ struct ProgressPlansView: View {
                         }
                         .buttonStyle(.borderedProminent)
                     }
-                    if let error = health.errorMessage {
+                    DelayedNotice(message: health.errorMessage, isRefreshing: health.isRefreshing) { error in
                         Text(error).font(.footnote).foregroundStyle(.red)
                     }
                     if let profile {

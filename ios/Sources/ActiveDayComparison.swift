@@ -7,6 +7,7 @@ struct ActiveDayComparison: View {
 
     let allowanceKcal: Int
     let eatenKcal: Int
+    var allowanceReady = true
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { timeline in
@@ -17,8 +18,8 @@ struct ActiveDayComparison: View {
             let foodFraction = min(1, foodRatio)
             let dayPercent = Int((dayFraction * 100).rounded())
             let foodPercent = Int((foodRatio * 100).rounded())
-            let ahead = foodRatio > dayFraction
-            let foodColor: Color = ahead ? .orange : .accentColor
+            let ahead = allowanceReady && foodRatio > dayFraction
+            let foodColor: Color = !allowanceReady ? .secondary : ahead ? .orange : .accentColor
 
             VStack(alignment: .leading, spacing: 8) {
                 GeometryReader { geometry in
@@ -72,7 +73,8 @@ struct ActiveDayComparison: View {
     private func foodLabel(_ percent: Int, color: Color, ahead: Bool) -> some View {
         HStack(spacing: 5) {
             Circle().fill(color).frame(width: 10, height: 10)
-            Text(ahead ? "\(percent)% allowance used, ahead of pace" : "\(percent)% allowance used")
+            Text(!allowanceReady ? "Updating allowance…" :
+                 ahead ? "\(percent)% allowance used, ahead of pace" : "\(percent)% allowance used")
         }
     }
 }

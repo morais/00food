@@ -211,8 +211,10 @@ struct HomeView: View {
             GeometryReader { geometry in
                 ScrollView(.vertical) {
                     VStack(alignment: .leading, spacing: 24) {
-                        if store.isOffline || store.pendingSyncCount > 0 || store.syncError != nil {
+                        if store.isOffline || store.pendingSyncCount > 0 {
                             syncStatus
+                        } else {
+                            DelayedNotice(message: store.syncError, isRefreshing: store.isSyncing) { _ in syncStatus }
                         }
                         if store.hasLoadedConnections && store.connections.isEmpty {
                             VStack(alignment: .leading, spacing: 10) {
@@ -363,7 +365,7 @@ struct HomeView: View {
             if let profile = store.profile {
                 ActiveDayComparison(allowanceKcal: profile.target(for: profile.deficitKcal,
                     resting: health.effectiveRestingKcal(for: profile)) + health.activeKcal,
-                                    eatenKcal: store.consumedToday)
+                                    eatenKcal: store.consumedToday, allowanceReady: health.allowanceIsReady)
             }
             if !store.estimations.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
@@ -507,7 +509,7 @@ struct HomeView: View {
             Text(health.waterRequested ? "Tap a glass to add 250 mL in Apple Health." :
                  "Tap a glass to connect Water in Apple Health and add 250 mL.")
                 .font(.caption).foregroundStyle(.secondary)
-            if let error = health.waterErrorMessage {
+            DelayedNotice(message: health.waterErrorMessage, isRefreshing: health.isRefreshing || health.isRefreshingWater) { error in
                 Text(error).font(.caption).foregroundStyle(.red)
             }
         }
@@ -578,8 +580,10 @@ struct HomeView: View {
                     }
                 }
                 if let selectedWaterError {
-                    Text("Water from Apple Health: \(selectedWaterError)")
-                        .font(.caption).foregroundStyle(.secondary)
+                    DelayedNotice(message: selectedWaterError) { error in
+                        Text("Water from Apple Health: \(error)")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 } else if selectedWaterMl == nil && !health.waterRequested {
                     Text("Connect Apple Health to show water for past days.")
                         .font(.caption).foregroundStyle(.secondary)
