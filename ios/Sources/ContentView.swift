@@ -61,7 +61,7 @@ struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
             guard store.signedIn, scenePhase == .active else { return }
             Task {
-                try? await store.refresh()
+                try? await store.refresh(force: true)
                 await health.refresh()
                 await queueDailyFeedback()
             }
@@ -118,7 +118,7 @@ struct RootView: View {
             if let syncError = store.syncError {
                 Text(syncError).font(.footnote).foregroundStyle(.red)
             }
-            Button("Try again") { Task { try? await store.refresh() } }
+            Button("Try again") { Task { try? await store.refresh(force: true) } }
                 .buttonStyle(.borderedProminent)
             Button("Sign out") {
                 Task {
@@ -266,8 +266,8 @@ struct HomeView: View {
                 Button("OK", role: .cancel) {}
             } message: { Text(errorText ?? "") }
             .refreshable {
-                try? await store.refresh()
-                try? await store.refreshConnections()
+                try? await store.refresh(force: true)
+                try? await store.refreshConnections(force: true)
                 health.setHistoryStart(store.accountStartedAt)
                 await health.refresh()
                 await loadSelectedWater(on: selectedLogDate)
@@ -320,7 +320,7 @@ struct HomeView: View {
             }
             Spacer()
             if !store.isOffline {
-                Button("Retry") { Task { try? await store.refresh() } }
+                Button("Retry") { Task { try? await store.refresh(force: true) } }
                     .font(.subheadline)
             }
         }

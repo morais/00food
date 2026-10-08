@@ -60,6 +60,12 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     /// The server's tag for the snapshot last applied, and the session it
     /// belongs to. Kept in memory only, so each launch starts with a full load.
     private var snapshotTag: (token: String, etag: String)?
+    /// Launch and foreground fire several overlapping refresh triggers; a
+    /// successful sync within this window satisfies the rest.
+    private static let refreshInterval: TimeInterval = 30
+    private var lastSnapshotAt: Date?
+    private var lastConnectionsAt: Date?
+    private var pathMonitorPrimed = false
     private let pathMonitor = NWPathMonitor()
     private static let tokenService = "00food.api-token"
     /// Sessions signed out while offline, revoked on the server once a connection returns.
@@ -79,7 +85,10 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
                 guard let self else { return }
                 self.isOffline = path.status != .satisfied
                 if path.status == .satisfied { await self.revokePendingSessions() }
-                if path.status == .satisfied && self.signedIn { try? await self.refresh() }
+                // The first callback reports the launch state; the app's own launch refresh covers it.
+                defer { self.pathMonitorPrimed = true }
+                guard self.pathMonitorPrimed else { return }
+                if path.status == .satisfied && self.signedIn { try? await self.refresh(force: true) }
             }
         }
         pathMonitor.start(queue: DispatchQueue(label: "00food.network"))
@@ -212,17 +221,24 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         ], authenticated: false)
         try Self.saveToken(response.token)
         token = response.token
+        lastSnapshotAt = nil
+        lastConnectionsAt = nil
         apply(FoodSnapshot(startedAt: nil, profile: nil, foods: [], logs: [], estimations: []))
         operations = []
         hasLoadedSnapshot = false
         accountEmail = response.tenant.email
         accountId = response.tenant.id
         UserDefaults.standard.set(accountEmail, forKey: "accountEmail")
-        try await refresh()
+        try await refresh(force: true)
     }
 
-    func refresh() async throws {
+    /// Syncs queued changes and reloads the snapshot. Without `force`, a call
+    /// within `refreshInterval` of the last successful load is skipped unless
+    /// local changes are waiting to sync.
+    func refresh(force: Bool = false) async throws {
         guard signedIn, !isSyncing else { return }
+        if !force, operations.isEmpty, let last = lastSnapshotAt,
+           Date().timeIntervalSince(last) < Self.refreshInterval { return }
         isSyncing = true
         defer { isSyncing = false }
         do {
@@ -247,6 +263,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
                     try persist()
                 }
                 snapshotTag = fetched.etag.map { (token, $0) }
+                lastSnapshotAt = Date()
                 syncError = nil
                 isOffline = false
                 retryTask?.cancel()
@@ -268,7 +285,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     func refreshAndWait() async throws {
         while isSyncing { try await Task.sleep(for: .milliseconds(100)) }
         try Task.checkCancellation()
-        try await refresh()
+        try await refresh(force: true)
         try Task.checkCancellation()
         if isOffline || syncError != nil || pendingSyncCount > 0 {
             throw FoodServiceError(message: "Daily feedback is waiting for a successful sync")
@@ -371,17 +388,19 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
 
     func accept(_ estimation: PendingEstimation) async throws {
         let _: AcceptedResponse = try await call("/v1/estimations/\(estimation.id)/accept", method: "POST")
-        try await refresh()
+        try await refresh(force: true)
     }
 
     func deleteEstimation(_ estimation: PendingEstimation) async throws {
         try stage(.deleteEstimate(estimation.id)) { estimations.removeAll { $0.id == estimation.id } }
     }
 
-    func refreshConnections() async throws {
+    func refreshConnections(force: Bool = false) async throws {
+        if !force, let last = lastConnectionsAt, Date().timeIntervalSince(last) < Self.refreshInterval { return }
         let response: ConnectionsResponse = try await call("/v1/account/mcp-connections")
         connections = response.connections
         hasLoadedConnections = true
+        lastConnectionsAt = Date()
     }
 
     func revokeConnection(_ connection: MCPConnection) async throws {
@@ -420,6 +439,8 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         hasLoadedConnections = false
         syncError = nil
         hasLoadedSnapshot = false
+        lastSnapshotAt = nil
+        lastConnectionsAt = nil
     }
 
     func deleteAccount(identityToken: String, code: String, nonce: String) async throws {
@@ -447,6 +468,8 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         operations = []
         syncError = nil
         hasLoadedSnapshot = false
+        lastSnapshotAt = nil
+        lastConnectionsAt = nil
     }
 
     /// Settings and Health export bookkeeping are stored per account in

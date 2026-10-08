@@ -97,7 +97,7 @@ struct AgentSetupView: View {
         refreshing = true
         defer { refreshing = false }
         do {
-            try await store.refreshConnections()
+            try await store.refreshConnections(force: true)
             connectionError = nil
         } catch {
             connectionError = "Could not check current connection status. Connect to the internet and refresh to try again."

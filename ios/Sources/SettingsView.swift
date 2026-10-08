@@ -77,7 +77,7 @@ struct SettingsView: View {
             } message: { Text("This removes your profile, foods, logs, estimates, photos, and agent connections.") }
             .task {
                 health.configureDietaryExport(accountId: store.accountId)
-                do { try await store.refreshConnections(); connectionError = nil }
+                do { try await store.refreshConnections(force: true); connectionError = nil }
                 catch { connectionError = "Could not check current agent connections. Open setup and refresh to try again." }
             }
             .alert("Could not update settings", isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
