@@ -46,3 +46,11 @@ describe("OAuth consent page", () => {
     expect(page).toContain("&lt;script&gt;");
   });
 });
+
+describe("OAuth consent buttons", () => {
+  it("styles Deny as the secondary choice so the two actions are distinct", async () => {
+    const page = await consentPage("https://evil.example/callback", "Test");
+    expect(page).toContain('<button class="secondary" name="decision" value="deny">Deny</button>');
+    expect(page).toContain('<button name="decision" value="approve">Approve</button>');
+  });
+});

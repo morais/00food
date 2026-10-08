@@ -189,6 +189,7 @@ function html(env: Env, body: string, status = 200): Response {
     header{font-size:22px;font-weight:800;border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:32px}
     main{border:1px solid var(--line);border-radius:18px;padding:28px;background:var(--card)}h1{font-size:23px;margin:0 0 12px}p{margin:12px 0;color:var(--muted)}
     button{font:inherit;font-weight:600;padding:10px 18px;margin:12px 8px 0 0;border:0;border-radius:6px;cursor:pointer;background:#0968e8;color:#fff}
+    button.secondary{background:transparent;color:var(--fg);box-shadow:inset 0 0 0 1px var(--muted)}
     .apple-button{display:block;width:100%;margin:16px 0 0;background:var(--fg);color:var(--bg);text-align:center}
     details{margin-top:24px;color:var(--muted)}details summary{cursor:pointer}details input{font:inherit;padding:10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);max-width:100%}
     code{overflow-wrap:anywhere}.status{display:inline-block;font-size:13px;font-weight:600;padding:2px 10px;border-radius:999px;margin-right:6px}.good{background:#dff5e6;color:#14532d}.warning{background:#fdecc8;color:#7a4b00}
@@ -388,7 +389,7 @@ export async function showConsent(req: Request, env: Env): Promise<Response> {
     <form method="post" action="/oauth/consent">
       <input type="hidden" name="flow" value="${htmlEscape(flowId)}">
       <input type="hidden" name="csrf" value="${htmlEscape(secret)}">
-      <button name="decision" value="deny">Deny</button>
+      <button class="secondary" name="decision" value="deny">Deny</button>
       <button name="decision" value="approve">Approve</button>
     </form>`);
 }
