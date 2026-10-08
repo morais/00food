@@ -490,8 +490,17 @@ struct HomeView: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(health.waterSaving)
-                    .accessibilityLabel("Add 250 milliliters of water")
                 }
+            }
+            // Eight identical glasses read as one control that reports progress.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Water")
+            .accessibilityValue("\(min(8, health.waterMlToday / 250)) of 8 glasses, \(health.waterMlToday.formatted()) milliliters")
+            .accessibilityHint("Adds 250 milliliters in Apple Health")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction {
+                guard !health.waterSaving else { return }
+                Task { await health.logWaterCup() }
             }
             Text(health.waterRequested ? "Tap a glass to add 250 mL in Apple Health." :
                  "Tap a glass to connect Water in Apple Health and add 250 mL.")
