@@ -35,7 +35,7 @@ export async function signOut(env: Env, principal: Principal): Promise<Response>
   return json({ ok: true });
 }
 
-export async function deleteAccount(req: Request, env: Env, principal: Principal): Promise<Response> {
+export async function deleteAccount(req: Request, env: Env, principal: Principal, ctx: ExecutionContext): Promise<Response> {
   let input: z.infer<typeof LoginInput>;
   try {
     if (Number(req.headers.get("content-length") ?? 0) > 16000) return json({ error: "Request too large" }, 413);
@@ -50,20 +50,41 @@ export async function deleteAccount(req: Request, env: Env, principal: Principal
     const verified = await verifyNativeAppleLogin(env, input.identityToken, input.authorizationCode, input.nonce);
     if (!constantTimeEqual(verified.claims.sub, tenant.apple_subject)) return json({ error: "This is a different Apple account" }, 403);
     accessToken = verified.accessToken;
-    await revokeAppleToken(env, env.APPLE_APP_CLIENT_ID!, accessToken);
   } catch (cause) {
     console.warn("Apple account deletion re-authentication failed", cause instanceof Error ? cause.message : "unknown error");
-    return json({ error: "Could not verify and revoke Apple sign-in. Please try again." }, 502);
+    return json({ error: "Could not verify Apple sign-in. Please try again." }, 502);
   }
+  // Deletion must not depend on Apple being reachable. The data goes first;
+  // the token revocation is retried after the response.
   await deleteTenantData(env, tenant.id, tenant.apple_subject);
   await closeAllFoodEventStreams(env, tenant.id);
+  ctx.waitUntil(revokeWithRetry(env, accessToken));
   return json({ ok: true });
+}
+
+const revokeDelaysMs = [0, 2000, 6000];
+
+export async function revokeWithRetry(env: Env, accessToken: string, delays = revokeDelaysMs): Promise<boolean> {
+  for (const delay of delays) {
+    if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+    try {
+      await revokeAppleToken(env, env.APPLE_APP_CLIENT_ID!, accessToken);
+      return true;
+    } catch (cause) {
+      console.warn("Apple token revocation failed", cause instanceof Error ? cause.message : "unknown error");
+    }
+  }
+  console.error("Apple token revocation gave up after account deletion");
+  return false;
 }
 
 /// Removes every row and photo belonging to the account. Each table is named
 /// explicitly rather than relying on foreign-key cascades, so a schema change
 /// cannot silently leave personal data behind.
 export async function deleteTenantData(env: Env, tenantId: string, appleSubject: string): Promise<void> {
+  // Photos go before the rows: if the batch then fails, the account still
+  // exists and a retry lists the (now empty) prefix again. The reverse order
+  // would orphan photos with no account left to retry from.
   if (env.PHOTOS) {
     let cursor: string | undefined;
     do {

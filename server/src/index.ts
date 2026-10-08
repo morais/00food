@@ -46,7 +46,7 @@ export default {
       if (!principal) return json({ error: "Unauthorized" }, 401);
       if (!(await tenantAllowed(env, principal.tenantId))) return tooManyRequests();
       if (path === "/v1/auth/logout" && method === "POST") return signOut(env, principal);
-      if (path === "/v1/auth/delete-account" && method === "POST") return deleteAccount(req, env, principal);
+      if (path === "/v1/auth/delete-account" && method === "POST") return deleteAccount(req, env, principal, ctx);
       if (path === "/v1/account/mcp-connections" && method === "GET") return listMcpConnections(env, principal);
       const connection = /^\/v1\/account\/mcp-connections\/([a-f0-9-]{36})$/.exec(path);
       if (connection && method === "DELETE") return disconnectMcpConnection(env, principal, connection[1]);
