@@ -30,6 +30,7 @@ struct RootView: View {
             else { HomeView() }
         }
         .task {
+            health.resetReadingsForNewDay()
             if UserDefaults.standard.string(forKey: "foodControlIconsVersion") != "3" {
                 ControlCenter.shared.reloadAllControls()
                 UserDefaults.standard.set("3", forKey: "foodControlIconsVersion")
@@ -45,6 +46,7 @@ struct RootView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
+                health.resetReadingsForNewDay()
                 openPendingWidgetLaunch()
             }
             if phase == .active && store.signedIn {
@@ -60,6 +62,7 @@ struct RootView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
             guard store.signedIn, scenePhase == .active else { return }
+            health.resetReadingsForNewDay()
             Task {
                 try? await store.refresh(force: true)
                 await health.refresh()

@@ -53,8 +53,8 @@ private struct DietaryExportState: Codable {
     private var dietaryAccountId: String?
     private var dietarySyncing = false
     private var queuedDietaryLogs: [FoodLog]?
-    private var waterDay = FoodDates.today()
-    private var allowanceDay = FoodDates.today()
+    private var readingDay = HealthDaySnapshot.Day()
+    private let dayCache: HealthDayCache
     private var waterRefreshID = UUID()
     private var waterRefreshCount = 0
     private var temporaryReadFailure = false
@@ -69,9 +69,26 @@ private struct DietaryExportState: Codable {
 
     var available: Bool { HKHealthStore.isHealthDataAvailable() }
     var isRefreshingWater: Bool { waterRefreshCount > 0 }
-    var allowanceIsReady: Bool { !available || !requested || (hasLoadedAllowance && !isRefreshing) }
+    var allowanceIsReady: Bool { !available || !requested || (hasLoadedAllowance && readingDay == HealthDaySnapshot.Day()) }
     var dietaryExportAuthorized: Bool {
         available && store.authorizationStatus(for: dietaryEnergy) == .sharingAuthorized
+    }
+
+    init(dayCache: HealthDayCache = HealthDayCache()) {
+        self.dayCache = dayCache
+        if let snapshot = dayCache.load() {
+            if let allowance = snapshot.allowance {
+                activeKcal = allowance.activeKcal
+                restingAverageKcal = allowance.restingAverageKcal
+                restingDaysUsed = allowance.restingDaysUsed
+                hasLoadedAllowance = true
+            }
+            waterMlToday = snapshot.waterMl ?? 0
+            latestWeightKg = snapshot.weightKg
+            latestWeightDate = snapshot.weightDate
+            latestBodyFatPercent = snapshot.bodyFatPercent
+            latestBodyFatDate = snapshot.bodyFatDate
+        }
     }
 
     var usableLatestWeightKg: Double? {
@@ -127,6 +144,7 @@ private struct DietaryExportState: Codable {
     }
 
     func refresh() async {
+        resetReadingsForNewDay()
         // Launch and foreground refresh from both RootView and HomeView. Join
         // the existing refresh so an older completion cannot overwrite it.
         if isRefreshing {
@@ -151,12 +169,8 @@ private struct DietaryExportState: Codable {
     private func refreshValues() async {
         errorMessage = nil
         temporaryReadFailure = false
-        if allowanceDay != FoodDates.today() {
-            allowanceDay = FoodDates.today()
-            activeKcal = 0
-            hasLoadedAllowance = false
-        }
-        resetWaterForNewDay()
+        resetReadingsForNewDay()
+        let requestedDay = readingDay
         guard available else { return }
         if !requested {
             if weightRequested { try? await refreshWeight() }
@@ -191,58 +205,94 @@ private struct DietaryExportState: Codable {
                 if Self.isNoData(error) { active = 0 }
                 else { throw error }
             }
-            activeKcal = max(0, Int(active.rounded()))
             let sevenDaysAgo = Calendar.current.date(byAdding: .day, value: -7, to: start) ?? start
             let restingDays = try await HealthQueryResult.read(noData: [HealthMeasurePoint]()) {
                 try await dailyCumulativeEnergy(of: restingEnergy, from: sevenDaysAgo, to: start)
             }.filter { $0.value > 0 && $0.date < start }
             let restingSummary = RestingEnergySummary(completedDayTotals: restingDays.map(\.value))
-            restingDaysUsed = restingSummary.daysUsed
-            restingAverageKcal = restingSummary.averageKcal
+            var refreshedActiveHistory = activeHistory
             if let historyStart {
                 let ninetyDaysAgo = Calendar.current.date(byAdding: .day, value: -89, to: start) ?? start
-                activeHistory = try await HealthQueryResult.read(noData: [HealthMeasurePoint]()) {
+                refreshedActiveHistory = try await HealthQueryResult.read(noData: [HealthMeasurePoint]()) {
                     try await dailyActiveEnergy(from: max(historyStart, ninetyDaysAgo))
                 }
             }
 
-            if weightRequested { try await refreshWeight() }
+            let weightReadings = weightRequested ? try await readWeight() : nil
+            var refreshedFat = latestBodyFatPercent
+            var refreshedFatDate = latestBodyFatDate
+            var refreshedFatHistory = bodyFatHistory
             if bodyFatRequested {
                 let latest = try await HealthQueryResult.read(noData: Optional<HKQuantitySample>.none) {
                     try await newestSample(of: bodyFat)
                 }
-                latestBodyFatPercent = latest.map { $0.quantity.doubleValue(for: .percent()) * 100 }
-                latestBodyFatDate = latest?.endDate
+                refreshedFat = latest.map { $0.quantity.doubleValue(for: .percent()) * 100 }
+                refreshedFatDate = latest?.endDate
                 if let historyStart {
-                    bodyFatHistory = try await HealthQueryResult.read(noData: [HealthMeasurePoint]()) {
+                    refreshedFatHistory = try await HealthQueryResult.read(noData: [HealthMeasurePoint]()) {
                         try await dailyHistory(of: bodyFat, from: historyStart, unit: .percent(), scale: 100)
                     }
                 }
             }
+            guard requestedDay == HealthDaySnapshot.Day() else { resetReadingsForNewDay(); return }
+            // Publish the budget together, so a partial refresh cannot move the
+            // pace marker to one allowance and then back to another.
+            activeKcal = max(0, Int(active.rounded()))
+            restingDaysUsed = restingSummary.daysUsed
+            restingAverageKcal = restingSummary.averageKcal
+            activeHistory = refreshedActiveHistory
+            if let weightReadings { applyWeight(weightReadings) }
+            latestBodyFatPercent = refreshedFat
+            latestBodyFatDate = refreshedFatDate
+            bodyFatHistory = refreshedFatHistory
             errorMessage = nil
-            hasLoadedAllowance = allowanceDay == FoodDates.today()
+            hasLoadedAllowance = true
+            cacheReadings(allowance: true, body: true)
         } catch {
+            guard requestedDay == HealthDaySnapshot.Day() else { resetReadingsForNewDay(); return }
             temporaryReadFailure = HealthQueryResult.isTemporarilyUnavailable(error)
             errorMessage = error.localizedDescription
         }
         if waterRequested { await refreshWater() }
     }
 
-    private func refreshWeight() async throws {
+    private struct WeightReadings {
+        let kg: Double?
+        let date: Date?
+        let history: [HealthMeasurePoint]
+    }
+
+    private func readWeight() async throws -> WeightReadings {
         let latest = try await HealthQueryResult.read(noData: Optional<HKQuantitySample>.none) {
             try await newestSample(of: bodyMass)
         }
-        latestWeightKg = latest?.quantity.doubleValue(for: .gramUnit(with: .kilo))
-        latestWeightDate = latest?.endDate
+        var history = weightHistory
         if let historyStart {
-            weightHistory = try await HealthQueryResult.read(noData: [HealthMeasurePoint]()) {
+            history = try await HealthQueryResult.read(noData: [HealthMeasurePoint]()) {
                 try await dailyHistory(of: bodyMass, from: historyStart, unit: .gramUnit(with: .kilo), scale: 1)
             }
         }
+        return WeightReadings(kg: latest?.quantity.doubleValue(for: .gramUnit(with: .kilo)),
+                              date: latest?.endDate, history: history)
+    }
+
+    private func applyWeight(_ readings: WeightReadings) {
+        latestWeightKg = readings.kg
+        latestWeightDate = readings.date
+        weightHistory = readings.history
+    }
+
+    private func refreshWeight() async throws {
+        resetReadingsForNewDay()
+        let requestedDay = readingDay
+        let readings = try await readWeight()
+        guard requestedDay == HealthDaySnapshot.Day() else { resetReadingsForNewDay(); return }
+        applyWeight(readings)
+        cacheReadings(body: true)
     }
 
     func refreshWater() async {
-        resetWaterForNewDay()
+        resetReadingsForNewDay()
         guard waterRequested && available else { return }
         let requestID = UUID()
         waterRefreshID = requestID
@@ -250,15 +300,16 @@ private struct DietaryExportState: Codable {
         defer { waterRefreshCount -= 1 }
         waterErrorMessage = nil
         temporaryWaterReadFailure = false
-        let requestedDay = FoodDates.today()
+        let requestedDay = readingDay
         let start = Calendar.current.startOfDay(for: Date())
         do {
             let milliliters = try await waterMilliliters(from: start, to: Date())
-            guard waterRefreshID == requestID, requestedDay == FoodDates.today() else { return }
+            guard waterRefreshID == requestID, requestedDay == HealthDaySnapshot.Day() else { return }
             waterMlToday = milliliters
             waterErrorMessage = nil
+            cacheReadings(water: true)
         } catch {
-            guard waterRefreshID == requestID, requestedDay == FoodDates.today() else { return }
+            guard waterRefreshID == requestID, requestedDay == HealthDaySnapshot.Day() else { return }
             temporaryWaterReadFailure = HealthQueryResult.isTemporarilyUnavailable(error)
             waterErrorMessage = error.localizedDescription
         }
@@ -291,12 +342,39 @@ private struct DietaryExportState: Codable {
         }
     }
 
-    private func resetWaterForNewDay() {
-        let today = FoodDates.today()
-        guard waterDay != today else { return }
-        waterDay = today
+    func resetReadingsForNewDay(on date: Date = Date(), calendar: Calendar = .current) {
+        let today = HealthDaySnapshot.Day(date: date, calendar: calendar)
+        guard readingDay != today else { return }
+        readingDay = today
+        waterRefreshID = UUID()
+        activeKcal = 0
+        restingAverageKcal = nil
+        restingDaysUsed = 0
+        hasLoadedAllowance = false
         waterMlToday = 0
+        latestWeightKg = nil
+        latestWeightDate = nil
+        latestBodyFatPercent = nil
+        latestBodyFatDate = nil
+        errorMessage = nil
         waterErrorMessage = nil
+    }
+
+    private func cacheReadings(allowance: Bool = false, water: Bool = false, body: Bool = false) {
+        guard readingDay == HealthDaySnapshot.Day() else { return }
+        var snapshot = dayCache.load() ?? HealthDaySnapshot(day: readingDay)
+        if allowance {
+            snapshot.allowance = .init(activeKcal: activeKcal, restingAverageKcal: restingAverageKcal,
+                                       restingDaysUsed: restingDaysUsed)
+        }
+        if water { snapshot.waterMl = waterMlToday }
+        if body {
+            snapshot.weightKg = latestWeightKg
+            snapshot.weightDate = latestWeightDate
+            snapshot.bodyFatPercent = latestBodyFatPercent
+            snapshot.bodyFatDate = latestBodyFatDate
+        }
+        dayCache.save(snapshot)
     }
 
     private static func isNoData(_ error: Error) -> Bool {
@@ -356,6 +434,7 @@ private struct DietaryExportState: Codable {
     }
 
     func logWaterCup() async {
+        resetReadingsForNewDay()
         guard available, !waterSaving else { return }
         waterSaving = true
         defer { waterSaving = false }
