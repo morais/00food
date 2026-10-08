@@ -19,8 +19,12 @@ export class FoodEventStream extends DurableObject<Env> {
     if (new URL(request.url).pathname === "/publish") {
       const tenantId = request.headers.get("x-tenant-id");
       if (!tenantId) return new Response(null, { status: 400 });
-      await this.ctx.storage.put("tenantId", tenantId);
-      await this.ctx.storage.setAlarm(Date.now());
+      // Only queued webhook deliveries need the alarm; a stream-only update
+      // just notifies the connected listeners below.
+      if (request.headers.get("x-deliver") !== "false") {
+        await this.ctx.storage.put("tenantId", tenantId);
+        await this.ctx.storage.setAlarm(Date.now());
+      }
       const notification = `data: ${JSON.stringify({ jsonrpc: "2.0", method: "notifications/resources/updated",
         params: { uri: foodEventsUri } })}\n\n`;
       for (const [listener, subscription] of this.listeners) {

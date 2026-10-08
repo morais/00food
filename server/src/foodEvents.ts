@@ -24,18 +24,26 @@ export async function recentFoodEvents(env: Env, tenantId: string): Promise<unkn
 
 export async function recordFoodEvent(env: Env, tenantId: string, eventKey: string, kind: string,
                                       subjectId: string, data: unknown): Promise<void> {
-  await env.DB.batch([env.DB.prepare(`INSERT OR IGNORE INTO food_events
+  const [event, deliveries] = await env.DB.batch([env.DB.prepare(`INSERT OR IGNORE INTO food_events
     (tenant_id, event_key, kind, subject_id, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
     .bind(tenantId, eventKey, kind, subjectId, JSON.stringify(data), new Date().toISOString()),
   webhookDeliveryInsert(env, tenantId, eventKey)]);
-  await notifyFoodEvent(env, tenantId);
+  // A replayed request finds its event already recorded; nobody needs telling again.
+  if (!event.meta.changes) return;
+  await notifyFoodEvent(env, tenantId, deliveries.meta.changes > 0);
 }
 
-export async function notifyFoodEvent(env: Env, tenantId: string): Promise<void> {
+/// Wakes the account's event object only when it has work: webhook deliveries
+/// to send, or a subscribed stream listening for resource updates. Accounts
+/// without a connected agent cost no Durable Object request or alarm.
+export async function notifyFoodEvent(env: Env, tenantId: string, queuedDeliveries: boolean): Promise<void> {
   if (!env.FOOD_EVENTS) return;
   try {
+    const streaming = !queuedDeliveries && await env.DB.prepare(
+      "SELECT 1 FROM mcp_resource_subscriptions WHERE tenant_id = ? LIMIT 1").bind(tenantId).first();
+    if (!queuedDeliveries && !streaming) return;
     await env.FOOD_EVENTS.getByName(tenantId).fetch("https://events.internal/publish", {
-      method: "POST", headers: { "x-tenant-id": tenantId },
+      method: "POST", headers: { "x-tenant-id": tenantId, "x-deliver": queuedDeliveries ? "true" : "false" },
     });
   } catch (cause) {
     // The D1 event journal is authoritative; connected clients can catch up by cursor.
@@ -43,8 +51,10 @@ export async function notifyFoodEvent(env: Env, tenantId: string): Promise<void>
   }
 }
 
-export async function notifyDailyFeedbackEvent(env: Env, tenantId: string): Promise<void> {
-  if (!env.FOOD_EVENTS) return;
+/// Daily feedback has no stream notification, only webhooks, so the object is
+/// woken only when a delivery was queued.
+export async function notifyDailyFeedbackEvent(env: Env, tenantId: string, queuedDeliveries: boolean): Promise<void> {
+  if (!env.FOOD_EVENTS || !queuedDeliveries) return;
   try {
     await env.FOOD_EVENTS.getByName(tenantId).fetch("https://events.internal/publish-daily", {
       method: "POST", headers: { "x-tenant-id": tenantId },

@@ -219,7 +219,7 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
       .bind(tenantId, input.localDate).first<DailyFeedbackRow>();
     if (existing) return json({ request: dailyFeedbackView(existing) }, 201);
     const now = new Date().toISOString();
-    await env.DB.batch([
+    const [, dailyDeliveries] = await env.DB.batch([
       env.DB.prepare(`INSERT OR IGNORE INTO daily_feedback_requests
         (id, tenant_id, local_date, time_zone, health_json, state, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`).bind(input.id, tenantId, input.localDate,
@@ -229,7 +229,7 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     const row = await env.DB.prepare("SELECT * FROM daily_feedback_requests WHERE tenant_id = ? AND local_date = ?")
       .bind(tenantId, input.localDate).first<DailyFeedbackRow>();
     if (!row) throw new APIError(409, "Feedback request ID is already in use");
-    if (row.id === input.id) await notifyDailyFeedbackEvent(env, tenantId);
+    if (row.id === input.id) await notifyDailyFeedbackEvent(env, tenantId, dailyDeliveries.meta.changes > 0);
     return json({ request: dailyFeedbackView(row) }, 201);
   }
   if (path === "/v1/profile" && method === "PUT") {
@@ -420,7 +420,7 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     const logId = crypto.randomUUID();
     const now = new Date().toISOString();
     const portions = row.proposed_fruit_veg_portions ?? 0;
-    await env.DB.batch([
+    const accepted = await env.DB.batch([
       env.DB.prepare(`INSERT INTO foods
         (id, tenant_id, name, serving, kcal, fruit_veg_portions, source, use_count, last_used_at, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, 'agent', 1, ?, ?, ?)`).bind(foodId, tenantId, row.proposed_name,
@@ -437,7 +437,7 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
             localDate: row.local_date, loggedAt: now }), now),
       webhookDeliveryInsert(env, tenantId, `log:${logId}`),
     ]);
-    await notifyFoodEvent(env, tenantId);
+    await notifyFoodEvent(env, tenantId, accepted[accepted.length - 1].meta.changes > 0);
     if (row.photo_key) await env.PHOTOS?.delete(row.photo_key);
     return json({ foodId, logId });
   }
