@@ -14,6 +14,21 @@ APPLE_TEAM_ID = "REPLACE_WITH_APPLE_TEAM_ID"
 APPLE_KEY_ID = "REPLACE_WITH_SIGN_IN_WITH_APPLE_KEY_ID"
 MCP_VERIFIED_CLIENTS = '{"https://chatgpt.com/connector_platform_oauth_redirect":"ChatGPT"}'
 
+# Optional: email the operator when Sign in with Apple creates a new tenant.
+# Commented out because it requires Cloudflare Email Routing on a domain in
+# your account, and an uncommented binding would fail `wrangler deploy` for
+# anyone who has not set that up.
+#
+# The destination address must be a verified Email Routing destination.
+# [[send_email]]
+# name = "SIGNUP_ALERTS"
+# destination_address = "you@example.com"
+#
+# Then set the recipient (and optionally the sender, which must be on an
+# Email Routing domain you control; it defaults to the recipient) under [vars]:
+# SIGNUP_ALERT_TO = "you@example.com"
+# SIGNUP_ALERT_FROM = "alerts@example.com"
+
 # Daily cleanup of expired OAuth flows, codes, credentials, subscriptions,
 # and old food events (src/cleanup.ts). Uses one of the account's cron slots.
 [triggers]

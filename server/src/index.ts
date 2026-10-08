@@ -25,12 +25,12 @@ export default {
     if (path === "/oauth/register" && method === "POST") return registerClient(req, env);
     if (path === "/oauth/authorize" && method === "GET") return beginAuthorization(req, env);
     if (path === "/oauth/login" && method === "GET") return showReviewLogin(req, env);
-    if (path === "/auth/apple/callback" && method === "POST") return appleCallback(req, env);
+    if (path === "/auth/apple/callback" && method === "POST") return appleCallback(req, env, ctx);
     if (path === "/auth/review/callback" && method === "POST") return reviewCallback(req, env);
     if (path === "/oauth/consent" && method === "GET") return showConsent(req, env);
     if (path === "/oauth/consent" && method === "POST") return decideConsent(req, env);
     if (path === "/oauth/token" && method === "POST") return exchangeCode(req, env);
-    if (path === "/v1/auth/apple" && method === "POST") return signInWithApple(req, env);
+    if (path === "/v1/auth/apple" && method === "POST") return signInWithApple(req, env, ctx);
     if (path === "/mcp") {
       const principal = await authenticate(req, env, "mcp");
       if (!principal) return authChallenge(env);

@@ -23,6 +23,12 @@ export interface Env {
   SIGN_IN_LIMITER?: RateLimit;
   TENANT_LIMITER?: RateLimit;
   FOOD_EVENTS?: DurableObjectNamespace;
+  // Optional operator alert when Sign in with Apple creates a new tenant.
+  // Both must be present or nothing is sent, so the default deployment needs no
+  // Email Routing setup.
+  SIGNUP_ALERTS?: SendEmail;              // [[send_email]] binding in wrangler.toml
+  SIGNUP_ALERT_TO?: string;               // recipient; the binding's verified destination
+  SIGNUP_ALERT_FROM?: string;             // optional sender on an Email Routing domain
 }
 
 export const appName = (env: Env): string => env.APP_NAME?.trim().slice(0, 60) || "00Food";

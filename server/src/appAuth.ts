@@ -9,7 +9,7 @@ const LoginInput = z.strictObject({
   nonce: z.string().min(16).max(256),
 });
 
-export async function signInWithApple(req: Request, env: Env): Promise<Response> {
+export async function signInWithApple(req: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
   if (!env.APPLE_APP_CLIENT_ID || !env.APPLE_PRIVATE_KEY) return json({ error: "Apple sign-in is not configured" }, 503);
   if (Number(req.headers.get("content-length") ?? 0) > 16000) return json({ error: "Request too large" }, 413);
   const raw = await req.text();
@@ -19,7 +19,7 @@ export async function signInWithApple(req: Request, env: Env): Promise<Response>
   catch { return json({ error: "Invalid Apple sign-in request" }, 400); }
   try {
     const { claims } = await verifyNativeAppleLogin(env, input.identityToken, input.authorizationCode, input.nonce);
-    const tenant = await findOrCreateTenant(env, claims.sub, appleEmail(claims));
+    const tenant = await findOrCreateTenant(env, claims.sub, appleEmail(claims), { source: "app", ctx });
     const credential = await issueCredential(env, tenant.id, "app", "iOS app");
     return json({ token: credential.token, expiresAt: credential.expiresAt,
       tenant: { id: tenant.id, email: tenant.email } }, 201);

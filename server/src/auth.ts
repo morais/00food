@@ -1,4 +1,5 @@
 import type { Env } from "./api";
+import { sendNewTenantAlert, type SignupSource } from "./signupAlert";
 
 export type CredentialKind = "app" | "mcp";
 export type Scope = "food:read" | "food:write" | "daily:read" | "daily:write";
@@ -115,13 +116,23 @@ export async function revokeCredential(env: Env, principal: Principal): Promise<
     .bind(new Date().toISOString(), principal.tokenHash, principal.tenantId).run();
 }
 
-export async function findOrCreateTenant(env: Env, appleSubject: string, email: string | null): Promise<TenantRow> {
+export async function findOrCreateTenant(
+  env: Env, appleSubject: string, email: string | null,
+  signup: { source: SignupSource; ctx?: ExecutionContext },
+): Promise<TenantRow> {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
-  await env.DB.prepare(`INSERT OR IGNORE INTO tenants
+  const inserted = await env.DB.prepare(`INSERT OR IGNORE INTO tenants
     (id, apple_subject, email, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`).bind(
     id, appleSubject, email, now, now,
   ).run();
+  // Only the request whose insert committed alerts; a concurrent sign-in for
+  // the same Apple ID is ignored by the unique key and created nothing.
+  if (inserted.meta.changes === 1) {
+    const alert = sendNewTenantAlert(env, { source: signup.source, tenantId: id, ownerEmail: email, createdAt: now });
+    // After the response, so a slow or failing mail send cannot delay signup.
+    if (typeof signup.ctx?.waitUntil === "function") signup.ctx.waitUntil(alert); else await alert;
+  }
   const tenant = await env.DB.prepare("SELECT id, apple_subject, email FROM tenants WHERE apple_subject = ?")
     .bind(appleSubject).first<TenantRow>();
   if (!tenant) throw new Error("Could not resolve Apple account");

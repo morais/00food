@@ -314,7 +314,7 @@ function consentRedirect(env: Env, flowId: string, secret: string): Response {
   } });
 }
 
-export async function appleCallback(req: Request, env: Env): Promise<Response> {
+export async function appleCallback(req: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
   if (!configured(env)) return html(env, "<h1>Apple sign-in is not configured</h1>", 503);
   let form: URLSearchParams;
   try { form = new URLSearchParams(await textBody(req, 16000)); }
@@ -333,7 +333,7 @@ export async function appleCallback(req: Request, env: Env): Promise<Response> {
     const exchanged = await exchangeAppleCode(env, code, env.APPLE_WEB_CLIENT_ID!, env.APPLE_WEB_REDIRECT_URI!);
     const exchangedClaims = await verifyAppleIdToken(exchanged.idToken, env.APPLE_WEB_CLIENT_ID!, flow.apple_nonce);
     if (!constantTimeEqual(claims.sub, exchangedClaims.sub)) throw new Error("Apple account changed");
-    const tenant = await findOrCreateTenant(env, claims.sub, appleEmail(exchangedClaims));
+    const tenant = await findOrCreateTenant(env, claims.sub, appleEmail(exchangedClaims), { source: "mcp", ctx });
     const consentSecret = randomToken(24);
     const result = await env.DB.prepare(`UPDATE oauth_flows SET tenant_id = ?, consent_hash = ?
       WHERE id_hash = ? AND tenant_id IS NULL`).bind(tenant.id, await sha256Hex(consentSecret), flow.id_hash).run();
