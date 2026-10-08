@@ -27,6 +27,7 @@ private struct FoodBalanceProvider: TimelineProvider {
 
 private struct FoodBalanceWidgetView: View {
     let entry: FoodBalanceEntry
+    @ScaledMetric(relativeTo: .largeTitle) private var balanceSize: CGFloat = 38
 
     private let logURL = URL(string: "zerozerofood://log/food")!
 
@@ -35,7 +36,7 @@ private struct FoodBalanceWidgetView: View {
             if let snapshot = entry.snapshot, snapshot.isCurrent(at: entry.date) {
                 HStack(alignment: .firstTextBaseline, spacing: 5) {
                     Text("\(snapshot.remainingKcal)")
-                        .font(.system(size: 38, weight: .bold, design: .rounded))
+                        .font(.system(size: balanceSize, weight: .bold, design: .rounded))
                         .minimumScaleFactor(0.7)
                     Text("kcal left").font(.subheadline).foregroundStyle(.white.opacity(0.7))
                     Spacer(minLength: 0)

@@ -163,6 +163,7 @@ private struct WaterGlassIcon: View {
 
 struct HomeView: View {
     @Environment(FoodStore.self) private var store
+    @ScaledMetric(relativeTo: .largeTitle) private var balanceSize: CGFloat = 48
     @Environment(HealthEnergy.self) private var health
     @State private var shortcuts = FoodQuickActions.shared
     @State private var addLaunch: FoodQuickLaunch?
@@ -333,7 +334,7 @@ struct HomeView: View {
                 withAnimation(.easeInOut(duration: 0.2)) { showingBalanceDetails.toggle() }
             } label: {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text("\(remaining)").font(.system(size: 48, weight: .bold, design: .rounded))
+                    Text("\(remaining)").font(.system(size: balanceSize, weight: .bold, design: .rounded))
                     Text("kcal left").font(.headline).foregroundStyle(.secondary)
                     Spacer(minLength: 0)
                     Image(systemName: showingBalanceDetails ? "chevron.down" : "chevron.right")
