@@ -8,15 +8,29 @@ export const tooManyRequests = (): Response => {
 
 const sourceKey = (req: Request): string => req.headers.get("cf-connecting-ip")?.trim() || "unknown";
 
-async function allowed(limiter: RateLimit | undefined, key: string): Promise<boolean> {
-  if (!limiter) return true;
+const isLocal = (env: Env): boolean => /^http:\/\/localhost(?::\d+)?\/?$/.test(env.PUBLIC_ORIGIN ?? "");
+
+// General limiters fail open so a limiter outage does not take the API down.
+// The sign-in limiter guards credential-minting routes, so it fails closed
+// unless the Worker is running locally without the binding.
+async function allowed(env: Env, limiter: RateLimit | undefined, key: string, failClosed = false): Promise<boolean> {
+  if (!limiter) {
+    if (failClosed && !isLocal(env)) {
+      console.error("Rate limiter binding missing; refusing", key.split(":")[0]);
+      return false;
+    }
+    return true;
+  }
   try { return (await limiter.limit({ key })).success; }
-  catch { return true; }
+  catch (cause) {
+    console.warn("Rate limiter failed", key.split(":")[0], cause instanceof Error ? cause.message : "unknown error");
+    return !failClosed;
+  }
 }
 
 export const sourceAllowed = (env: Env, req: Request): Promise<boolean> =>
-  allowed(env.SOURCE_LIMITER, `source:${sourceKey(req)}`);
+  allowed(env, env.SOURCE_LIMITER, `source:${sourceKey(req)}`);
 export const signInAllowed = (env: Env, req: Request): Promise<boolean> =>
-  allowed(env.SIGN_IN_LIMITER, `sign-in:${sourceKey(req)}`);
+  allowed(env, env.SIGN_IN_LIMITER, `sign-in:${sourceKey(req)}`, true);
 export const tenantAllowed = (env: Env, tenantId: string): Promise<boolean> =>
-  allowed(env.TENANT_LIMITER, `tenant:${tenantId}`);
+  allowed(env, env.TENANT_LIMITER, `tenant:${tenantId}`);
