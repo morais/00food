@@ -37,9 +37,6 @@ honey. Neither unapproved estimate is included in the log. Today totals 1,465
 kcal; yesterday totals 1,715. The fictional resting estimate is 1,850 kcal and
 active energy is 420, giving 805 kcal remaining today with a zero calorie gap.
 
-The promotional and App Store screenshots are captured, composed, and uploaded
-from the `00food-www` repository: run `marketing/screenshots/capture-ios.sh`
-there with this checkout at `../00food`. It runs the helper above, installs the
-demo on the iPhone 18 Pro and Pro Max simulators with an 18:41 status bar,
-captures each scene, and uninstalls it. Never install this demo onto a physical
+Promotional captures install the demo on a simulator with a fixed status bar,
+capture each scene, and uninstall it. Never install this demo onto a physical
 device or upload its binary to TestFlight.
