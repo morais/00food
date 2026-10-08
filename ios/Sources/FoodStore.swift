@@ -309,11 +309,14 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         return food
     }
 
-    func log(_ food: FoodItem, quantity: Double = 1) async throws {
-        let log = FoodLog(id: UUID().uuidString.lowercased(), foodId: food.id,
+    func log(_ food: FoodItem, quantity: Double = 1, id: String = UUID().uuidString.lowercased(),
+             loggedAt: Date = Date(), localDate: String? = nil) async throws {
+        guard !logs.contains(where: { $0.id == id }) else { return }
+        let log = FoodLog(id: id, foodId: food.id,
                           foodName: food.name, serving: food.serving, quantity: quantity,
                           kcal: max(1, Int((Double(food.kcal) * quantity).rounded())),
-                          localDate: FoodDates.today(), loggedAt: Self.now(),
+                          localDate: localDate ?? FoodDates.localDate(for: loggedAt),
+                          loggedAt: ISO8601DateFormatter().string(from: loggedAt),
                           fruitVegPortions: min(5, Int((Double(food.countedFruitVegPortions) * quantity).rounded())))
         try stage(.log(log)) {
             logs.insert(log, at: 0)
@@ -354,12 +357,14 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         }
     }
 
-    func requestEstimate(description: String, photo: Data?) async throws {
+    func requestEstimate(description: String, photo: Data?, id: String = UUID().uuidString.lowercased(),
+                         localDate: String? = nil) async throws {
+        guard !estimations.contains(where: { $0.id == id }) else { return }
         let now = Self.now()
-        let estimation = PendingEstimation(id: UUID().uuidString.lowercased(), description: description,
+        let estimation = PendingEstimation(id: id, description: description,
                                            hasPhoto: photo != nil, state: "uploading", proposedName: nil,
                                            proposedServing: nil, proposedKcal: nil, agentNote: nil,
-                                           localDate: FoodDates.today(), createdAt: now, updatedAt: now)
+                                           localDate: localDate ?? FoodDates.today(), createdAt: now, updatedAt: now)
         try stage(.estimate(estimation, photo)) { estimations.insert(estimation, at: 0) }
     }
 

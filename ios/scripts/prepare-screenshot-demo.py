@@ -11,7 +11,7 @@ import tempfile
 
 root = pathlib.Path(__file__).resolve().parents[1]
 output = pathlib.Path(tempfile.mkdtemp(prefix="00food-screenshot-", dir="/private/tmp"))
-shutil.copytree(root / "Sources", output / "Sources", ignore=shutil.ignore_patterns("Widgets", "ZeroZeroFoodApp.swift"))
+shutil.copytree(root / "Sources", output / "Sources", ignore=shutil.ignore_patterns("Widgets", "Watch", "WatchWidgets", "ZeroZeroFoodApp.swift"))
 shutil.copytree(root / "Resources/App/Assets.xcassets", output / "Assets.xcassets")
 for name in ("App.swift", "Fixtures.swift"):
     shutil.copy(root / "ScreenshotDemo" / name, output / "Sources" / name)

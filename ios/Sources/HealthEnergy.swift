@@ -476,6 +476,35 @@ private struct DietaryExportState: Codable {
         try await refreshWeight()
     }
 
+    // Watch commands are retried across two durable queues. The sync identifier
+    // makes a water write idempotent even if the phone stops before replying.
+    func applyWatchWater(id: String, accountId: String, at date: Date, undo: Bool = false) async throws {
+        guard available, store.authorizationStatus(for: water) == .sharingAuthorized else {
+            throw WatchActionError(message: "Open 00Food on your iPhone and tap a water glass to allow Apple Health water logging.")
+        }
+        let syncID = "00food.watch.water.\(accountId).\(id)"
+        let predicate = HKQuery.predicateForObjects(withMetadataKey: HKMetadataKeySyncIdentifier,
+                                                   operatorType: .equalTo, value: syncID)
+        if undo {
+            _ = try await store.deleteObjects(of: water, predicate: predicate)
+        } else {
+            let exists = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Bool, Error>) in
+                let query = HKSampleQuery(sampleType: water, predicate: predicate, limit: 1, sortDescriptors: nil) { _, samples, error in
+                    if let error { continuation.resume(throwing: error) }
+                    else { continuation.resume(returning: !(samples ?? []).isEmpty) }
+                }
+                store.execute(query)
+            }
+            if !exists {
+                let sample = HKQuantitySample(type: water,
+                    quantity: HKQuantity(unit: .literUnit(with: .milli), doubleValue: 250), start: date, end: date,
+                    metadata: [HKMetadataKeySyncIdentifier: syncID, HKMetadataKeySyncVersion: 1])
+                try await store.save(sample)
+            }
+        }
+        await refreshWater()
+    }
+
     func enableDietaryExport(accountId: String, logs: [FoodLog]) async {
         guard available else {
             dietaryErrorMessage = "Apple Health is not available on this device."
