@@ -5,7 +5,7 @@ import { authenticate, publicOrigin } from "./auth";
 import { deleteAccount, signInWithApple, signOut } from "./appAuth";
 import { disconnectMcpConnection, listMcpConnections } from "./mcpConnections";
 import { maybeSweep, sweepExpiredAuthData } from "./cleanup";
-import { signInAllowed, sourceAllowed, tenantAllowed, tooManyRequests } from "./rateLimit";
+import { isSignInRoute, signInAllowed, sourceAllowed, tenantAllowed, tooManyRequests } from "./rateLimit";
 import {
   appleCallback, authChallenge, authorizationServerMetadata, beginAuthorization,
   decideConsent, exchangeCode, protectedResourceMetadata, registerClient, showConsent,
@@ -18,11 +18,7 @@ export default {
     const method = req.method;
     if (path === "/health" && method === "GET") return json({ ok: true });
     if (!(await sourceAllowed(env, req))) return tooManyRequests();
-    if ((path === "/v1/auth/apple" || path === "/oauth/register" || path === "/oauth/token"
-      || path === "/auth/apple/callback" || path === "/oauth/consent") && method === "POST"
-      || path === "/oauth/authorize") {
-      if (!(await signInAllowed(env, req))) return tooManyRequests();
-    }
+    if (isSignInRoute(path, method) && !(await signInAllowed(env, req))) return tooManyRequests();
     if (path === "/.well-known/oauth-protected-resource" && method === "GET") return protectedResourceMetadata(env);
     if (path === "/.well-known/oauth-protected-resource/mcp" && method === "GET") return protectedResourceMetadata(env);
     if (path === "/.well-known/oauth-authorization-server" && method === "GET") return authorizationServerMetadata(env);

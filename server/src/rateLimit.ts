@@ -6,6 +6,14 @@ export const tooManyRequests = (): Response => {
   return response;
 };
 
+const signInPosts = new Set(["/v1/auth/apple", "/oauth/register", "/oauth/token", "/auth/apple/callback",
+  "/auth/review/callback", "/oauth/consent"]);
+const signInPages = new Set(["/oauth/authorize", "/oauth/login"]);
+
+/// Routes that start a sign-in or mint a credential share the stricter limiter.
+export const isSignInRoute = (path: string, method: string): boolean =>
+  signInPages.has(path) || method === "POST" && signInPosts.has(path);
+
 const sourceKey = (req: Request): string => req.headers.get("cf-connecting-ip")?.trim() || "unknown";
 
 const isLocal = (env: Env): boolean => /^http:\/\/localhost(?::\d+)?\/?$/.test(env.PUBLIC_ORIGIN ?? "");
