@@ -13,12 +13,14 @@ struct SignInView: View {
         ScrollView {
             VStack(spacing: 18) {
                 Spacer()
-                Image("BrandMark")
+                Image(decorative: "BrandMark")
                     .resizable().scaledToFit()
                     .frame(width: 152, height: 152)
                     .clipShape(RoundedRectangle(cornerRadius: 30))
                 Image("BrandWordmark")
                     .resizable().scaledToFit().frame(width: 240, height: 76)
+                    .accessibilityLabel("00Food")
+                    .accessibilityAddTraits(.isHeader)
                 Text("Your food log. Your AI agent.")
                     .font(.headline).multilineTextAlignment(.center)
                 Text("Bring your own AI agent to estimate foods and help you review your day. You approve the estimates and build your own food library.")
