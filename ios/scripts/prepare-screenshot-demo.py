@@ -37,8 +37,11 @@ source = path.read_text()
 source = replace_body(source, "    init()", '''        baseURL = "https://api.00food.com"
         token = "fictional-local-only"
         ScreenshotFixtures.configure(self)''')
-for signature in ("    func refresh() async throws", "    func refreshConnections() async throws"):
+for signature in ("    func refresh(force: Bool = false) async throws",
+                  "    func refreshConnections(force: Bool = false) async throws"):
     source = replace_body(source, signature, "        return")
+source = replace_body(source, "    private func fetchSnapshot()",
+                      '        throw FoodServiceError(message: "Screenshot demo: network access disabled")')
 source = replace_body(source, "    private func stage(", "        update()")
 source = replace_body(source, "    private func call<T:",
                       '        throw FoodServiceError(message: "Screenshot demo: network access disabled")')
@@ -89,7 +92,10 @@ project = {
             "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "AccentColor"}},
         "info": {"path": "Info.plist", "properties": {"CFBundleDisplayName": "00Food Demo",
             "FoodAppGroup": "group.com.00food.screenshots",
-            "UILaunchScreen": {}, "UISupportedInterfaceOrientations": ["UIInterfaceOrientationPortrait"]}}}},
+            # Production's orientations, so landscape iPhone Duo captures match the shipped app.
+            "UILaunchScreen": {}, "UISupportedInterfaceOrientations": [
+                "UIInterfaceOrientationPortrait", "UIInterfaceOrientationPortraitUpsideDown",
+                "UIInterfaceOrientationLandscapeLeft", "UIInterfaceOrientationLandscapeRight"]}}}},
     "schemes": {"ScreenshotDemo": {"build": {"targets": {"ScreenshotDemo": "all"}}}},
 }
 (output / "project.json").write_text(json.dumps(project, indent=2))
