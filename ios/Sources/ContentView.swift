@@ -343,6 +343,7 @@ struct HomeView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("\(remaining) calories left")
+            .accessibilityValue(showingBalanceDetails ? "Calculation shown" : "Calculation hidden")
             .accessibilityHint(showingBalanceDetails ? "Hide calculation" : "Show calculation")
             if showingBalanceDetails, let profile = store.profile {
                 let resting = health.effectiveRestingKcal(for: profile)
