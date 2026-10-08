@@ -366,6 +366,9 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     const row = await findEstimation(env, tenantId, photoMatch[1]);
     if (!row || row.state !== "pending") throw new APIError(404, "Pending estimation not found");
     if (req.headers.get("content-type") !== "image/jpeg") fail(415, "Use a JPEG photo");
+    // Refuse before buffering: an unchecked body could be far larger than a photo.
+    const declared = Number(req.headers.get("content-length") ?? NaN);
+    if (!Number.isFinite(declared) || declared > 2_000_000) fail(declared > 2_000_000 ? 413 : 411, "Photo must be under 2 MB");
     const bytes = await req.arrayBuffer();
     validateJpeg(new Uint8Array(bytes));
     const key = `${tenantId}/${row.id}.jpg`;
