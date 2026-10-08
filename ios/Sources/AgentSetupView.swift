@@ -111,10 +111,11 @@ struct AgentConnectionDetails: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(connection.clientName).font(.headline)
-            Label("Connected", systemImage: "checkmark.circle").foregroundStyle(.green)
+            Label("Connected", systemImage: "checkmark.circle").labelStyle(.tintedIcon(.green))
             if let events = connection.activeEvents {
                 if events.isEmpty {
-                    Text("No active event subscriptions").foregroundStyle(.orange)
+                    Label("No active event subscriptions", systemImage: "exclamationmark.triangle")
+                        .labelStyle(.tintedIcon(.orange))
                 } else {
                     if events.contains("food.estimate_requested") {
                         Text("New food requests: subscribed")

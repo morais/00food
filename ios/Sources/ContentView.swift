@@ -368,11 +368,11 @@ struct HomeView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     if readyEstimateCount > 0 {
                         Label("\(readyEstimateCount) ready to review", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.blue)
+                            .labelStyle(.tintedIcon(.blue))
                     }
                     if waitingEstimateCount > 0 {
                         Label("\(waitingEstimateCount) awaiting agent", systemImage: "clock")
-                            .foregroundStyle(.orange)
+                            .labelStyle(.tintedIcon(.orange))
                     }
                     if offlineEstimateCount > 0 {
                         Label("\(offlineEstimateCount) waiting to send", systemImage: "wifi.slash")
@@ -469,7 +469,7 @@ struct HomeView: View {
         return Label(ready ? "Ready to review" : offline ? "Saved offline" : "Awaiting agent",
                      systemImage: ready ? "checkmark.circle.fill" : offline ? "wifi.slash" : "clock")
             .font(.caption.weight(.semibold))
-            .foregroundStyle(color)
+            .labelStyle(.tintedIcon(color))
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(color.opacity(0.12), in: Capsule())
@@ -520,7 +520,7 @@ struct HomeView: View {
                 Text("5 a day").font(.headline)
                 Spacer()
                 Text("\(store.fruitVegToday) of 5")
-                    .font(.subheadline.weight(.semibold)).foregroundStyle(.green)
+                    .font(.subheadline.weight(.semibold))
             }
             HStack(spacing: 12) {
                 ForEach(0..<5, id: \.self) { index in
@@ -598,7 +598,7 @@ struct HomeView: View {
                     Text("\(log.kcal) kcal").font(.subheadline.monospacedDigit())
                     if log.countedFruitVegPortions > 0 {
                         Label("\(log.countedFruitVegPortions)", systemImage: "leaf.fill")
-                            .font(.caption).foregroundStyle(.green)
+                            .font(.caption).foregroundStyle(.secondary).labelStyle(.tintedIcon(.green))
                     }
                     if deletingLogID == log.id { ProgressView() }
                 }

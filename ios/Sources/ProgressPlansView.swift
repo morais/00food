@@ -124,11 +124,11 @@ struct ProgressPlansView: View {
                 .chartLegend(.hidden)
                 .chartXScale(domain: calorieHistoryDomain)
                 HStack(spacing: 16) {
-                    Label("Logged food", systemImage: "square.fill").foregroundStyle(.orange)
-                    Label("Allowance", systemImage: "line.diagonal").foregroundStyle(.blue)
-                    Label("Today", systemImage: "circle.fill").foregroundStyle(.purple)
+                    Label("Logged food", systemImage: "square.fill").labelStyle(.tintedIcon(.orange))
+                    Label("Allowance", systemImage: "line.diagonal").labelStyle(.tintedIcon(.blue))
+                    Label("Today", systemImage: "circle.fill").labelStyle(.tintedIcon(.purple))
                 }
-                .font(.caption)
+                .font(.caption).foregroundStyle(.secondary)
             } else {
                 Text("No calorie history yet.").foregroundStyle(.secondary)
             }
@@ -263,11 +263,11 @@ struct ProgressPlansView: View {
                 }
             }
             HStack(spacing: 14) {
-                Label("Weight", systemImage: "circle.fill").foregroundStyle(.blue)
-                Label("Illustration", systemImage: "circle.dotted").foregroundStyle(.blue)
-                Label("BMI range", systemImage: "rectangle.fill").foregroundStyle(.green)
+                Label("Weight", systemImage: "circle.fill").labelStyle(.tintedIcon(.blue))
+                Label("Illustration", systemImage: "circle.dotted").labelStyle(.tintedIcon(.blue))
+                Label("BMI range", systemImage: "rectangle.fill").labelStyle(.tintedIcon(.green))
             }
-            .font(.caption)
+            .font(.caption).foregroundStyle(.secondary)
             if let bmiEntryDate {
                 Text("Estimated entry into the BMI range: \(bmiEntryDate.formatted(date: .abbreviated, time: .omitted))")
                     .font(.subheadline.weight(.medium))
@@ -327,10 +327,10 @@ struct ProgressPlansView: View {
                 }
             }
             HStack(spacing: 14) {
-                Label("Body fat", systemImage: "circle.fill").foregroundStyle(.teal)
-                Label("Illustration", systemImage: "circle.dotted").foregroundStyle(.teal)
+                Label("Body fat", systemImage: "circle.fill").labelStyle(.tintedIcon(.teal))
+                Label("Illustration", systemImage: "circle.dotted").labelStyle(.tintedIcon(.teal))
             }
-            .font(.caption)
+            .font(.caption).foregroundStyle(.secondary)
             if !visibleACEBoundaries.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(visibleACEBoundaries) { boundary in
@@ -341,7 +341,6 @@ struct ProgressPlansView: View {
                                 .padding(.top, 7)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text("ACE \(boundary.category) · \(Int(boundary.percentage))%")
-                                    .foregroundStyle(aceColor(for: boundary))
                                 Text(aceForecastLabel(for: boundary, projection: projection))
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)

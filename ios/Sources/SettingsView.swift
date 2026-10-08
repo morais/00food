@@ -117,7 +117,7 @@ private struct DeveloperView: View {
                     if let accountId = store.accountId {
                         if health.dietaryExportEnabled && health.dietaryExportAuthorized {
                             Label("New food logs are written to Apple Health", systemImage: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
+                                .labelStyle(.tintedIcon(.green))
                         } else {
                             Button("Write new food logs to Apple Health") {
                                 Task { await health.enableDietaryExport(accountId: accountId, logs: store.logs) }

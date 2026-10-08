@@ -190,7 +190,7 @@ struct QuickAddView: View {
                 Text("\(food.kcal) kcal").foregroundStyle(.secondary)
                 if food.countedFruitVegPortions > 0 {
                     Label("\(food.countedFruitVegPortions)", systemImage: "leaf.fill")
-                        .font(.caption).foregroundStyle(.green)
+                        .font(.caption).foregroundStyle(.secondary).labelStyle(.tintedIcon(.green))
                 }
             }
         }
