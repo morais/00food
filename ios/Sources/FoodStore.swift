@@ -398,6 +398,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         }
         try OfflineFoodDisk.clear(for: token)
         Self.deleteToken()
+        if let accountId { Self.forgetAccountDefaults(accountId) }
         token = ""
         accountEmail = nil
         accountId = nil
@@ -423,6 +424,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         ])
         try OfflineFoodDisk.clear(for: token)
         Self.deleteToken()
+        if let accountId { Self.forgetAccountDefaults(accountId) }
         token = ""
         accountEmail = nil
         accountId = nil
@@ -438,6 +440,15 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         operations = []
         syncError = nil
         hasLoadedSnapshot = false
+    }
+
+    /// Settings and Health export bookkeeping are stored per account in
+    /// UserDefaults, which is backed up; none of it should outlive the session.
+    private static func forgetAccountDefaults(_ accountId: String) {
+        for key in ["dailyFeedback.enabled.\(accountId)", "dailyFeedback.enabledAt.\(accountId)"] {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+        HealthEnergy.forgetDietaryExport(for: accountId)
     }
 
     private static func now() -> String {

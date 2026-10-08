@@ -430,6 +430,10 @@ private struct DietaryExportState: Codable {
         return try? JSONDecoder().decode(DietaryExportState.self, from: data)
     }
 
+    static func forgetDietaryExport(for accountId: String) {
+        UserDefaults.standard.removeObject(forKey: dietaryKey(for: accountId))
+    }
+
     private static func saveDietaryState(_ state: DietaryExportState, for accountId: String) {
         guard let data = try? JSONEncoder().encode(state) else { return }
         UserDefaults.standard.set(data, forKey: dietaryKey(for: accountId))
