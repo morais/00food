@@ -2,7 +2,7 @@
 
 `00food-app-icon-master.png` is the approved option B (the second preview), copied directly from the built-in image generation tool's output. It is the authoritative artwork for the app icon and the in-app mark; the generator only resizes it.
 
-`00food-mark-transparent-master.png` is its transparent companion, also produced with the built-in image generation tool. It is used for the reusable transparent marks. The original 00Widget masters remain as historical references under `00widget-LICENSE`. The two 00Food masters are covered by `../LICENSE`.
+`00food-mark-transparent-master.png` is its transparent companion, also produced with the built-in image generation tool. It is used for the reusable transparent marks. Both masters are covered by `../LICENSE`.
 
 ## Icon prompt
 
