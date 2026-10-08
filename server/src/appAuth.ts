@@ -55,28 +55,38 @@ export async function deleteAccount(req: Request, env: Env, principal: Principal
     console.warn("Apple account deletion re-authentication failed", cause instanceof Error ? cause.message : "unknown error");
     return json({ error: "Could not verify and revoke Apple sign-in. Please try again." }, 502);
   }
+  await deleteTenantData(env, tenant.id, tenant.apple_subject);
+  await closeAllFoodEventStreams(env, tenant.id);
+  return json({ ok: true });
+}
+
+/// Removes every row and photo belonging to the account. Each table is named
+/// explicitly rather than relying on foreign-key cascades, so a schema change
+/// cannot silently leave personal data behind.
+export async function deleteTenantData(env: Env, tenantId: string, appleSubject: string): Promise<void> {
   if (env.PHOTOS) {
     let cursor: string | undefined;
     do {
-      const page = await env.PHOTOS.list({ prefix: `${tenant.id}/`, cursor });
+      const page = await env.PHOTOS.list({ prefix: `${tenantId}/`, cursor });
       if (page.objects.length) await env.PHOTOS.delete(page.objects.map((object) => object.key));
       cursor = page.truncated ? page.cursor : undefined;
     } while (cursor);
   }
   await env.DB.batch([
-    env.DB.prepare("DELETE FROM mcp_event_deliveries WHERE tenant_id = ?").bind(tenant.id),
-    env.DB.prepare("DELETE FROM mcp_event_subscriptions WHERE tenant_id = ?").bind(tenant.id),
-    env.DB.prepare("DELETE FROM food_logs WHERE tenant_id = ?").bind(tenant.id),
-    env.DB.prepare("DELETE FROM food_events WHERE tenant_id = ?").bind(tenant.id),
-    env.DB.prepare("DELETE FROM mcp_resource_subscriptions WHERE tenant_id = ?").bind(tenant.id),
-    env.DB.prepare("DELETE FROM pending_estimations WHERE tenant_id = ?").bind(tenant.id),
-    env.DB.prepare("DELETE FROM profiles WHERE tenant_id = ?").bind(tenant.id),
-    env.DB.prepare("DELETE FROM foods WHERE tenant_id = ?").bind(tenant.id),
-    env.DB.prepare("DELETE FROM oauth_flows WHERE tenant_id = ?").bind(tenant.id),
-    env.DB.prepare("DELETE FROM oauth_codes WHERE tenant_id = ?").bind(tenant.id),
-    env.DB.prepare("DELETE FROM credentials WHERE tenant_id = ?").bind(tenant.id),
-    env.DB.prepare("DELETE FROM tenants WHERE id = ? AND apple_subject = ?").bind(tenant.id, tenant.apple_subject),
+    env.DB.prepare("DELETE FROM daily_feedback_deliveries WHERE tenant_id = ?").bind(tenantId),
+    env.DB.prepare("DELETE FROM mcp_event_deliveries WHERE tenant_id = ?").bind(tenantId),
+    env.DB.prepare("DELETE FROM mcp_event_subscriptions WHERE tenant_id = ?").bind(tenantId),
+    env.DB.prepare("DELETE FROM daily_feedback_requests WHERE tenant_id = ?").bind(tenantId),
+    env.DB.prepare("DELETE FROM food_logs WHERE tenant_id = ?").bind(tenantId),
+    env.DB.prepare("DELETE FROM food_events WHERE tenant_id = ?").bind(tenantId),
+    env.DB.prepare("DELETE FROM mcp_resource_subscriptions WHERE tenant_id = ?").bind(tenantId),
+    env.DB.prepare("DELETE FROM pending_estimations WHERE tenant_id = ?").bind(tenantId),
+    env.DB.prepare("DELETE FROM profiles WHERE tenant_id = ?").bind(tenantId),
+    env.DB.prepare("DELETE FROM foods WHERE tenant_id = ?").bind(tenantId),
+    env.DB.prepare("DELETE FROM oauth_flows WHERE tenant_id = ?").bind(tenantId),
+    env.DB.prepare("DELETE FROM oauth_codes WHERE tenant_id = ?").bind(tenantId),
+    env.DB.prepare("DELETE FROM review_credentials WHERE tenant_id = ?").bind(tenantId),
+    env.DB.prepare("DELETE FROM credentials WHERE tenant_id = ?").bind(tenantId),
+    env.DB.prepare("DELETE FROM tenants WHERE id = ? AND apple_subject = ?").bind(tenantId, appleSubject),
   ]);
-  await closeAllFoodEventStreams(env, tenant.id);
-  return json({ ok: true });
 }
