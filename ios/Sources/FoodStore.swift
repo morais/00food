@@ -59,6 +59,8 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     private var retryTask: Task<Void, Never>?
     private let pathMonitor = NWPathMonitor()
     private static let tokenService = "00food.api-token"
+    /// Sessions signed out while offline, revoked on the server once a connection returns.
+    private static let pendingRevocationService = "00food.pending-revocations"
 
     init() {
         baseURL = (Bundle.main.object(forInfoDictionaryKey: "FoodServerBaseURL") as? String ?? "").trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -73,6 +75,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.isOffline = path.status != .satisfied
+                if path.status == .satisfied { await self.revokePendingSessions() }
                 if path.status == .satisfied && self.signedIn { try? await self.refresh() }
             }
         }
@@ -386,7 +389,13 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         guard operations.isEmpty else {
             throw FoodServiceError(message: "\(operations.count) change(s) are waiting to sync. Connect to the internet before signing out so they are not lost.")
         }
-        let _: OKResponse? = try? await call("/v1/auth/logout", method: "POST")
+        do {
+            let _: OKResponse = try await call("/v1/auth/logout", method: "POST")
+        } catch let error as FoodServiceError where error.status == 401 {
+            // The server already considers this session ended.
+        } catch {
+            Self.queueRevocation(of: token)
+        }
         try OfflineFoodDisk.clear(for: token)
         Self.deleteToken()
         token = ""
@@ -538,14 +547,29 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         }
     }
 
+    /// Retries the server-side logout for sessions that ended while offline, so
+    /// a signed-out token does not stay valid until it expires.
+    func revokePendingSessions() async {
+        for pending in Self.pendingRevocations() {
+            do {
+                let _: OKResponse = try await call("/v1/auth/logout", method: "POST", bearer: pending)
+            } catch let error as FoodServiceError where error.status == 401 {
+                // Already invalid on the server.
+            } catch {
+                continue
+            }
+            Self.removePendingRevocation(pending)
+        }
+    }
+
     private func call<T: Decodable>(_ path: String, method: String = "GET", body: [String: Any]? = nil,
-                                     authenticated: Bool = true) async throws -> T {
+                                     authenticated: Bool = true, bearer: String? = nil) async throws -> T {
         guard let url = URL(string: baseURL + path), url.scheme == "https" || url.host == "localhost" else {
             throw FoodServiceError(message: "Server address is missing")
         }
         var request = URLRequest(url: url)
         request.httpMethod = method
-        if authenticated { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        if authenticated { request.setValue("Bearer \(bearer ?? token)", forHTTPHeaderField: "Authorization") }
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -563,9 +587,35 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         }
     }
 
-    private static func readToken() -> String {
+    private static func readToken() -> String { readKeychain(tokenService) }
+
+    private static func saveToken(_ token: String) throws {
+        guard writeKeychain(tokenService, token) else {
+            throw FoodServiceError(message: "Could not save the sign-in session")
+        }
+    }
+
+    private static func deleteToken() { deleteKeychain(tokenService) }
+
+    private static func pendingRevocations() -> [String] {
+        readKeychain(pendingRevocationService).split(separator: "\n").map(String.init)
+    }
+
+    private static func queueRevocation(of token: String) {
+        guard !token.isEmpty else { return }
+        let tokens = pendingRevocations().filter { $0 != token } + [token]
+        _ = writeKeychain(pendingRevocationService, tokens.suffix(10).joined(separator: "\n"))
+    }
+
+    private static func removePendingRevocation(_ token: String) {
+        let tokens = pendingRevocations().filter { $0 != token }
+        if tokens.isEmpty { deleteKeychain(pendingRevocationService) }
+        else { _ = writeKeychain(pendingRevocationService, tokens.joined(separator: "\n")) }
+    }
+
+    private static func readKeychain(_ service: String) -> String {
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
-                                    kSecAttrService as String: tokenService,
+                                    kSecAttrService as String: service,
                                     kSecReturnData as String: true,
                                     kSecMatchLimit as String: kSecMatchLimitOne]
         var item: CFTypeRef?
@@ -574,20 +624,18 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         return String(data: data, encoding: .utf8) ?? ""
     }
 
-    private static func saveToken(_ token: String) throws {
-        deleteToken()
+    private static func writeKeychain(_ service: String, _ value: String) -> Bool {
+        deleteKeychain(service)
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
-                                    kSecAttrService as String: tokenService,
-                                    kSecValueData as String: Data(token.utf8),
+                                    kSecAttrService as String: service,
+                                    kSecValueData as String: Data(value.utf8),
                                     kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly]
-        guard SecItemAdd(query as CFDictionary, nil) == errSecSuccess else {
-            throw FoodServiceError(message: "Could not save the sign-in session")
-        }
+        return SecItemAdd(query as CFDictionary, nil) == errSecSuccess
     }
 
-    private static func deleteToken() {
+    private static func deleteKeychain(_ service: String) {
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
-                                    kSecAttrService as String: tokenService]
+                                    kSecAttrService as String: service]
         SecItemDelete(query as CFDictionary)
     }
 }
