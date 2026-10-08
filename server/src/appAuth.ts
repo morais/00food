@@ -2,7 +2,6 @@ import { z } from "zod";
 import { appleEmail, revokeAppleToken, verifyNativeAppleLogin } from "./apple";
 import { constantTimeEqual, findOrCreateTenant, issueCredential, revokeCredential, tenantForPrincipal, type Principal } from "./auth";
 import { json, type Env } from "./api";
-import { closeAllFoodEventStreams } from "./foodEvents";
 
 const LoginInput = z.strictObject({
   identityToken: z.string().min(100).max(12000),
@@ -57,7 +56,6 @@ export async function deleteAccount(req: Request, env: Env, principal: Principal
   // Deletion must not depend on Apple being reachable. The data goes first;
   // the token revocation is retried after the response.
   await deleteTenantData(env, tenant.id, tenant.apple_subject);
-  await closeAllFoodEventStreams(env, tenant.id);
   ctx.waitUntil(revokeWithRetry(env, accessToken));
   return json({ ok: true });
 }
@@ -100,7 +98,6 @@ export async function deleteTenantData(env: Env, tenantId: string, appleSubject:
     env.DB.prepare("DELETE FROM daily_feedback_requests WHERE tenant_id = ?").bind(tenantId),
     env.DB.prepare("DELETE FROM food_logs WHERE tenant_id = ?").bind(tenantId),
     env.DB.prepare("DELETE FROM food_events WHERE tenant_id = ?").bind(tenantId),
-    env.DB.prepare("DELETE FROM mcp_resource_subscriptions WHERE tenant_id = ?").bind(tenantId),
     env.DB.prepare("DELETE FROM pending_estimations WHERE tenant_id = ?").bind(tenantId),
     env.DB.prepare("DELETE FROM profiles WHERE tenant_id = ?").bind(tenantId),
     env.DB.prepare("DELETE FROM foods WHERE tenant_id = ?").bind(tenantId),

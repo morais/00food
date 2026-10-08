@@ -1,6 +1,5 @@
 import { json, type Env } from "./api";
 import type { Principal } from "./auth";
-import { closeFoodEventStream } from "./foodEvents";
 
 type ConnectionRow = {
   id: string;
@@ -43,7 +42,6 @@ export async function disconnectMcpConnection(env: Env, principal: Principal, id
   if (result.meta.changes === 1 && row) {
     await env.DB.prepare("DELETE FROM mcp_event_subscriptions WHERE token_hash = ? AND tenant_id = ?")
       .bind(row.token_hash, principal.tenantId).run();
-    await closeFoodEventStream(env, principal.tenantId, row.token_hash);
   }
   return result.meta.changes === 1 ? json({ ok: true }) : json({ error: "Not found" }, 404);
 }

@@ -16,6 +16,6 @@ Your AI service's availability, access requirements, and instructions affect res
 
 ## Other compatible agents
 
-Connect the remote MCP server and ask your agent to check pending foods or daily review requests. The server also provides MCP resource subscriptions for clients that support them and act on notifications. The webhook Events implementation currently accepts ChatGPT/OpenAI callback hosts only; support for other webhook hosts needs a separate integration change. Do not assume that any MCP connection supports automatic event responses.
+Connect the remote MCP server and ask your agent to check pending foods or daily review requests. Agents without webhook events can catch up on new foods and clarifications with `list_food_events`. The webhook Events implementation currently accepts ChatGPT/OpenAI callback hosts only; support for other webhook hosts needs a separate integration change. Do not assume that any MCP connection supports automatic event responses.
 
 You can always log foods manually and reuse saved foods. Estimate requests can be saved offline and sent when the app reconnects; agent responses need a working connection and an available agent.

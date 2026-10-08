@@ -25,7 +25,6 @@ function seed(db: ReturnType<typeof migratedD1>["db"], tenant: string): void {
     VALUES (?, ?, 'Salad', 'pending', '2026-10-08', ?, ?)`, `est-${tenant}`, tenant, now, now);
   const event = run(`INSERT INTO food_events (tenant_id, event_key, kind, subject_id, payload_json, created_at)
     VALUES (?, 'log:1', 'food_logged', 'log', '{}', ?)`, tenant, now);
-  run("INSERT INTO mcp_resource_subscriptions VALUES (?, ?, 'food://events', ?)", `hash-${tenant}`, tenant, now);
   run(`INSERT INTO mcp_event_subscriptions (id, tenant_id, token_hash, name, arguments_json, callback_url,
     signing_secret, expires_at, created_at, updated_at) VALUES (?, ?, ?, 'food.logged', '{}', 'https://chatgpt.com/x',
     'whsec_x', '2999-01-01', ?, ?)`, `sub-${tenant}`, tenant, `hash-${tenant}`, now, now);

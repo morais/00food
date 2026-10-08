@@ -5,7 +5,7 @@ import { appName, estimationView, findEstimation, foodView, json, proposeEstimat
 import { authChallenge } from "./oauth";
 import { dailyFeedbackContext, dailyFeedbackView, findDailyFeedback, saveDailyFeedback,
   type DailyFeedbackRow } from "./dailyFeedback";
-import { closeFoodEventStream, foodEventsUri, listFoodEvents, recentFoodEvents } from "./foodEvents";
+import { foodEventsUri, listFoodEvents, recentFoodEvents } from "./foodEvents";
 import { eventDefinitions, McpEventsError, subscribeWebhookEvent, unsubscribeWebhookEvent } from "./mcpWebhookEvents";
 
 const uuid = z.uuid();
@@ -83,18 +83,10 @@ export async function routeMcp(req: Request, env: Env, principal: Principal): Pr
   if (req.headers.get("origin") && req.headers.get("origin") !== new URL(req.url).origin) {
     return new Response(null, { status: 403 });
   }
-  if (req.method === "GET") {
-    if (!principal.scopes.includes("food:read")) return authChallenge(env, 403, ["food:read"]);
-    if (!req.headers.get("accept")?.includes("text/event-stream")) return new Response(null, { status: 406 });
-    const subscription = await env.DB.prepare(`SELECT 1 FROM mcp_resource_subscriptions
-      WHERE token_hash = ? AND tenant_id = ? AND resource_uri = ?`)
-      .bind(principal.tokenHash, principal.tenantId, foodEventsUri).first();
-    if (!env.FOOD_EVENTS) return new Response("Event stream unavailable", { status: 503 });
-    return env.FOOD_EVENTS.getByName(principal.tenantId).fetch("https://events.internal/listen", {
-      headers: { "x-token-hash": principal.tokenHash, "x-active": subscription ? "true" : "false" },
-    });
-  }
-  if (req.method !== "POST") return new Response(null, { status: 405, headers: { Allow: "POST, GET" } });
+  // No server-to-client SSE stream: an open stream keeps the account's Durable
+  // Object billed the whole time. Streamable HTTP lets a server refuse GET with
+  // 405; agents get events by webhook or catch up with list_food_events.
+  if (req.method !== "POST") return new Response(null, { status: 405, headers: { Allow: "POST" } });
   if (Number(req.headers.get("content-length") || 0) > 25000) return error(null, -32600, "Request too large");
   let request: Record<string, unknown>;
   try {
@@ -150,7 +142,7 @@ export async function routeMcp(req: Request, env: Env, principal: Principal): Pr
     }
   }
   if (request.method === "initialize") return ok(requestId, {
-    protocolVersion: "2025-11-25", capabilities: { tools: { listChanged: false }, resources: { subscribe: true, listChanged: false } },
+    protocolVersion: "2025-11-25", capabilities: { tools: { listChanged: false }, resources: { subscribe: false, listChanged: false } },
     serverInfo: { name: appName(env), version: "0.1.0" },
   });
   if (request.method === "ping") return ok(requestId, {});
@@ -158,31 +150,15 @@ export async function routeMcp(req: Request, env: Env, principal: Principal): Pr
   if (request.method === "resources/list") {
     if (!principal.scopes.includes("food:read")) return authChallenge(env, 403, ["food:read"]);
     return ok(requestId, { resources: [{ uri: foodEventsUri, name: "Food events",
-      description: "New food logs, pending estimate requests, and user clarifications. Read after a change notification.",
+      description: "New food logs, pending estimate requests, and user clarifications. Read to catch up; for push, subscribe to webhook events.",
       mimeType: "application/json" }] });
   }
-  if (request.method === "resources/read" || request.method === "resources/subscribe" || request.method === "resources/unsubscribe") {
+  if (request.method === "resources/read") {
     if (!principal.scopes.includes("food:read")) return authChallenge(env, 403, ["food:read"]);
     const params = request.params as { uri?: unknown } | undefined;
     if (params?.uri !== foodEventsUri) return error(requestId, -32602, "Unknown resource URI");
-    if (request.method === "resources/read") {
-      return ok(requestId, { contents: [{ uri: foodEventsUri, mimeType: "application/json",
-        text: JSON.stringify(await recentFoodEvents(env, principal.tenantId)) }] });
-    }
-    if (request.method === "resources/subscribe") {
-      await env.DB.prepare(`INSERT OR IGNORE INTO mcp_resource_subscriptions
-        (token_hash, tenant_id, resource_uri, created_at) VALUES (?, ?, ?, ?)`)
-        .bind(principal.tokenHash, principal.tenantId, foodEventsUri, new Date().toISOString()).run();
-      if (env.FOOD_EVENTS) await env.FOOD_EVENTS.getByName(principal.tenantId).fetch("https://events.internal/activate", {
-        method: "POST", headers: { "x-token-hash": principal.tokenHash },
-      });
-    } else {
-      await env.DB.prepare(`DELETE FROM mcp_resource_subscriptions
-        WHERE token_hash = ? AND tenant_id = ? AND resource_uri = ?`)
-        .bind(principal.tokenHash, principal.tenantId, foodEventsUri).run();
-      await closeFoodEventStream(env, principal.tenantId, principal.tokenHash);
-    }
-    return ok(requestId, {});
+    return ok(requestId, { contents: [{ uri: foodEventsUri, mimeType: "application/json",
+      text: JSON.stringify(await recentFoodEvents(env, principal.tenantId)) }] });
   }
   if (request.method !== "tools/call") return error(requestId, -32601, "Method not found");
   const params = request.params as { name?: unknown; arguments?: unknown } | undefined;

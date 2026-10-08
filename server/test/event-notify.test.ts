@@ -7,7 +7,7 @@ const principal: Principal = { tenantId: "tenant", kind: "app", scopes: [], toke
 const now = "2026-01-01T00:00:00.000Z";
 const foodId = "c5f84159-41d0-495e-947d-18c2238db9b3";
 
-function setup(agent: "none" | "webhook" | "stream") {
+function setup(agent: "none" | "webhook" | "tools-only") {
   const { db, d1 } = migratedD1();
   db.prepare("INSERT INTO tenants (id, apple_subject, email, created_at, updated_at) VALUES ('tenant', 'a', NULL, ?, ?)").run(now, now);
   db.prepare(`INSERT INTO foods (id, tenant_id, name, serving, kcal, source, created_at, updated_at)
@@ -21,12 +21,9 @@ function setup(agent: "none" | "webhook" | "stream") {
       signing_secret, expires_at, created_at, updated_at) VALUES ('sub', 'tenant', 'agent', 'food.logged', '{}',
       'https://chatgpt.com/x', 'whsec_x', '2999-01-01', ?, ?)`).run(now, now);
   }
-  if (agent === "stream") {
-    db.prepare("INSERT INTO mcp_resource_subscriptions VALUES ('agent', 'tenant', 'food://events', ?)").run(now);
-  }
-  const wakes: Array<{ path: string; deliver: string | null }> = [];
+  const wakes: Array<{ path: string; tenant: string | null }> = [];
   const events = { getByName: () => ({ async fetch(url: string, init: RequestInit) {
-    wakes.push({ path: new URL(url).pathname, deliver: new Headers(init.headers).get("x-deliver") });
+    wakes.push({ path: new URL(url).pathname, tenant: new Headers(init.headers).get("x-tenant-id") });
     return new Response(null, { status: 204 });
   } }) } as unknown as DurableObjectNamespace;
   const env = { DB: d1, FOOD_EVENTS: events, PUBLIC_ORIGIN: "https://api.00food.com" } as Env;
@@ -44,20 +41,20 @@ describe("food event notifications", () => {
     } finally { db.close(); }
   });
 
-  it("wake it with an alarm when a webhook delivery was queued, once per event", async () => {
+  it("wake it when a webhook delivery was queued, once per event", async () => {
     const { db, wakes, log } = setup("webhook");
     try {
       await log();
       await log();
-      expect(wakes).toEqual([{ path: "/publish", deliver: "true" }]);
+      expect(wakes).toEqual([{ path: "/publish", tenant: "tenant" }]);
     } finally { db.close(); }
   });
 
-  it("wake it without an alarm for a stream subscriber", async () => {
-    const { db, wakes, log } = setup("stream");
+  it("do not wake it for an agent that only calls tools", async () => {
+    const { db, wakes, log } = setup("tools-only");
     try {
       await log();
-      expect(wakes).toEqual([{ path: "/publish", deliver: "false" }]);
+      expect(wakes).toEqual([]);
     } finally { db.close(); }
   });
 });

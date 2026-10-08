@@ -82,22 +82,9 @@ assert(catalog.result?.events?.some(event => event.name === "food.estimate_reque
 "MCP webhook event catalog is incomplete");
 const stream = await fetch(origin + "/mcp", { headers: { Authorization: `Bearer ${mcpToken}`,
   Accept: "text/event-stream" } });
-assert(stream.ok && stream.headers.get("content-type")?.includes("text/event-stream"), "MCP event stream failed");
-const reader = stream.body.getReader();
-await reader.read(); // Initial SSE comment.
-const subscription = await request("/mcp", "POST", { jsonrpc: "2.0", id: 10,
-  method: "resources/subscribe", params: { uri: "food://events" } }, mcpToken);
-assert(subscription.result && !subscription.error, "food event subscription failed");
+assert(stream.status === 405, "MCP GET should be refused; events are delivered by webhook");
 const logId = randomUUID();
 await request("/v1/logs", "POST", { id: logId, foodId: food.id, quantity: 1, localDate: "2026-10-03" });
-let frame = "";
-for (let chunk = 0; chunk < 20 && !frame.includes("\n\n"); chunk++) {
-  const notification = await Promise.race([reader.read(), new Promise((_, reject) =>
-    setTimeout(() => reject(Error("Food event notification timed out")), 5000))]);
-  frame += new TextDecoder().decode(notification.value);
-}
-assert(frame.includes("notifications/resources/updated"), "food log did not notify MCP subscriber");
-await reader.cancel();
 await request("/v1/logs", "POST", { id: logId, foodId: food.id, quantity: 1, localDate: "2026-10-03" });
 const events = await request("/mcp", "POST", { jsonrpc: "2.0", id: 11, method: "tools/call",
   params: { name: "list_food_events", arguments: { after: 0 } } }, mcpToken);
