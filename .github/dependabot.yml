@@ -1,0 +1,40 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /server
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Lisbon
+    open-pull-requests-limit: 5
+    assignees:
+      - morais
+    commit-message:
+      prefix: deps
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:30"
+      timezone: Europe/Lisbon
+    open-pull-requests-limit: 5
+    assignees:
+      - morais
+    commit-message:
+      prefix: deps
+
+  - package-ecosystem: pip
+    directory: /docs/brand
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: Europe/Lisbon
+    open-pull-requests-limit: 5
+    assignees:
+      - morais
+    commit-message:
+      prefix: deps
