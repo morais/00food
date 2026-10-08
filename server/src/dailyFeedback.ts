@@ -85,7 +85,7 @@ export async function dailyFeedbackContext(env: Env, row: DailyFeedbackRow): Pro
 }
 
 export async function saveDailyFeedback(env: Env, tenantId: string, id: string, feedback: string): Promise<DailyFeedbackRow | null> {
-  await env.DB.prepare(`UPDATE daily_feedback_requests SET state = 'ready', feedback_text = ?, updated_at = ?
-    WHERE id = ? AND tenant_id = ?`).bind(feedback, new Date().toISOString(), id, tenantId).run();
-  return findDailyFeedback(env, tenantId, id);
+  return env.DB.prepare(`UPDATE daily_feedback_requests SET state = 'ready', feedback_text = ?, updated_at = ?
+    WHERE id = ? AND tenant_id = ? RETURNING *`).bind(feedback, new Date().toISOString(), id, tenantId)
+    .first<DailyFeedbackRow>();
 }

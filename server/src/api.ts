@@ -78,7 +78,7 @@ type EstimationRow = {
   id: string; description: string; photo_key: string | null; state: string;
   proposed_name: string | null; proposed_serving: string | null; proposed_kcal: number | null;
   agent_note: string | null; local_date: string; created_at: string; updated_at: string;
-  agent_reasoning: string | null; user_clarification: string | null;
+  agent_reasoning: string | null; user_clarification: string | null; clarification_id: string | null;
   proposed_fruit_veg_portions: number | null;
 };
 
@@ -131,16 +131,16 @@ export async function findEstimation(env: Env, tenantId: string, estimationId: s
 export async function proposeEstimation(env: Env, tenantId: string, estimationId: string, raw: unknown): Promise<Response> {
   const parsed = proposalInput.parse(raw);
   const now = new Date().toISOString();
-  const result = await env.DB.prepare(`UPDATE pending_estimations SET state = 'proposed',
+  const row = await env.DB.prepare(`UPDATE pending_estimations SET state = 'proposed',
     proposed_name = ?, proposed_serving = ?, proposed_kcal = ?, agent_note = ?,
     agent_reasoning = COALESCE(?, agent_reasoning),
     proposed_fruit_veg_portions = COALESCE(?, proposed_fruit_veg_portions), updated_at = ?
-    WHERE id = ? AND tenant_id = ?`).bind(
+    WHERE id = ? AND tenant_id = ? RETURNING *`).bind(
     parsed.name, parsed.serving, parsed.kcal, parsed.note, parsed.reasoning ?? null,
     parsed.fruitVegPortions ?? null, now, estimationId, tenantId,
-  ).run();
-  if (!result.meta.changes) fail(404, "Estimation not found");
-  return json({ estimation: estimationView((await findEstimation(env, tenantId, estimationId))!) });
+  ).first<EstimationRow>();
+  if (!row) return fail(404, "Estimation not found");
+  return json({ estimation: estimationView(row) });
 }
 
 export async function setFoodFruitVegPortions(env: Env, tenantId: string, foodId: string,
@@ -249,24 +249,20 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
       .bind(tenantId).first<{ n: number }>();
     if ((count?.n ?? 0) >= 2000) throw new APIError(403, "Food library limit reached");
     const now = new Date().toISOString();
-    await env.DB.prepare(`INSERT OR IGNORE INTO foods
+    const row = await env.DB.prepare(`INSERT OR IGNORE INTO foods
       (id, tenant_id, name, serving, kcal, fruit_veg_portions, source, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(foodId, tenantId, input.name, input.serving,
-        input.kcal, input.fruitVegPortions, input.source, now, now).run();
-    const row = await env.DB.prepare("SELECT * FROM foods WHERE id = ? AND tenant_id = ?")
-      .bind(foodId, tenantId).first<FoodRow>();
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`).bind(foodId, tenantId, input.name, input.serving,
+        input.kcal, input.fruitVegPortions, input.source, now, now).first<FoodRow>();
     if (!row) throw new APIError(409, "Food ID is already in use");
     return json({ food: foodView(row) }, 201);
   }
   const dismissFoodMatch = /^\/v1\/foods\/([a-f0-9-]{36})\/dismiss$/.exec(path);
   if (dismissFoodMatch && method === "POST") {
     const now = new Date().toISOString();
-    const result = await env.DB.prepare("UPDATE foods SET dismissed_at = ? WHERE id = ? AND tenant_id = ?")
-      .bind(now, dismissFoodMatch[1], tenantId).run();
-    if (!result.meta.changes) throw new APIError(404, "Food not found");
-    const row = await env.DB.prepare("SELECT * FROM foods WHERE id = ? AND tenant_id = ?")
-      .bind(dismissFoodMatch[1], tenantId).first<FoodRow>();
-    return json({ food: foodView(row!) });
+    const row = await env.DB.prepare("UPDATE foods SET dismissed_at = ? WHERE id = ? AND tenant_id = ? RETURNING *")
+      .bind(now, dismissFoodMatch[1], tenantId).first<FoodRow>();
+    if (!row) throw new APIError(404, "Food not found");
+    return json({ food: foodView(row) });
   }
   const fruitVegMatch = /^\/v1\/foods\/([a-f0-9-]{36})\/fruit-veg-portions$/.exec(path);
   if (fruitVegMatch && method === "PUT") {
@@ -294,19 +290,16 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     const calories = Math.max(1, Math.round(food.kcal * input.quantity));
     const portions = Math.min(5, Math.round(food.fruit_veg_portions * input.quantity));
     const loggedAt = input.loggedAt || now;
-    const result = await env.DB.prepare(`INSERT OR IGNORE INTO food_logs
+    const row = await env.DB.prepare(`INSERT OR IGNORE INTO food_logs
       (id, tenant_id, food_id, food_name, serving, quantity, kcal, fruit_veg_portions, local_date, logged_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(logId, tenantId, food.id, food.name,
-        food.serving, input.quantity, calories, portions, input.localDate, loggedAt).run();
-    if (result.meta.changes) {
-      await env.DB.prepare(`UPDATE foods SET use_count = use_count + 1,
-        last_used_at = CASE WHEN last_used_at IS NULL OR last_used_at < ? THEN ? ELSE last_used_at END,
-        dismissed_at = NULL WHERE id = ? AND tenant_id = ?`)
-        .bind(loggedAt, loggedAt, food.id, tenantId).run();
-    }
-    const row = await env.DB.prepare("SELECT * FROM food_logs WHERE id = ? AND tenant_id = ?")
-      .bind(logId, tenantId).first<LogRow>();
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`).bind(logId, tenantId, food.id, food.name,
+        food.serving, input.quantity, calories, portions, input.localDate, loggedAt).first<LogRow>();
+    // Nothing returned means the ID belongs to another account's log.
     if (!row) throw new APIError(409, "Log ID is already in use");
+    await env.DB.prepare(`UPDATE foods SET use_count = use_count + 1,
+      last_used_at = CASE WHEN last_used_at IS NULL OR last_used_at < ? THEN ? ELSE last_used_at END,
+      dismissed_at = NULL WHERE id = ? AND tenant_id = ?`)
+      .bind(loggedAt, loggedAt, food.id, tenantId).run();
     await recordFoodEvent(env, tenantId, `log:${logId}`, "food_logged", logId, logView(row));
     return json({ log: logView(row) }, 201);
   }
@@ -344,18 +337,17 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
       photoKey = `${tenantId}/${estimationId}.jpg`;
       await env.PHOTOS.put(photoKey, bytes, { httpMetadata: { contentType: "image/jpeg" } });
     }
+    let row: EstimationRow | null;
     try {
-      await env.DB.prepare(`INSERT OR IGNORE INTO pending_estimations
+      row = await env.DB.prepare(`INSERT OR IGNORE INTO pending_estimations
         (id, tenant_id, description, photo_key, state, local_date, created_at, updated_at)
-        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)`).bind(estimationId, tenantId, input.description,
-          photoKey, input.localDate, now, now).run();
-      const row = await findEstimation(env, tenantId, estimationId);
+        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?) RETURNING *`).bind(estimationId, tenantId, input.description,
+          photoKey, input.localDate, now, now).first<EstimationRow>();
       if (!row) throw new APIError(409, "Estimation ID is already in use");
     } catch (error) {
       if (photoKey) await env.PHOTOS?.delete(photoKey);
       throw error;
     }
-    const row = (await findEstimation(env, tenantId, estimationId))!;
     await recordFoodEvent(env, tenantId, `estimate:${estimationId}`, "estimate_requested", estimationId,
       { description: row.description, hasPhoto: !!row.photo_key, localDate: row.local_date });
     return json({ estimation: estimationView(row) }, 201);
@@ -389,16 +381,15 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     const input = z.strictObject({ id, text: z.string().trim().min(1).max(1000) }).parse(await body(req));
     const existing = await findEstimation(env, tenantId, clarificationMatch[1]);
     if (!existing) throw new APIError(404, "Estimation not found");
-    const saved = await env.DB.prepare("SELECT clarification_id FROM pending_estimations WHERE id = ? AND tenant_id = ?")
-      .bind(existing.id, tenantId).first<{ clarification_id: string | null }>();
-    if (saved?.clarification_id === input.id) return json({ estimation: estimationView(existing) });
+    if (existing.clarification_id === input.id) return json({ estimation: estimationView(existing) });
     const now = new Date().toISOString();
-    await env.DB.prepare(`UPDATE pending_estimations SET user_clarification = ?, clarification_id = ?,
-      state = 'pending', updated_at = ? WHERE id = ? AND tenant_id = ?`)
-      .bind(input.text, input.id, now, existing.id, tenantId).run();
+    const updated = await env.DB.prepare(`UPDATE pending_estimations SET user_clarification = ?, clarification_id = ?,
+      state = 'pending', updated_at = ? WHERE id = ? AND tenant_id = ? RETURNING *`)
+      .bind(input.text, input.id, now, existing.id, tenantId).first<EstimationRow>();
+    if (!updated) throw new APIError(404, "Estimation not found");
     await recordFoodEvent(env, tenantId, `clarification:${input.id}`, "clarification_added", existing.id,
       { estimationId: existing.id, clarification: input.text });
-    return json({ estimation: estimationView((await findEstimation(env, tenantId, existing.id))!) });
+    return json({ estimation: estimationView(updated) });
   }
   const estimationMatch = /^\/v1\/estimations\/([a-f0-9-]{36})$/.exec(path);
   if (estimationMatch && method === "DELETE") {
