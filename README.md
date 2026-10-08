@@ -16,11 +16,7 @@ The food log can browse previous dates, with individual entries removable by swi
 - [Worker setup](server/README.md)
 - [Brand assets](docs/brand/README.md)
 
-Production identifiers, signing settings, database IDs, and credentials live in ignored `ios/project.yml` and `server/wrangler.toml`. The committed `.sample` files are examples. The iOS marketing version is `1.0`; release builds use a local Lisbon timestamp in `YYYYMMDDHHmm` format, matching 00Todo.
-
-## Production
-
-The API is deployed at `https://api.00food.com` as the `00food-api` Cloudflare Worker. The iOS app uses `com.00food.app` and its native Sign in with Apple capability; MCP web sign-in uses the `com.00food.app.signin` Services ID. Internal TestFlight builds are distributed from App Store Connect app `6818843517` to the `Internal` group. Cloudflare and Apple credentials are provisioned outside this repository.
+The official app uses the hosted Worker at `https://api.00food.com`. Deployment config is gitignored; `server/wrangler.toml.sample` and `ios/project.yml.sample` are generic templates for your own deployment. Credentials are provisioned outside this repository.
 
 ## Privacy and data
 
