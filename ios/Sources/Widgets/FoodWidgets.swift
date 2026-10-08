@@ -105,6 +105,7 @@ private struct FoodBalanceWidgetView: View {
             .lineLimit(1).minimumScaleFactor(0.85)
         }
         .accessibilityElement(children: .combine)
+        .accessibilityValue(foodRatio > timeFraction ? "Ahead of pace" : "")
     }
 }
 

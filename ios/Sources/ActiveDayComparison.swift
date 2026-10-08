@@ -17,7 +17,8 @@ struct ActiveDayComparison: View {
             let foodFraction = min(1, foodRatio)
             let dayPercent = Int((dayFraction * 100).rounded())
             let foodPercent = Int((foodRatio * 100).rounded())
-            let foodColor: Color = foodRatio > dayFraction ? .yellow : .accentColor
+            let ahead = foodRatio > dayFraction
+            let foodColor: Color = ahead ? .orange : .accentColor
 
             VStack(alignment: .leading, spacing: 8) {
                 GeometryReader { geometry in
@@ -45,11 +46,11 @@ struct ActiveDayComparison: View {
                     HStack(spacing: 5) {
                         dayLabel(dayPercent)
                         Spacer(minLength: 8)
-                        foodLabel(foodPercent, color: foodColor)
+                        foodLabel(foodPercent, color: foodColor, ahead: ahead)
                     }
                     VStack(alignment: .leading, spacing: 5) {
                         dayLabel(dayPercent)
-                        foodLabel(foodPercent, color: foodColor)
+                        foodLabel(foodPercent, color: foodColor, ahead: ahead)
                     }
                 }
                 .font(.system(size: paceLabelSize))
@@ -67,10 +68,11 @@ struct ActiveDayComparison: View {
         }
     }
 
-    private func foodLabel(_ percent: Int, color: Color) -> some View {
+    // Being ahead of the day is stated in words, not only by the marker's color.
+    private func foodLabel(_ percent: Int, color: Color, ahead: Bool) -> some View {
         HStack(spacing: 5) {
             Circle().fill(color).frame(width: 10, height: 10)
-            Text("\(percent)% allowance used")
+            Text(ahead ? "\(percent)% allowance used, ahead of pace" : "\(percent)% allowance used")
         }
     }
 }
