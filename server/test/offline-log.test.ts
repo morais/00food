@@ -10,7 +10,7 @@ describe("offline log replay", () => {
     const loggedAt = "2026-10-03T19:10:00Z";
     const { db, d1 } = migratedD1();
     try {
-      db.prepare("INSERT INTO tenants VALUES ('tenant', 'apple', NULL, ?, ?)").run(loggedAt, loggedAt);
+      db.prepare("INSERT INTO tenants (id, apple_subject, email, created_at, updated_at) VALUES ('tenant', 'apple', NULL, ?, ?)").run(loggedAt, loggedAt);
       db.prepare(`INSERT INTO foods (id, tenant_id, name, serving, kcal, fruit_veg_portions, source, created_at, updated_at)
         VALUES (?, 'tenant', 'Rice bowl', '1 bowl', 540, 2, 'manual', ?, ?)`).run(foodId, loggedAt, loggedAt);
       const env = { DB: d1, PUBLIC_ORIGIN: "https://api.00food.com" } as Env;
@@ -37,7 +37,7 @@ describe("offline log replay", () => {
       const now = "2026-10-03T19:10:00Z";
       const foods = { tenant: "d1f84159-41d0-495e-947d-18c2238db9b3", other: "e2f84159-41d0-495e-947d-18c2238db9b3" };
       for (const [tenant, food] of Object.entries(foods)) {
-        db.prepare("INSERT INTO tenants VALUES (?, ?, NULL, ?, ?)").run(tenant, `apple-${tenant}`, now, now);
+        db.prepare("INSERT INTO tenants (id, apple_subject, email, created_at, updated_at) VALUES (?, ?, NULL, ?, ?)").run(tenant, `apple-${tenant}`, now, now);
         db.prepare(`INSERT INTO foods (id, tenant_id, name, serving, kcal, source, created_at, updated_at)
           VALUES (?, ?, 'Toast', '1 slice', 90, 'manual', ?, ?)`).run(food, tenant, now, now);
       }

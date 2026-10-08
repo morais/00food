@@ -8,7 +8,7 @@ const principal: Principal = { tenantId: "tenant", kind: "app", scopes: ["food:r
 
 function setup() {
   const { db, d1 } = migratedD1();
-  db.prepare("INSERT INTO tenants VALUES ('tenant', 'apple-subject', NULL, '2026-10-01', '2026-10-01')").run();
+  db.prepare("INSERT INTO tenants (id, apple_subject, email, created_at, updated_at) VALUES ('tenant', 'apple-subject', NULL, '2026-10-01', '2026-10-01')").run();
   db.prepare(`INSERT INTO pending_estimations (id, tenant_id, description, state, local_date, created_at, updated_at)
     VALUES (?, 'tenant', 'Soup', 'pending', '2026-10-08', '2026-10-08', '2026-10-08')`).run(estimationId);
   const puts: string[] = [];

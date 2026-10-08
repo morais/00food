@@ -245,7 +245,7 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     const existing = await env.DB.prepare("SELECT * FROM foods WHERE id = ? AND tenant_id = ?")
       .bind(foodId, tenantId).first<FoodRow>();
     if (existing) return json({ food: foodView(existing) }, 201);
-    const count = await env.DB.prepare("SELECT COUNT(*) AS n FROM foods WHERE tenant_id = ?")
+    const count = await env.DB.prepare("SELECT food_count AS n FROM tenants WHERE id = ?")
       .bind(tenantId).first<{ n: number }>();
     if ((count?.n ?? 0) >= 2000) throw new APIError(403, "Food library limit reached");
     const now = new Date().toISOString();
@@ -283,7 +283,7 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
       await recordFoodEvent(env, tenantId, `log:${logId}`, "food_logged", logId, logView(existing));
       return json({ log: logView(existing) }, 201);
     }
-    const count = await env.DB.prepare("SELECT COUNT(*) AS n FROM food_logs WHERE tenant_id = ?")
+    const count = await env.DB.prepare("SELECT log_count AS n FROM tenants WHERE id = ?")
       .bind(tenantId).first<{ n: number }>();
     if ((count?.n ?? 0) >= 10000) throw new APIError(403, "Food log limit reached");
     const now = new Date().toISOString();
@@ -323,7 +323,7 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
         { description: existing.description, hasPhoto: !!existing.photo_key, localDate: existing.local_date });
       return json({ estimation: estimationView(existing) }, 201);
     }
-    const count = await env.DB.prepare("SELECT COUNT(*) AS n FROM pending_estimations WHERE tenant_id = ?")
+    const count = await env.DB.prepare("SELECT estimate_count AS n FROM tenants WHERE id = ?")
       .bind(tenantId).first<{ n: number }>();
     if ((count?.n ?? 0) >= 100) throw new APIError(403, "Review queue is full");
     const now = new Date().toISOString();

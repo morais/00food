@@ -7,12 +7,16 @@ type Value = string | number | null;
 
 /// A minimal D1 stand-in over node:sqlite with every migration applied and
 /// foreign keys enforced, as D1 does in production.
-export function migratedD1(): { db: DatabaseSync; d1: D1Database } {
+export const migrationsDir = join(import.meta.dirname, "..", "migrations");
+
+/// Applies migrations in order; `before` stops ahead of the named file so a
+/// test can seed data and then run that migration itself.
+export function migratedD1(before?: string): { db: DatabaseSync; d1: D1Database } {
   const db = new DatabaseSync(":memory:");
   db.exec("PRAGMA foreign_keys = ON");
-  const dir = join(import.meta.dirname, "..", "migrations");
-  for (const file of readdirSync(dir).filter(name => name.endsWith(".sql")).sort()) {
-    db.exec(readFileSync(join(dir, file), "utf8"));
+  for (const file of readdirSync(migrationsDir).filter(name => name.endsWith(".sql")).sort()) {
+    if (before && file >= before) break;
+    db.exec(readFileSync(join(migrationsDir, file), "utf8"));
   }
   const statement = (sql: string, args: Value[] = []) => ({
     bind: (...values: Value[]) => statement(sql, values),

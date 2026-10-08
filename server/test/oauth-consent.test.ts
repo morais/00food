@@ -9,7 +9,7 @@ async function consentPage(redirectUri: string, clientName: string): Promise<str
   try {
     const flowId = randomToken(24);
     const secret = randomToken(24);
-    db.prepare("INSERT INTO tenants VALUES ('tenant', 'apple-subject', NULL, '2026-10-01', '2026-10-01')").run();
+    db.prepare("INSERT INTO tenants (id, apple_subject, email, created_at, updated_at) VALUES ('tenant', 'apple-subject', NULL, '2026-10-01', '2026-10-01')").run();
     db.prepare(`INSERT INTO oauth_flows (id_hash, client_id, client_name, redirect_uri, code_challenge,
       client_state, resource, scopes, apple_nonce, tenant_id, consent_hash, created_at, expires_at)
       VALUES (?, 'client', ?, ?, 'challenge', NULL, 'https://api.00food.com/mcp', 'food:read food:write',

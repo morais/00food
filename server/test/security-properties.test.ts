@@ -16,7 +16,7 @@ afterEach(() => { vi.unstubAllGlobals(); resetAppleKeysForTest(); });
 function twoTenants() {
   const { db, d1 } = migratedD1();
   for (const tenant of ["alice", "mallory"]) {
-    db.prepare("INSERT INTO tenants VALUES (?, ?, NULL, ?, ?)").run(tenant, `apple-${tenant}`, now, now);
+    db.prepare("INSERT INTO tenants (id, apple_subject, email, created_at, updated_at) VALUES (?, ?, NULL, ?, ?)").run(tenant, `apple-${tenant}`, now, now);
   }
   return { db, env: { DB: d1, PUBLIC_ORIGIN: origin } as Env };
 }

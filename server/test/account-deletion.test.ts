@@ -6,7 +6,7 @@ import { migratedD1 } from "./d1";
 function seed(db: ReturnType<typeof migratedD1>["db"], tenant: string): void {
   const now = "2026-10-08T00:00:00Z";
   const run = (sql: string, ...args: (string | number | null)[]) => db.prepare(sql).run(...args);
-  run("INSERT INTO tenants VALUES (?, ?, NULL, ?, ?)", tenant, `apple-${tenant}`, now, now);
+  run("INSERT INTO tenants (id, apple_subject, email, created_at, updated_at) VALUES (?, ?, NULL, ?, ?)", tenant, `apple-${tenant}`, now, now);
   run(`INSERT INTO credentials (token_hash, id, tenant_id, kind, audience, scopes, label, created_at, expires_at)
     VALUES (?, ?, ?, 'mcp', 'aud', 'food:read', 'MCP', ?, '2999-01-01')`, `hash-${tenant}`, `cred-${tenant}`, tenant, now);
   run("INSERT INTO review_credentials VALUES (?, ?, '2999-01-01', NULL)", `review-${tenant}`, tenant);

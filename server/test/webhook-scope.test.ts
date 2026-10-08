@@ -8,7 +8,7 @@ describe("food event webhook scope", () => {
     const { db, d1 } = migratedD1();
     try {
       const past = "2026-01-01T00:00:00.000Z";
-      db.prepare("INSERT INTO tenants VALUES ('tenant', 'apple', NULL, ?, ?)").run(past, past);
+      db.prepare("INSERT INTO tenants (id, apple_subject, email, created_at, updated_at) VALUES ('tenant', 'apple', NULL, ?, ?)").run(past, past);
       const credential = db.prepare(`INSERT INTO credentials (token_hash, id, tenant_id, kind, audience, scopes, label,
         created_at, expires_at) VALUES (?, ?, 'tenant', 'mcp', 'aud', ?, 'MCP', ?, '2999-01-01')`);
       credential.run("food-token", "food", "food:read food:write", past);
