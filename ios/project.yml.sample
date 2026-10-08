@@ -32,7 +32,7 @@ targets:
         CFBundleDisplayName: 00Food
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        FoodAppGroup: group.com.00food.app
+        FoodAppGroup: group.com.example.zerozerofood
         CFBundleURLTypes:
           - CFBundleTypeRole: Editor
             CFBundleURLName: zerozerofood.log
@@ -63,7 +63,7 @@ targets:
           - Default
         com.apple.developer.healthkit: true
         com.apple.security.application-groups:
-          - group.com.00food.app
+          - group.com.example.zerozerofood
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.zerozerofood
@@ -88,17 +88,17 @@ targets:
         CFBundleDisplayName: 00Food
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        FoodAppGroup: group.com.00food.app
+        FoodAppGroup: group.com.example.zerozerofood
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     entitlements:
       path: Resources/Widgets/ZeroZeroFoodWidgets.entitlements
       properties:
         com.apple.security.application-groups:
-          - group.com.00food.app
+          - group.com.example.zerozerofood
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.00food.app.widgets
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.zerozerofood.widgets
         APPLICATION_EXTENSION_API_ONLY: YES
         TARGETED_DEVICE_FAMILY: "1"
   ZeroZeroFoodTests:

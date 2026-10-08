@@ -24,9 +24,9 @@ struct FoodWidgetSnapshot: Codable, Equatable {
 
 enum FoodWidgetSnapshotStore {
     static let kind = "FoodBalanceWidget"
-    static let groupID = "group.com.00food.app"
+    static let groupID = Bundle.main.object(forInfoDictionaryKey: "FoodAppGroup") as? String
     static let pendingLaunchKey = "pendingLogLaunch"
-    static let sharedDefaults = UserDefaults(suiteName: groupID)
+    static let sharedDefaults = groupID.flatMap { UserDefaults(suiteName: $0) }
     private static let snapshotKey = "foodWidgetSnapshot"
 
     static func load() -> FoodWidgetSnapshot? {

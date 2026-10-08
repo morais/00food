@@ -77,8 +77,6 @@ path.write_text(source)
 for path in (output / "Sources").glob("*.swift"):
     if path.name != "Fixtures.swift":
         path.write_text(path.read_text().replace("Date()", "ScreenshotFixtures.now"))
-path = output / "Sources/FoodWidgetSnapshot.swift"
-path.write_text(path.read_text().replace("group.com.00food.app", "group.com.00food.screenshots"))
 
 project = {
     "name": "ScreenshotDemo", "options": {"deploymentTarget": {"iOS": "27.0"}},
@@ -90,6 +88,7 @@ project = {
             "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
             "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "AccentColor"}},
         "info": {"path": "Info.plist", "properties": {"CFBundleDisplayName": "00Food Demo",
+            "FoodAppGroup": "group.com.00food.screenshots",
             "UILaunchScreen": {}, "UISupportedInterfaceOrientations": ["UIInterfaceOrientationPortrait"]}}}},
     "schemes": {"ScreenshotDemo": {"build": {"targets": {"ScreenshotDemo": "all"}}}},
 }
