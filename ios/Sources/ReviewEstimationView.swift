@@ -50,7 +50,13 @@ struct ReviewEstimationView: View {
                     }
                     TextField("Add portion or ingredient details", text: $clarification, axis: .vertical)
                         .lineLimit(2...4)
-                    Button("Send clarification") { sendClarification() }
+                    Button { sendClarification() } label: {
+                        Label("Send clarification", systemImage: "paperplane.fill")
+                            .fontWeight(.semibold)
+                            .frame(maxWidth: .infinity)
+                    }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
                         .disabled(busy || clarification.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 } header: {
                     Text("Clarify for the agent")

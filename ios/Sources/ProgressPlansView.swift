@@ -99,12 +99,11 @@ struct ProgressPlansView: View {
 
     private func calorieHistoryCard(profile: FoodProfile) -> some View {
         let points = dailyCalorieBalances(profile: profile)
-        let today = Calendar.current.startOfDay(for: Date())
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Calories over time").font(.title3.bold())
                 Spacer()
-                InfoDisclosure(title: "Calories over time", message: "Allowance uses your current food target, including the current resting-energy average, plus each day’s recorded Health active energy. Earlier target changes are not tracked; days without an active-energy record show the base target. Bars show only food logged in 00Food.")
+                InfoDisclosure(title: "Calories over time", message: "Orange shows logged food within the allowance. Green fills the remaining allowance; red shows food above it. Each bar reaches the allowance or the food total, whichever is higher.\n\nAllowance uses your current food target, including the current resting-energy average, plus each day’s recorded Health active energy. Earlier target changes are not tracked; days without an active-energy record show the base target. Food totals include only food logged in 00Food.")
             }
             Picker("Period", selection: $calorieHistoryDays) {
                 Text("30 days").tag(30)
@@ -114,20 +113,25 @@ struct ProgressPlansView: View {
             if !points.isEmpty {
                 Chart {
                     ForEach(points) { point in
-                        BarMark(x: .value("Day", point.date), y: .value("Logged food", point.eaten))
-                            .foregroundStyle(point.date == today ? Color.purple : Color.orange.opacity(0.75))
-                            .accessibilityLabel(point.date == today ? "Today" : Self.spokenDay(point.date))
-                            .accessibilityValue("\(point.eaten) calories logged of \(point.allowance) allowance")
-                        // The bar already speaks the allowance, so its marker stays silent.
-                        if point.date == today {
-                            PointMark(x: .value("Day", point.date), y: .value("Today's allowance", point.allowance))
-                                .foregroundStyle(.purple)
-                                .symbolSize(45)
+                        BarMark(x: .value("Day", point.date, unit: .day),
+                                yStart: .value("Calories", 0),
+                                yEnd: .value("Calories", min(point.eaten, point.allowance)))
+                            .foregroundStyle(Color.orange.opacity(0.75))
+                            .accessibilityLabel(Self.spokenDay(point.date))
+                            .accessibilityValue("\(point.eaten) calories logged of \(point.allowance) allowance; \(abs(point.allowance - point.eaten)) \(point.eaten > point.allowance ? "over allowance" : "remaining")")
+                        // Explicit ranges keep excess calories part of the food
+                        // total rather than adding them above that total again.
+                        if point.eaten < point.allowance {
+                            BarMark(x: .value("Day", point.date, unit: .day),
+                                    yStart: .value("Calories", point.eaten),
+                                    yEnd: .value("Calories", point.allowance))
+                                .foregroundStyle(Color.green.opacity(0.45))
                                 .accessibilityHidden(true)
-                        } else {
-                            LineMark(x: .value("Day", point.date), y: .value("Allowance", point.allowance))
-                                .foregroundStyle(.blue)
-                                .lineStyle(StrokeStyle(lineWidth: 2))
+                        } else if point.eaten > point.allowance {
+                            BarMark(x: .value("Day", point.date, unit: .day),
+                                    yStart: .value("Calories", point.allowance),
+                                    yEnd: .value("Calories", point.eaten))
+                                .foregroundStyle(Color.red.opacity(0.85))
                                 .accessibilityHidden(true)
                         }
                     }
@@ -135,10 +139,11 @@ struct ProgressPlansView: View {
                 .frame(height: 190)
                 .chartLegend(.hidden)
                 .chartXScale(domain: calorieHistoryDomain)
-                HStack(spacing: 16) {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), alignment: .leading), count: 3),
+                          alignment: .leading, spacing: 8) {
                     Label("Logged food", systemImage: "square.fill").labelStyle(.tintedIcon(.orange))
-                    Label("Allowance", systemImage: "line.diagonal").labelStyle(.tintedIcon(.blue))
-                    Label("Today", systemImage: "circle.fill").labelStyle(.tintedIcon(.purple))
+                    Label("Remaining", systemImage: "square.fill").labelStyle(.tintedIcon(.green))
+                    Label("Over allowance", systemImage: "square.fill").labelStyle(.tintedIcon(.red))
                 }
                 .font(.caption).foregroundStyle(.secondary)
             } else {

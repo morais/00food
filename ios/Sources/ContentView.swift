@@ -231,13 +231,13 @@ struct HomeView: View {
                                 .font(.headline).frame(maxWidth: .infinity).frame(height: 48)
                         }
                         .buttonStyle(.borderedProminent)
+                        if !store.estimations.isEmpty { estimatesSection }
                         hydrationCard
                         fiveADayCard
                         if store.dailyFeedbackEnabled || !store.dailyFeedback.isEmpty {
                             dailyFeedbackCard
                         }
 
-                        if !store.estimations.isEmpty { estimatesSection }
                         foodLogSection
                     }
                     .frame(width: max(0, geometry.size.width - 40), alignment: .leading)

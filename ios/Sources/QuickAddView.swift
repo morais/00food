@@ -77,7 +77,8 @@ struct QuickAddView: View {
                         }
                     } else {
                         Section("Ask your agent") {
-                            TextField("Describe food and portion", text: $descriptionText)
+                            TextField("Describe food and portion", text: $descriptionText, axis: .vertical)
+                                .lineLimit(1...6)
                                 .submitLabel(.done)
                             HStack(spacing: 12) {
                                 PhotosPicker(selection: $photoItem, matching: .images) {
