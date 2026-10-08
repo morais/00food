@@ -123,6 +123,30 @@ async function body(req: Request, limit = 16000): Promise<unknown> {
   try { return JSON.parse(raw); } catch { return fail(400, "Expected JSON"); }
 }
 
+/// Reads a new estimate either as multipart/form-data, with the photo as a
+/// binary "photo" part, or as JSON with an optional base64 photoBase64 field.
+/// The app sends multipart; JSON stays for older builds. Both keep the
+/// description and photo in one request, so the agent is told about the
+/// estimate only once both are stored.
+async function estimationRequest(req: Request): Promise<{ input: z.infer<typeof estimationInput>; photo?: Uint8Array }> {
+  if (!req.headers.get("content-type")?.toLowerCase().startsWith("multipart/form-data")) {
+    const input = estimationInput.parse(await body(req, 2_700_000));
+    if (!input.photoBase64) return { input };
+    try { return { input, photo: Uint8Array.from(atob(input.photoBase64), character => character.charCodeAt(0)) }; }
+    catch { return fail(415, "Invalid JPEG photo"); }
+  }
+  const declared = Number(req.headers.get("content-length") ?? NaN);
+  if (!Number.isFinite(declared) || declared > 2_100_000) fail(declared > 2_100_000 ? 413 : 411, "Photo must be under 2 MB");
+  let form: FormData;
+  try { form = await req.formData(); } catch { return fail(400, "Expected multipart form data"); }
+  const field = (name: string) => { const value = form.get(name); return typeof value === "string" ? value : undefined; };
+  const input = estimationInput.parse({ id: field("id"), description: field("description") ?? "", localDate: field("localDate") });
+  const part = form.get("photo");
+  if (part === null) return { input };
+  if (typeof part === "string") return fail(415, "Invalid JPEG photo");
+  return { input, photo: new Uint8Array(await part.arrayBuffer()) };
+}
+
 export async function findEstimation(env: Env, tenantId: string, estimationId: string): Promise<EstimationRow | null> {
   return env.DB.prepare("SELECT * FROM pending_estimations WHERE id = ? AND tenant_id = ?")
     .bind(estimationId, tenantId).first<EstimationRow>();
@@ -325,7 +349,7 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     return json({ ok: true });
   }
   if (path === "/v1/estimations" && method === "POST") {
-    const input = estimationInput.parse(await body(req, 2_700_000));
+    const { input, photo } = await estimationRequest(req);
     const estimationId = input.id || crypto.randomUUID();
     const existing = await findEstimation(env, tenantId, estimationId);
     if (existing) {
@@ -338,14 +362,11 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     if ((count?.n ?? 0) >= 100) throw new APIError(403, "Review queue is full");
     const now = new Date().toISOString();
     let photoKey: string | null = null;
-    if (input.photoBase64) {
+    if (photo) {
       if (!env.PHOTOS) throw new APIError(503, "Photo storage is unavailable");
-      let bytes: Uint8Array;
-      try { bytes = Uint8Array.from(atob(input.photoBase64), character => character.charCodeAt(0)); }
-      catch { throw new APIError(415, "Invalid JPEG photo"); }
-      validateJpeg(bytes);
+      validateJpeg(photo);
       photoKey = `${tenantId}/${estimationId}.jpg`;
-      await env.PHOTOS.put(photoKey, bytes, { httpMetadata: { contentType: "image/jpeg" } });
+      await env.PHOTOS.put(photoKey, photo, { httpMetadata: { contentType: "image/jpeg" } });
     }
     let row: EstimationRow | null;
     try {

@@ -33,7 +33,7 @@ App routes use `Authorization: Bearer <app token>`:
 | `POST /v1/foods/:id/dismiss` | Hide a food from the frequent list until it is logged again |
 | `POST /v1/logs` | Log a serving, using a client UUID for retry safety |
 | `DELETE /v1/logs/:id` | Remove a log |
-| `POST /v1/estimations` | Submit a new food description and optional base64 JPEG together, creating one pending-food ID |
+| `POST /v1/estimations` | Submit a new food description and optional JPEG together as `multipart/form-data` (`id`, `description`, `localDate`, `photo`), creating one pending-food ID; JSON with base64 `photoBase64` is still accepted from older builds |
 | `PUT /v1/estimations/:id/photo` | Add a private JPEG photo (up to 2 MB) to the same pending food |
 | `PUT /v1/estimations/:id/proposal` | Edit an agent proposal during review |
 | `POST /v1/estimations/:id/accept` | Save the proposed food and log it |

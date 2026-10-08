@@ -562,10 +562,12 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
             do { let _: OKResponse = try await call("/v1/logs/\(id)", method: "DELETE") }
             catch let error as FoodServiceError where error.status == 404 { break }
         case .estimate(let estimation, let photo):
-            var payload: [String: Any] = ["id": estimation.id, "description": estimation.description,
-                                          "localDate": estimation.localDate]
-            if let photo { payload["photoBase64"] = photo.base64EncodedString() }
-            let _: EstimationResponse = try await call("/v1/estimations", method: "POST", body: payload)
+            // Multipart keeps the description and photo in one request without
+            // base64 inflation, so the agent sees both together.
+            let form = Self.multipartForm(fields: ["id": estimation.id, "description": estimation.description,
+                                                   "localDate": estimation.localDate],
+                                          jpeg: photo)
+            let _: EstimationResponse = try await call("/v1/estimations", method: "POST", raw: form)
         case .clarifyEstimate(let estimationId, let clarificationId, let text):
             let _: EstimationResponse = try await call("/v1/estimations/\(estimationId)/clarifications",
                                                        method: "POST", body: ["id": clarificationId, "text": text])
@@ -621,6 +623,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     }
 
     private func call<T: Decodable>(_ path: String, method: String = "GET", body: [String: Any]? = nil,
+                                     raw: (body: Data, contentType: String)? = nil,
                                      authenticated: Bool = true, bearer: String? = nil) async throws -> T {
         guard let url = URL(string: baseURL + path), url.scheme == "https" || url.host == "localhost" else {
             throw FoodServiceError(message: "Server address is missing")
@@ -631,10 +634,30 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        } else if let raw {
+            request.setValue(raw.contentType, forHTTPHeaderField: "Content-Type")
+            request.httpBody = raw.body
         }
         let (data, response) = try await URLSession.shared.data(for: request)
         try check(response, data: data)
         return try JSONDecoder().decode(T.self, from: data)
+    }
+
+    static func multipartForm(fields: [String: String], jpeg: Data?) -> (body: Data, contentType: String) {
+        let boundary = "00food-\(UUID().uuidString)"
+        var body = Data()
+        func append(_ text: String) { body.append(Data(text.utf8)) }
+        for (name, value) in fields.sorted(by: { $0.key < $1.key }) {
+            append("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n")
+        }
+        if let jpeg {
+            append("--\(boundary)\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"photo.jpg\"\r\n")
+            append("Content-Type: image/jpeg\r\n\r\n")
+            body.append(jpeg)
+            append("\r\n")
+        }
+        append("--\(boundary)--\r\n")
+        return (body, "multipart/form-data; boundary=\(boundary)")
     }
 
     private func check(_ response: URLResponse, data: Data) throws {
