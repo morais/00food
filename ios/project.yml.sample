@@ -38,6 +38,10 @@ targets:
             CFBundleURLName: zerozerofood.log
             CFBundleURLSchemes:
               - zerozerofood
+        BGTaskSchedulerPermittedIdentifiers:
+          - $(PRODUCT_BUNDLE_IDENTIFIER).daily-feedback
+        UIBackgroundModes:
+          - fetch
         FoodServerBaseURL: https://api.example.com
         NSCameraUsageDescription: "00Food uses the camera to capture a meal for an estimate you review."
         NSHealthShareUsageDescription: "00Food reads resting and active energy, weight, body-fat percentage, and water to show your daily balance and progress. If you request Daily feedback, seven-day Health summaries are sent to your private account for your connected agent to review."

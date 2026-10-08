@@ -114,12 +114,17 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         }
     }
 
-    func requestMissingDailyFeedback(using health: HealthEnergy, includeHistory: Bool) async throws -> Int {
+    func requestMissingDailyFeedback(using health: HealthEnergy, includeHistory: Bool,
+                                    requireAccessibleHealth: Bool = false) async throws -> Int {
         let dates = missingDailyFeedbackDates(includeHistory: includeHistory)
         guard let first = dates.first, let last = dates.last else { return 0 }
         let calendar = Calendar.current
         let healthStart = calendar.date(byAdding: .day, value: -6, to: first) ?? first
-        let healthHistory = await health.dailyFeedbackHealth(from: healthStart, through: last)
+        let accountToken = token
+        let healthHistory = try await health.dailyFeedbackHealth(from: healthStart, through: last,
+                                                                requireAccessibleData: requireAccessibleHealth)
+        try Task.checkCancellation()
+        guard token == accountToken, includeHistory || dailyFeedbackEnabled else { return 0 }
         let timeZone = TimeZone.current.identifier
         var queued = 0
         for date in dates {
@@ -150,7 +155,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         let first = calendar.date(byAdding: .day, value: -6, to: date) ?? date
         let key = FoodDates.localDate(for: date)
         let firstKey = FoodDates.localDate(for: first)
-        let healthDays = await health.dailyFeedbackHealth(from: first, through: date)
+        let healthDays = try await health.dailyFeedbackHealth(from: first, through: date)
             .filter { $0.localDate >= firstKey && $0.localDate <= key }
         guard canRequestDailyFeedback(on: date) else { return false }
         try requestDailyFeedback(DailyFeedbackUpload(id: UUID().uuidString.lowercased(),
@@ -217,11 +222,13 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         do {
             while true {
                 while let operation = operations.first {
+                    try Task.checkCancellation()
                     try await replay(operation)
                     operations.removeFirst()
                     try persist()
                 }
                 let snapshot: FoodSnapshot = try await call("/v1/snapshot")
+                try Task.checkCancellation()
                 if !operations.isEmpty { continue }
                 if accountId == nil {
                     let me: MeResponse = try await call("/v1/me")
@@ -237,11 +244,24 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
                 return
             }
         } catch {
+            if Task.isCancelled { return }
             if Self.isConnectionError(error) {
                 isOffline = true
                 scheduleRetry()
             }
             else { syncError = error.localizedDescription }
+        }
+    }
+
+    // A staged operation may already have started a sync. Background work must
+    // wait for that sync before iOS suspends the app, so the MCP event is sent.
+    func refreshAndWait() async throws {
+        while isSyncing { try await Task.sleep(for: .milliseconds(100)) }
+        try Task.checkCancellation()
+        try await refresh()
+        try Task.checkCancellation()
+        if isOffline || syncError != nil || pendingSyncCount > 0 {
+            throw FoodServiceError(message: "Daily feedback is waiting for a successful sync")
         }
     }
 

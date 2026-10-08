@@ -35,7 +35,7 @@ struct RootView: View {
                 UserDefaults.standard.set("3", forKey: "foodControlIconsVersion")
             }
             openPendingWidgetLaunch()
-            if store.signedIn {
+            if store.signedIn && scenePhase == .active {
                 do { try await store.refresh() } catch { errorText = error.localizedDescription }
                 health.setHistoryStart(store.accountStartedAt)
                 await health.refresh()
@@ -59,7 +59,7 @@ struct RootView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
-            guard store.signedIn else { return }
+            guard store.signedIn, scenePhase == .active else { return }
             Task {
                 try? await store.refresh()
                 await health.refresh()
@@ -98,10 +98,13 @@ struct RootView: View {
     }
 
     private func queueDailyFeedback() async {
-        guard !feedbackSyncing else { return }
+        guard !feedbackSyncing, scenePhase == .active else { return }
         feedbackSyncing = true
         defer { feedbackSyncing = false }
-        do { _ = try await store.requestMissingDailyFeedback(using: health, includeHistory: false) }
+        do {
+            _ = try await store.requestMissingDailyFeedback(using: health, includeHistory: false,
+                                                           requireAccessibleHealth: true)
+        }
         catch { store.syncError = "Could not save daily feedback request: \(error.localizedDescription)" }
     }
 

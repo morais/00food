@@ -51,7 +51,7 @@ struct SettingsView: View {
                         get: { store.dailyFeedbackEnabled },
                         set: { store.setDailyFeedbackEnabled($0) }
                     ))
-                    Text("When this is on, the next time you open 00Food after a day ends it sends that day and up to six earlier days to your private 00Food account. This includes logged foods and calories, plus available Health totals for water, active and resting energy, weight, and body fat. Your connected agent can read these summaries and write feedback. Turning this off stops automatic requests; you can still request past days from the food log.")
+                    Text("When this is on, 00Food requests a background refresh after 12:15 a.m. to send the completed day and up to six earlier days to your private 00Food account. iOS decides when it runs. If the refresh is delayed, Health data is locked, or your phone is offline, it retries later or catches up when you open the app. This includes logged foods and calories, plus available Health totals for water, active and resting energy, weight, and body fat. Your connected agent can read these summaries and write feedback. Turning this off stops automatic requests; you can still request past days from the food log.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section {

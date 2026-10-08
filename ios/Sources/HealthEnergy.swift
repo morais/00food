@@ -238,7 +238,8 @@ private struct DietaryExportState: Codable {
         return healthError.domain == HKErrorDomain && healthError.code == HKError.Code.errorNoData.rawValue
     }
 
-    func dailyFeedbackHealth(from startDate: Date, through endDate: Date) async -> [DailyHealthDay] {
+    func dailyFeedbackHealth(from startDate: Date, through endDate: Date,
+                             requireAccessibleData: Bool = false) async throws -> [DailyHealthDay] {
         guard available else { return [] }
         let calendar = Calendar.current
         let start = calendar.startOfDay(for: startDate)
@@ -248,14 +249,35 @@ private struct DietaryExportState: Codable {
             Dictionary(points.map { (FoodDates.localDate(for: $0.date), $0.value) },
                        uniquingKeysWith: { _, latest in latest })
         }
-        let active = requested ? values((try? await dailyCumulativeEnergy(of: energy, from: start, to: end)) ?? []) : [:]
-        let resting = restingRequested ? values((try? await dailyCumulativeEnergy(of: restingEnergy, from: start, to: end)) ?? []) : [:]
-        let waterValues = waterRequested ? values((try? await dailyCumulative(of: water, from: start, to: end,
-                                              unit: .literUnit(with: .milli))) ?? []) : [:]
-        let weights = weightRequested ? values((try? await dailyHistory(of: bodyMass, from: start,
-                                               to: end, unit: .gramUnit(with: .kilo), scale: 1)) ?? []) : [:]
-        let fat = bodyFatRequested ? values((try? await dailyHistory(of: bodyFat, from: start,
-                                           to: end, unit: .percent(), scale: 100)) ?? []) : [:]
+        func read(_ enabled: Bool, query: () async throws -> [HealthMeasurePoint]) async throws -> [String: Double] {
+            try Task.checkCancellation()
+            guard enabled else { return [:] }
+            do {
+                let result = try await query()
+                try Task.checkCancellation()
+                return values(result)
+            } catch {
+                try Task.checkCancellation()
+                if requireAccessibleData && !Self.isNoData(error) { throw error }
+                return [:]
+            }
+        }
+        let active = try await read(requested) {
+            try await dailyCumulativeEnergy(of: energy, from: start, to: end)
+        }
+        let resting = try await read(restingRequested) {
+            try await dailyCumulativeEnergy(of: restingEnergy, from: start, to: end)
+        }
+        let waterValues = try await read(waterRequested) {
+            try await dailyCumulative(of: water, from: start, to: end, unit: .literUnit(with: .milli))
+        }
+        let weights = try await read(weightRequested) {
+            try await dailyHistory(of: bodyMass, from: start, to: end, unit: .gramUnit(with: .kilo), scale: 1)
+        }
+        let fat = try await read(bodyFatRequested) {
+            try await dailyHistory(of: bodyFat, from: start, to: end, unit: .percent(), scale: 100)
+        }
+        try Task.checkCancellation()
         let dayCount = calendar.dateComponents([.day], from: start, to: end).day ?? 0
         return (0..<dayCount).compactMap { offset in
             guard let date = calendar.date(byAdding: .day, value: offset, to: start) else { return nil }
