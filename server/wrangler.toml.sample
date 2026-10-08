@@ -14,6 +14,11 @@ APPLE_TEAM_ID = "REPLACE_WITH_APPLE_TEAM_ID"
 APPLE_KEY_ID = "REPLACE_WITH_SIGN_IN_WITH_APPLE_KEY_ID"
 MCP_VERIFIED_CLIENTS = '{"https://chatgpt.com/connector_platform_oauth_redirect":"ChatGPT"}'
 
+# Daily cleanup of expired OAuth flows, codes, credentials, subscriptions,
+# and old food events (src/cleanup.ts). Uses one of the account's cron slots.
+[triggers]
+crons = ["17 3 * * *"]
+
 [[routes]]
 pattern = "api.example.com"
 custom_domain = true

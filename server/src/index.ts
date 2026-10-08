@@ -4,7 +4,7 @@ export { FoodEventStream } from "./FoodEventStream";
 import { authenticate, publicOrigin } from "./auth";
 import { deleteAccount, signInWithApple, signOut } from "./appAuth";
 import { disconnectMcpConnection, listMcpConnections } from "./mcpConnections";
-import { maybeSweep, sweepExpiredAuthData } from "./cleanup";
+import { sweepExpiredAuthData } from "./cleanup";
 import { isSignInRoute, signInAllowed, sourceAllowed, tenantAllowed, tooManyRequests } from "./rateLimit";
 import {
   appleCallback, authChallenge, authorizationServerMetadata, beginAuthorization,
@@ -30,7 +30,7 @@ export default {
     if (path === "/oauth/consent" && method === "GET") return showConsent(req, env);
     if (path === "/oauth/consent" && method === "POST") return decideConsent(req, env);
     if (path === "/oauth/token" && method === "POST") return exchangeCode(req, env);
-    if (path === "/v1/auth/apple" && method === "POST") { maybeSweep(env, ctx); return signInWithApple(req, env); }
+    if (path === "/v1/auth/apple" && method === "POST") return signInWithApple(req, env);
     if (path === "/mcp") {
       const principal = await authenticate(req, env, "mcp");
       if (!principal) return authChallenge(env);
@@ -52,6 +52,8 @@ export default {
     return json({ error: "Not found" }, 404);
   },
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(sweepExpiredAuthData(env));
+    ctx.waitUntil(sweepExpiredAuthData(env).catch((cause) => {
+      console.error("Scheduled cleanup failed", cause instanceof Error ? cause.message : "unknown error");
+    }));
   },
 };
