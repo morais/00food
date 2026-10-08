@@ -155,6 +155,7 @@ struct ManualWeightView: View {
                         Spacer()
                         TextField("kg", value: $weightKg, format: .number.precision(.fractionLength(1)))
                             .multilineTextAlignment(.trailing).keyboardType(.decimalPad)
+                            .accessibilityLabel("Weight in kilograms")
                         Text("kg").foregroundStyle(.secondary)
                     }
                 } footer: {

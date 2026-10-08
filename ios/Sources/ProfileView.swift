@@ -27,6 +27,7 @@ struct ProfileView: View {
                         Spacer()
                         TextField("cm", value: $heightCm, format: .number.precision(.fractionLength(0)))
                             .multilineTextAlignment(.trailing).keyboardType(.decimalPad)
+                            .accessibilityLabel("Height in centimeters")
                         Text("cm").foregroundStyle(.secondary)
                     }
                     HStack {
@@ -47,6 +48,7 @@ struct ProfileView: View {
                         TextField("Optional", text: $birthYear)
                             .multilineTextAlignment(.trailing)
                             .keyboardType(.numberPad)
+                            .accessibilityLabel("Birth year, optional")
                     }
                     HStack {
                         Text("Resting estimate")
