@@ -46,7 +46,14 @@ struct ReviewEstimationView: View {
                 }
                 Section {
                     if let previous = current.clarification, !previous.isEmpty {
-                        Text("Last clarification: \(previous)").font(.footnote).foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Label(current.state == "proposed" ? "Agent replied" : "Pending · waiting for agent",
+                                  systemImage: current.state == "proposed" ? "checkmark.circle.fill" : "clock")
+                                .font(.caption.weight(.semibold))
+                                .labelStyle(.tintedIcon(current.state == "proposed" ? .green : .orange))
+                            Text("Last clarification: \(previous)")
+                                .font(.footnote).foregroundStyle(.secondary)
+                        }
                     }
                     TextField("Add portion or ingredient details", text: $clarification, axis: .vertical)
                         .lineLimit(2...4)
