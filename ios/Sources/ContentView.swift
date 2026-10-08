@@ -401,11 +401,13 @@ struct HomeView: View {
     }
 
     private var dailyFeedbackCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Yesterday").font(.title3.bold())
-            if let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date()),
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date())
+        return VStack(alignment: .leading, spacing: 12) {
+            Text(yesterday.map { "Yesterday, \($0.formatted(.dateTime.month(.abbreviated).day()))" } ?? "Yesterday")
+                .font(.title3.bold())
+            if let yesterday,
                let request = store.dailyFeedback.first(where: { $0.localDate == FoodDates.localDate(for: yesterday) }) {
-                feedbackRow(request)
+                feedbackRow(request, showsDate: false)
             } else {
                 Text("No review for yesterday yet.").font(.subheadline).foregroundStyle(.secondary)
             }
@@ -415,11 +417,13 @@ struct HomeView: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
     }
 
-    private func feedbackRow(_ request: DailyFeedbackRequest) -> some View {
+    private func feedbackRow(_ request: DailyFeedbackRequest, showsDate: Bool = true) -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            let date = FoodDates.parseLocalDate(request.localDate)
-            Text(date?.formatted(.dateTime.month(.abbreviated).day()) ?? request.localDate)
-                .font(.subheadline.weight(.semibold))
+            if showsDate {
+                let date = FoodDates.parseLocalDate(request.localDate)
+                Text(date?.formatted(.dateTime.month(.abbreviated).day()) ?? request.localDate)
+                    .font(.subheadline.weight(.semibold))
+            }
             if request.state == "ready", let feedback = request.feedback {
                 Text(feedback).font(.subheadline).textSelection(.enabled)
             } else {
