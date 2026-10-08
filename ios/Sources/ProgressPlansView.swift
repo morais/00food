@@ -10,6 +10,13 @@ private struct DailyCalorieBalance: Identifiable {
 
 struct ProgressPlansView: View {
     @Environment(FoodStore.self) private var store
+
+    // VoiceOver wording for chart marks. Projections are daily, so only the
+    // first of each month is exposed to keep the chart navigable.
+    private static func spokenDay(_ date: Date) -> String { date.formatted(date: .abbreviated, time: .omitted) }
+    private static func spokenKg(_ kg: Double) -> String { "\(kg.formatted(.number.precision(.fractionLength(1)))) kilograms" }
+    private static func spokenPercent(_ value: Double) -> String { "\(value.formatted(.number.precision(.fractionLength(1)))) percent" }
+    private static func isMonthStart(_ date: Date) -> Bool { Calendar.current.component(.day, from: date) == 1 }
     @Environment(HealthEnergy.self) private var health
     @Environment(\.dismiss) private var dismiss
     @State private var saving = false
@@ -109,14 +116,19 @@ struct ProgressPlansView: View {
                     ForEach(points) { point in
                         BarMark(x: .value("Day", point.date), y: .value("Logged food", point.eaten))
                             .foregroundStyle(point.date == today ? Color.purple : Color.orange.opacity(0.75))
+                            .accessibilityLabel(point.date == today ? "Today" : Self.spokenDay(point.date))
+                            .accessibilityValue("\(point.eaten) calories logged of \(point.allowance) allowance")
+                        // The bar already speaks the allowance, so its marker stays silent.
                         if point.date == today {
                             PointMark(x: .value("Day", point.date), y: .value("Today's allowance", point.allowance))
                                 .foregroundStyle(.purple)
                                 .symbolSize(45)
+                                .accessibilityHidden(true)
                         } else {
                             LineMark(x: .value("Day", point.date), y: .value("Allowance", point.allowance))
                                 .foregroundStyle(.blue)
                                 .lineStyle(StrokeStyle(lineWidth: 2))
+                                .accessibilityHidden(true)
                         }
                     }
                 }
@@ -229,18 +241,26 @@ struct ProgressPlansView: View {
                               yStart: .value("Healthy BMI minimum", healthyRange.lowerBound),
                               yEnd: .value("Healthy BMI maximum", healthyRange.upperBound))
                     .foregroundStyle(.green.opacity(0.12))
+                    .accessibilityLabel("Healthy BMI range")
+                    .accessibilityValue("\(Self.spokenKg(healthyRange.lowerBound)) to \(Self.spokenKg(healthyRange.upperBound))")
                 ForEach(health.weightHistory) { point in
                     LineMark(x: .value("Date", point.date), y: .value("Recorded weight", point.value),
                              series: .value("Series", "Weight"))
                         .foregroundStyle(.blue)
+                        .accessibilityHidden(true)
                     PointMark(x: .value("Date", point.date), y: .value("Recorded weight", point.value))
                         .foregroundStyle(.blue)
+                        .accessibilityLabel(Self.spokenDay(point.date))
+                        .accessibilityValue("Recorded \(Self.spokenKg(point.value))")
                 }
                 ForEach(projection) { point in
                     LineMark(x: .value("Date", point.date), y: .value("Illustration", point.value),
                              series: .value("Series", "Projected weight"))
                         .foregroundStyle(.blue)
                         .lineStyle(StrokeStyle(lineWidth: 2, dash: [2, 4]))
+                        .accessibilityLabel(Self.spokenDay(point.date))
+                        .accessibilityValue("Illustration \(Self.spokenKg(point.value))")
+                        .accessibilityHidden(!Self.isMonthStart(point.date))
                 }
             }
             .frame(height: 170)
@@ -300,19 +320,27 @@ struct ProgressPlansView: View {
                     RuleMark(y: .value("ACE category boundary", boundary.percentage))
                         .foregroundStyle(aceColor(for: boundary))
                         .lineStyle(StrokeStyle(lineWidth: boundary.isObesity ? 1.5 : 1, dash: [5, 4]))
+                        .accessibilityLabel("ACE \(boundary.category) boundary")
+                        .accessibilityValue("\(Int(boundary.percentage)) percent")
                 }
                 ForEach(health.bodyFatHistory) { point in
                     LineMark(x: .value("Date", point.date), y: .value("Body fat", point.value),
                              series: .value("Series", "Body fat"))
                         .foregroundStyle(.teal)
+                        .accessibilityHidden(true)
                     PointMark(x: .value("Date", point.date), y: .value("Body fat", point.value))
                         .foregroundStyle(.teal)
+                        .accessibilityLabel(Self.spokenDay(point.date))
+                        .accessibilityValue("Recorded \(Self.spokenPercent(point.value)) body fat")
                 }
                 ForEach(projection) { point in
                     LineMark(x: .value("Date", point.date), y: .value("Illustrated body fat", point.value),
                              series: .value("Series", "Projected body fat"))
                         .foregroundStyle(.teal)
                         .lineStyle(StrokeStyle(lineWidth: 2, dash: [2, 4]))
+                        .accessibilityLabel(Self.spokenDay(point.date))
+                        .accessibilityValue("Illustration \(Self.spokenPercent(point.value)) body fat")
+                        .accessibilityHidden(!Self.isMonthStart(point.date))
                 }
             }
             .frame(height: 180)
