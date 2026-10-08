@@ -178,8 +178,16 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     return json({ id: tenant?.id, email: tenant?.email });
   }
   if (path === "/v1/snapshot" && method === "GET") {
-    const [tenant, profile, foods, logs, estimations, dailyFeedback] = await Promise.all([
-      env.DB.prepare("SELECT created_at FROM tenants WHERE id = ?").bind(tenantId).first<{ created_at: string }>(),
+    // The version is read before the data, so a write that lands in between
+    // can only make the ETag older than the body, never newer. The UTC date is
+    // part of the tag because the 90-day log window moves daily.
+    const tenant = await env.DB.prepare("SELECT created_at, data_version FROM tenants WHERE id = ?")
+      .bind(tenantId).first<{ created_at: string; data_version: number }>();
+    const etag = `"${tenant?.data_version ?? 0}-${new Date().toISOString().slice(0, 10)}"`;
+    if (req.headers.get("if-none-match") === etag) {
+      return new Response(null, { status: 304, headers: { ETag: etag, "Cache-Control": "no-store" } });
+    }
+    const [profile, foods, logs, estimations, dailyFeedback] = await Promise.all([
       env.DB.prepare("SELECT * FROM profiles WHERE tenant_id = ?").bind(tenantId).first<ProfileRow>(),
       env.DB.prepare("SELECT * FROM foods WHERE tenant_id = ? ORDER BY use_count DESC, last_used_at DESC, created_at DESC LIMIT 1000").bind(tenantId).all<FoodRow>(),
       env.DB.prepare("SELECT * FROM food_logs WHERE tenant_id = ? AND local_date >= date('now','-90 days') ORDER BY logged_at DESC LIMIT 5000").bind(tenantId).all<LogRow>(),
@@ -187,10 +195,12 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
       env.DB.prepare("SELECT * FROM daily_feedback_requests WHERE tenant_id = ? ORDER BY local_date DESC LIMIT 90")
         .bind(tenantId).all<DailyFeedbackRow>(),
     ]);
-    return json({ startedAt: tenant?.created_at ?? null, profile: profile ? profileView(profile) : null,
+    const response = json({ startedAt: tenant?.created_at ?? null, profile: profile ? profileView(profile) : null,
       foods: foods.results.map(foodView), logs: logs.results.map(logView),
       estimations: estimations.results.map(estimationView),
       dailyFeedback: dailyFeedback.results.map(dailyFeedbackView), serverTime: new Date().toISOString() });
+    response.headers.set("ETag", etag);
+    return response;
   }
   if (path === "/v1/daily-feedback" && method === "GET") {
     const rows = await env.DB.prepare("SELECT * FROM daily_feedback_requests WHERE tenant_id = ? ORDER BY local_date DESC LIMIT 90")

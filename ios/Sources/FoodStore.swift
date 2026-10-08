@@ -57,6 +57,9 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     private let baseURL: String
     private var operations: [OfflineFoodOperation] = []
     private var retryTask: Task<Void, Never>?
+    /// The server's tag for the snapshot last applied, and the session it
+    /// belongs to. Kept in memory only, so each launch starts with a full load.
+    private var snapshotTag: (token: String, etag: String)?
     private let pathMonitor = NWPathMonitor()
     private static let tokenService = "00food.api-token"
     /// Sessions signed out while offline, revoked on the server once a connection returns.
@@ -230,16 +233,20 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
                     operations.removeFirst()
                     try persist()
                 }
-                let snapshot: FoodSnapshot = try await call("/v1/snapshot")
+                let fetched = try await fetchSnapshot()
                 try Task.checkCancellation()
                 if !operations.isEmpty { continue }
                 if accountId == nil {
                     let me: MeResponse = try await call("/v1/me")
                     accountId = me.id
                 }
-                apply(snapshot)
-                hasLoadedSnapshot = true
-                try persist()
+                // nil means 304: everything shown already matches the server.
+                if let snapshot = fetched.snapshot {
+                    apply(snapshot)
+                    hasLoadedSnapshot = true
+                    try persist()
+                }
+                snapshotTag = fetched.etag.map { (token, $0) }
                 syncError = nil
                 isOffline = false
                 retryTask?.cancel()
@@ -571,6 +578,23 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
             }
             Self.removePendingRevocation(pending)
         }
+    }
+
+    /// Loads /v1/snapshot, revalidating with the last tag when the local copy
+    /// came from the server unchanged. Returns a nil snapshot on 304.
+    private func fetchSnapshot() async throws -> (snapshot: FoodSnapshot?, etag: String?) {
+        guard let url = URL(string: baseURL + "/v1/snapshot"), url.scheme == "https" || url.host == "localhost" else {
+            throw FoodServiceError(message: "Server address is missing")
+        }
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let tag = snapshotTag?.token == token && hasLoadedSnapshot ? snapshotTag?.etag : nil
+        if let tag { request.setValue(tag, forHTTPHeaderField: "If-None-Match") }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let etag = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "ETag")
+        if tag != nil, (response as? HTTPURLResponse)?.statusCode == 304 { return (nil, etag ?? tag) }
+        try check(response, data: data)
+        return (try JSONDecoder().decode(FoodSnapshot.self, from: data), etag)
     }
 
     private func call<T: Decodable>(_ path: String, method: String = "GET", body: [String: Any]? = nil,
