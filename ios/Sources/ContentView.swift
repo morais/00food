@@ -604,6 +604,8 @@ struct HomeView: View {
                 }
                 .padding(.vertical, 4)
                 .contentShape(Rectangle())
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(logAccessibilityLabel(log))
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                     Button("Delete", systemImage: "trash", role: .destructive) { delete(log) }
                         .disabled(deletingLogID != nil)
@@ -614,6 +616,14 @@ struct HomeView: View {
                 }
             }
         }
+    }
+
+    private func logAccessibilityLabel(_ log: FoodLog) -> String {
+        let serving = log.quantity == 1 ? log.serving : "\(log.quantity.formatted()) × \(log.serving)"
+        var parts = [log.foodName, serving, "\(log.kcal) calories"]
+        let portions = log.countedFruitVegPortions
+        if portions > 0 { parts.append("\(portions) fruit and vegetable portion\(portions == 1 ? "" : "s")") }
+        return parts.joined(separator: ", ")
     }
 
     private var selectedDayMetrics: some View {
