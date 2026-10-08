@@ -4,8 +4,9 @@ on:
   push:
     branches: [main]
     paths: ["server/**", ".github/workflows/server.yml"]
+  # Every pull request reports the required checks, even when it does not
+  # touch the server, so branch rules never wait on a skipped workflow.
   pull_request:
-    paths: ["server/**", ".github/workflows/server.yml"]
 
 permissions:
   contents: read
