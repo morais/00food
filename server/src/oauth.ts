@@ -365,11 +365,16 @@ export async function showConsent(req: Request, env: Env): Promise<Response> {
   if (!authorized) return html(env, "<h1>Connection expired</h1><p>Start again in your MCP client.</p>", 401);
   const { flow, secret } = authorized;
   const verifiedName = verifiedClientName(env, flow.redirect_uri);
-  const clientName = verifiedName ?? flow.client_name;
+  // A self-asserted name never appears as the subject of the heading, so a
+  // client registered as "ChatGPT" cannot borrow that name's trust.
+  const heading = verifiedName
+    ? `Connect ${htmlEscape(verifiedName)} to ${htmlEscape(appName(env))}?`
+    : `Connect an unverified app to ${htmlEscape(appName(env))}?`;
   const trust = verifiedName
     ? `<p><span class="status good">Recognized callback</span> ${htmlEscape(appName(env))} recognizes this exact ${htmlEscape(verifiedName)} callback address.</p>`
-    : `<p><span class="status warning">Unverified client</span> This name was supplied by the client. Check the callback address before approving.</p>`;
-  return html(env, `<h1>Connect ${htmlEscape(clientName)} to ${htmlEscape(appName(env))}?</h1>
+    : `<p><span class="status warning">Unverified client</span> It calls itself “${htmlEscape(flow.client_name)}”, but ${htmlEscape(appName(env))} cannot confirm that. Approve only if you started this connection and recognize the site below.</p>
+    <p class="detail"><span>Sends your access to</span><code>${htmlEscape(new URL(flow.redirect_uri).host)}</code></p>`;
+  return html(env, `<h1>${heading}</h1>
     ${trust}
     <p class="detail">Requested permissions: <code>${htmlEscape(flow.scopes)}</code></p>
     <p>${flow.scopes.includes("food:read")
