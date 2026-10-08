@@ -26,4 +26,11 @@ The API is deployed at `https://api.00food.com` as the `00food-api` Cloudflare W
 
 The Worker stores an Apple account identifier, optional relay email, profile measurements, optional birth year, foods, logs, and pending estimates. A submitted photo is private in R2 and is deleted when the estimate is accepted or discarded, or when the account is deleted. MCP agents can see saved foods and pending food text/photos only after Apple OAuth consent. They can propose estimates but cannot directly log food. Apple Health history stays on the iPhone unless the user enables automatic Daily feedback or requests missing days manually. Each request uploads up to seven completed days of available daily Health aggregates (water, active and resting energy, weight, and body fat) to the private account with a feedback request. An agent with newly granted `daily:read` access can inspect those aggregates with the day's food logs, then save a review with `daily:write`. Disabling the option stops automatic requests; earlier reviews remain until account deletion. A weight explicitly chosen for the account profile is also uploaded. App and MCP credentials are separate opaque tokens stored as hashes in D1. The iOS app keeps its app credential in Keychain.
 
-The source code is MIT licensed. The 00Food name and visual assets have a separate [brand license](docs/brand/LICENSE).
+## License
+
+Source code is MIT licensed; see [LICENSE](./LICENSE).
+
+The 00Food name, logos, icons, wordmarks, mascot, and other brand artwork,
+including the files in `docs/brand` and the app assets generated from them,
+are excluded from the MIT License and governed by
+[docs/brand/LICENSE](./docs/brand/LICENSE). No trademark rights are granted.
