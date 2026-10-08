@@ -545,12 +545,12 @@ struct HomeView: View {
                 Text(selectedDayIsToday ? "Today’s food" : "Food log").font(.title3.bold())
                 Spacer()
                 Button { shiftLogDate(by: -1) } label: {
-                    Image(systemName: "chevron.left").frame(width: 30, height: 36)
+                    Image(systemName: "chevron.left").frame(width: 44, height: 44)
                 }
                 .disabled(selectedLogDate <= earliestLogDate)
                 .accessibilityLabel("Previous day")
                 Button { shiftLogDate(by: 1) } label: {
-                    Image(systemName: "chevron.right").frame(width: 30, height: 36)
+                    Image(systemName: "chevron.right").frame(width: 44, height: 44)
                 }
                 .disabled(selectedDayIsToday)
                 .accessibilityLabel("Next day")
