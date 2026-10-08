@@ -9,7 +9,7 @@ struct WatchHomeView: View {
     var body: some View {
         NavigationStack(path: $path) {
             ScrollView {
-                VStack(spacing: 12) {
+                VStack(spacing: 8) {
                     TimelineView(.periodic(from: .now, by: 60)) { clock in
                         if let balance = store.state.balance(at: clock.date) {
                             WatchBalanceView(balance: balance, date: clock.date)
@@ -23,14 +23,23 @@ struct WatchHomeView: View {
                             }
                         }
                     }
-                    NavigationLink(value: WatchRoute.food) {
-                        Label("Log food", systemImage: "fork.knife.circle.fill")
+                    HStack(spacing: 8) {
+                        NavigationLink(value: WatchRoute.food) {
+                            VStack(spacing: 3) {
+                                Image(systemName: "fork.knife.circle.fill")
+                                Text("Log food").font(.caption)
+                            }.frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent).tint(.blue)
+                        NavigationLink(value: WatchRoute.water) {
+                            VStack(spacing: 3) {
+                                Image(systemName: "drop.fill")
+                                Text("Water").font(.caption)
+                            }.frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
                     }
-                    .buttonStyle(.borderedProminent).tint(.blue).disabled(store.state.snapshot?.ready != true)
-                    NavigationLink(value: WatchRoute.water) {
-                        Label("Water", systemImage: "drop.fill")
-                    }
-                    .buttonStyle(.bordered).disabled(store.state.snapshot?.ready != true)
+                    .disabled(store.state.snapshot?.ready != true)
                     if !(store.state.snapshot?.estimates.isEmpty ?? true) || store.state.commands.contains(where: { $0.kind == .estimate }) {
                         NavigationLink(value: WatchRoute.estimates) { Label("Food estimates", systemImage: "sparkles") }
                             .buttonStyle(.bordered)
@@ -74,10 +83,13 @@ private struct WatchBalanceView: View {
         let day = ActiveDayProgress.fraction(at: date, startMinutes: balance.startMinutes, endMinutes: balance.endMinutes)
         let food = Double(balance.consumedKcal) / Double(max(1, allowance))
         let color: Color = !balance.allowanceReady ? .gray : food > day ? .orange : .blue
-        VStack(alignment: .leading, spacing: 8) {
-            Text(abs(remaining).formatted()).font(.system(size: 44, weight: .semibold, design: .rounded))
-                .minimumScaleFactor(0.6).lineLimit(1)
-            Text(remaining >= 0 ? "kcal left" : "kcal over").font(.caption).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Text(abs(remaining).formatted()).font(.system(size: 32, weight: .semibold, design: .rounded))
+                    .minimumScaleFactor(0.6).lineLimit(1)
+                Text(remaining >= 0 ? "kcal left" : "kcal over").font(.caption2).foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
             HStack {
                 Label(balance.consumedKcal.formatted(), systemImage: "fork.knife")
                 Spacer(minLength: 4)
@@ -165,8 +177,8 @@ private struct WatchWaterView: View {
         TimelineView(.periodic(from: .now, by: 60)) { clock in
             let ml = store.state.balance(at: clock.date)?.waterMl ?? 0
             ScrollView {
-                VStack(spacing: 14) {
-                    WatchDrinkingGlass().frame(width: 42, height: 58).foregroundStyle(.blue)
+                VStack(spacing: 10) {
+                    WatchDrinkingGlass().frame(width: 30, height: 40).foregroundStyle(.blue)
                     Text("\(ml.formatted()) mL").font(.title2.bold())
                     HStack(spacing: 5) {
                         ForEach(0..<8) { index in
