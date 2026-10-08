@@ -11,10 +11,13 @@ npm ci
 npx wrangler whoami
 npx wrangler d1 create 00food
 npx wrangler r2 bucket create 00food-photos
+npx wrangler r2 bucket lifecycle add 00food-photos expire-photos-30-days --expire-days 30
 npx wrangler d1 migrations apply 00food --remote
 npm run typecheck
 npm run deploy
 ```
+
+Photos are deleted when an estimate is accepted or discarded and when the account is deleted. The lifecycle rule is a backstop: it removes any photo older than 30 days, such as one whose delete failed or one attached to an estimate that was never reviewed. After 30 days such an estimate keeps its description, but its photo is gone.
 
 Install `APPLE_PRIVATE_KEY` and `OAUTH_SIGNING_SECRET` as Wrangler secrets. Never put private key material in `wrangler.toml`, Git, or app code. The Sign in with Apple key must be associated with the app's primary App ID or Apple sign-in group. For MCP web sign-in, register a Services ID with the API host and `https://<API host>/auth/apple/callback` in Apple Developer. `MCP_VERIFIED_CLIENTS` maps exact HTTPS callback addresses to names shown on the consent page. The sample recognizes ChatGPT's stable callback; other callbacks remain marked unverified. The page also shows only the scopes requested by that authorization. An existing food-only connection has no daily or Health access until the daily tools request an upgrade and the user approves it.
 
