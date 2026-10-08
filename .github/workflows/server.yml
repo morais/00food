@@ -35,6 +35,10 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
           cache-dependency-path: server/package-lock.json
-      - run: npm ci
+      # --ignore-scripts: this workflow runs on pull_request, so once the
+      # repository is public a fork can propose a package.json/package-lock.json
+      # whose install lifecycle hooks would otherwise execute on the runner.
+      # Nothing in the typecheck or test path needs a postinstall step.
+      - run: npm ci --ignore-scripts
       - run: npm run typecheck
       - run: npm test
