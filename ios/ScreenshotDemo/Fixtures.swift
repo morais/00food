@@ -18,7 +18,7 @@ enum ScreenshotFixtures {
         store.accountEmail = "alex@example.invalid"
         store.startedAt = stamp(yesterday)
         store.profile = FoodProfile(heightCm: 178, weightKg: 76, estimateProfile: "neutral",
-                                    deficitKcal: 0, birthYear: 1991, updatedAt: stamp(now))
+                                    deficitPercent: 0, updatedAt: stamp(now))
         let samples: [(String, String, Int, Int, Int)] = [
             ("Oats, yogurt & berries", "1 breakfast bowl", 320, 1, 12),
             ("Chicken, rice & vegetables", "1 lunch bowl", 540, 2, 9),

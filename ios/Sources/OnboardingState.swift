@@ -16,13 +16,13 @@ struct OnboardingDraft {
     var height: String
     var weight: String
     var estimateProfile: String
-    var deficitKcal: Int
+    var deficitPercent: Int
 
     init(saved: FoodProfile?, healthHeightCm: Double?, healthWeightKg: Double?, healthEstimateProfile: String?) {
         height = (healthHeightCm ?? saved?.heightCm).map { String($0) } ?? ""
         weight = (healthWeightKg ?? saved?.weightKg).map { String($0) } ?? ""
         estimateProfile = healthEstimateProfile ?? saved?.estimateProfile ?? "neutral"
-        deficitKcal = saved?.deficitKcal ?? DeficitLevel.gentle.rawValue
+        deficitPercent = saved?.deficitPercent ?? DeficitLevel.gentle.rawValue
     }
 
     var profile: FoodProfile? {
@@ -33,6 +33,6 @@ struct OnboardingDraft {
               heightCm.isFinite, weightKg.isFinite,
               (100...250).contains(heightCm), (25...400).contains(weightKg) else { return nil }
         return FoodProfile(heightCm: heightCm, weightKg: weightKg,
-                           estimateProfile: estimateProfile, deficitKcal: deficitKcal)
+                           estimateProfile: estimateProfile, deficitPercent: deficitPercent)
     }
 }

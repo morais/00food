@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { deficitPercentages, legacyKcalFromPercent, percentFromLegacyKcal } from "./calorieBudget";
 import { tenantForPrincipal, type Principal } from "./auth";
 import { notifyDailyFeedbackEvent, notifyFoodEvent, recordFoodEvent } from "./foodEvents";
 import { dailyFeedbackInput, dailyFeedbackView, dateBefore, localToday, validHealthWindow,
@@ -47,9 +48,11 @@ const profileInput = z.strictObject({
   heightCm: z.number().min(100).max(250),
   weightKg: z.number().min(25).max(400),
   estimateProfile: z.enum(["female", "male", "neutral"]),
-  deficitKcal: z.number().int().min(0).max(1000),
+  deficitPercent: z.number().int().refine(value => deficitPercentages.some(percent => percent === value)).optional(),
+  deficitKcal: z.number().int().min(0).max(1000).optional(),
   birthYear: z.number().int().min(1900).max(9999).nullable().optional(),
-});
+}).refine(value => value.deficitPercent !== undefined || value.deficitKcal !== undefined,
+  { message: "A deficit percentage is required" });
 const foodInput = z.strictObject({
   id: id.optional(), name: z.string().trim().min(1).max(120),
   serving: z.string().trim().min(1).max(80),
@@ -84,7 +87,7 @@ type LogRow = {
   id: string; food_id: string; food_name: string; serving: string;
   quantity: number; kcal: number; fruit_veg_portions: number; local_date: string; logged_at: string;
 };
-type ProfileRow = { height_cm: number; weight_kg: number; estimate_profile: string; deficit_kcal: number; birth_year: number | null; updated_at: string };
+type ProfileRow = { height_cm: number; weight_kg: number; estimate_profile: string; deficit_kcal: number; deficit_percent: number; birth_year: number | null; updated_at: string };
 type EstimationRow = {
   id: string; description: string; photo_key: string | null; state: string;
   proposed_name: string | null; proposed_serving: string | null; proposed_kcal: number | null;
@@ -113,7 +116,7 @@ export const estimationView = (r: EstimationRow) => ({
 });
 const profileView = (r: ProfileRow) => ({
   heightCm: r.height_cm, weightKg: r.weight_kg, estimateProfile: r.estimate_profile,
-  deficitKcal: r.deficit_kcal, birthYear: r.birth_year, updatedAt: r.updated_at,
+  deficitPercent: r.deficit_percent, deficitKcal: legacyKcalFromPercent(r.deficit_percent), birthYear: r.birth_year, updatedAt: r.updated_at,
 });
 
 class APIError extends Error { constructor(public status: number, message: string) { super(message); } }
@@ -277,13 +280,19 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     const previous = await env.DB.prepare("SELECT birth_year FROM profiles WHERE tenant_id = ?")
       .bind(tenantId).first<{ birth_year: number | null }>();
     const birthYear = input.birthYear === undefined ? previous?.birth_year ?? null : input.birthYear;
-    await env.DB.prepare(`INSERT INTO profiles (tenant_id, height_cm, weight_kg, estimate_profile, deficit_kcal, birth_year, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(tenant_id) DO UPDATE SET
+    const deficitPercent = input.deficitPercent ?? percentFromLegacyKcal(input.deficitKcal!);
+    const legacyKcal = legacyKcalFromPercent(deficitPercent);
+    const row = await env.DB.prepare(`INSERT INTO profiles
+      (tenant_id, height_cm, weight_kg, estimate_profile, deficit_kcal, deficit_percent, birth_year, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(tenant_id) DO UPDATE SET
       height_cm=excluded.height_cm, weight_kg=excluded.weight_kg,
       estimate_profile=excluded.estimate_profile, deficit_kcal=excluded.deficit_kcal,
-      birth_year=excluded.birth_year, updated_at=excluded.updated_at`)
-      .bind(tenantId, input.heightCm, input.weightKg, input.estimateProfile, input.deficitKcal, birthYear, now).run();
-    return json({ profile: { ...input, birthYear, updatedAt: now } });
+      deficit_percent=excluded.deficit_percent, birth_year=excluded.birth_year, updated_at=excluded.updated_at
+      RETURNING *`)
+      .bind(tenantId, input.heightCm, input.weightKg, input.estimateProfile, legacyKcal, deficitPercent, birthYear, now)
+      .first<ProfileRow>();
+    if (!row) throw new APIError(500, "Could not save profile");
+    return json({ profile: profileView(row) });
   }
   if (path === "/v1/foods" && method === "POST") {
     const input = foodInput.parse(await body(req));

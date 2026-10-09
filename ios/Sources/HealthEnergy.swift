@@ -31,6 +31,9 @@ private struct DietaryExportState: Codable {
     var weightHistory: [HealthMeasurePoint] = []
     var bodyFatHistory: [HealthMeasurePoint] = []
     var activeHistory: [HealthMeasurePoint] = []
+    var restingHistory: [HealthMeasurePoint] = []
+    var completedAverageTDEEKcal: Int?
+    var completedTDEEDaysUsed = 0
     var restingAverageKcal: Int?
     var restingDaysUsed = 0
     var requested = UserDefaults.standard.bool(forKey: "healthRequested")
@@ -80,6 +83,8 @@ private struct DietaryExportState: Codable {
                 activeKcal = allowance.activeKcal
                 restingAverageKcal = allowance.restingAverageKcal
                 restingDaysUsed = allowance.restingDaysUsed
+                completedAverageTDEEKcal = allowance.completedAverageTDEEKcal
+                completedTDEEDaysUsed = allowance.completedTDEEDaysUsed ?? 0
                 hasLoadedAllowance = true
             }
             waterMlToday = snapshot.waterMl ?? 0
@@ -102,6 +107,24 @@ private struct DietaryExportState: Codable {
         return current.restingKcal
     }
 
+    func dailyBudget(for profile: FoodProfile) -> CalorieBudget {
+        profile.budget(resting: effectiveRestingKcal(for: profile), active: activeKcal)
+    }
+
+    func representativeBudget(for profile: FoodProfile, deficitPercent: Int? = nil) -> CalorieBudget {
+        CalorieBudget(tdeeKcal: completedAverageTDEEKcal ?? effectiveRestingKcal(for: profile),
+                      deficitPercent: deficitPercent ?? profile.deficitPercent)
+    }
+
+    func budget(for profile: FoodProfile, on date: Date) -> CalorieBudget {
+        if Calendar.current.isDateInToday(date) { return dailyBudget(for: profile) }
+        let key = FoodDates.localDate(for: date)
+        let resting = restingHistory.first { FoodDates.localDate(for: $0.date) == key }?.value
+        let active = activeHistory.first { FoodDates.localDate(for: $0.date) == key }?.value ?? 0
+        return profile.budget(resting: resting.flatMap { $0 > 0 ? Int($0.rounded()) : nil }
+            ?? effectiveRestingKcal(for: profile), active: max(0, Int(active.rounded())))
+    }
+
     func configureDietaryExport(accountId: String?) {
         guard dietaryAccountId != accountId else { return }
         dietaryAccountId = accountId
@@ -116,6 +139,7 @@ private struct DietaryExportState: Codable {
             weightHistory = []
             bodyFatHistory = []
             activeHistory = []
+            restingHistory = []
         }
     }
 
@@ -207,17 +231,17 @@ private struct DietaryExportState: Codable {
                 else { throw error }
             }
             let sevenDaysAgo = Calendar.current.date(byAdding: .day, value: -7, to: start) ?? start
-            let restingDays = try await HealthQueryResult.read(noData: [HealthMeasurePoint]()) {
-                try await dailyCumulativeEnergy(of: restingEnergy, from: sevenDaysAgo, to: start)
+            let ninetyDaysAgo = Calendar.current.date(byAdding: .day, value: -89, to: start) ?? start
+            let energyStart = min(sevenDaysAgo, max(historyStart ?? sevenDaysAgo, ninetyDaysAgo))
+            let refreshedRestingHistory = try await HealthQueryResult.read(noData: [HealthMeasurePoint]()) {
+                try await dailyCumulativeEnergy(of: restingEnergy, from: energyStart, to: start)
             }.filter { $0.value > 0 && $0.date < start }
+            let restingDays = refreshedRestingHistory.filter { $0.date >= sevenDaysAgo }
             let restingSummary = RestingEnergySummary(completedDayTotals: restingDays.map(\.value))
-            var refreshedActiveHistory = activeHistory
-            if let historyStart {
-                let ninetyDaysAgo = Calendar.current.date(byAdding: .day, value: -89, to: start) ?? start
-                refreshedActiveHistory = try await HealthQueryResult.read(noData: [HealthMeasurePoint]()) {
-                    try await dailyActiveEnergy(from: max(historyStart, ninetyDaysAgo))
-                }
+            let refreshedActiveHistory = try await HealthQueryResult.read(noData: [HealthMeasurePoint]()) {
+                try await dailyActiveEnergy(from: energyStart)
             }
+            let tdeeSummary = TDEESummary(resting: restingDays, active: refreshedActiveHistory)
 
             let weightReadings = weightRequested ? try await readWeight() : nil
             var refreshedFat = latestBodyFatPercent
@@ -246,6 +270,9 @@ private struct DietaryExportState: Codable {
             restingDaysUsed = restingSummary.daysUsed
             restingAverageKcal = restingSummary.averageKcal
             activeHistory = refreshedActiveHistory
+            restingHistory = refreshedRestingHistory
+            completedAverageTDEEKcal = tdeeSummary.averageKcal
+            completedTDEEDaysUsed = tdeeSummary.daysUsed
             if let weightReadings { applyWeight(weightReadings) }
             latestBodyFatPercent = refreshedFat
             latestBodyFatDate = refreshedFatDate
@@ -380,6 +407,8 @@ private struct DietaryExportState: Codable {
         activeKcal = 0
         restingAverageKcal = nil
         restingDaysUsed = 0
+        completedAverageTDEEKcal = nil
+        completedTDEEDaysUsed = 0
         hasLoadedAllowance = false
         waterMlToday = 0
         latestWeightKg = nil
@@ -395,7 +424,9 @@ private struct DietaryExportState: Codable {
         var snapshot = dayCache.load() ?? HealthDaySnapshot(day: readingDay)
         if allowance {
             snapshot.allowance = .init(activeKcal: activeKcal, restingAverageKcal: restingAverageKcal,
-                                       restingDaysUsed: restingDaysUsed)
+                                       restingDaysUsed: restingDaysUsed,
+                                       completedAverageTDEEKcal: completedAverageTDEEKcal,
+                                       completedTDEEDaysUsed: completedTDEEDaysUsed)
         }
         if water { snapshot.waterMl = waterMlToday }
         if body {

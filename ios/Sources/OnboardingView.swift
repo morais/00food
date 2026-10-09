@@ -19,7 +19,7 @@ struct OnboardingView: View {
                             .foregroundStyle(.secondary)
                         VStack(alignment: .leading, spacing: 16) {
                             permission("Active energy", icon: "figure.walk",
-                                detail: "Adds the energy from your movement to today's calorie allowance.")
+                                detail: "Combines your movement and resting energy before applying your plan’s percentage deficit, including exercise.")
                             permission("Resting energy", icon: "heart.fill",
                                 detail: "Uses recent completed days to estimate your baseline calorie budget.")
                             permission("Height", icon: "ruler",
@@ -129,7 +129,7 @@ private struct OnboardingDetailsView: View {
                     Text("Prefilled from Health's biological sex when available. Adjusts the fallback estimate and ACE body-fat reference lines. You can change it, keep Neutral, or edit it later.")
                 }
                 Section {
-                    Text("Your budget uses Health resting energy when enough history is available. The fallback uses a reference age of 35. Choose your calorie plan later in Progress & plans.")
+                    Text("Your budget is resting plus active energy, reduced by your plan’s percentage. Resting energy uses recent completed Health days when enough history is available. The fallback uses a reference age of 35. Choose your calorie plan later in Progress & plans.")
                         .font(.footnote).foregroundStyle(.secondary)
                     Button { save() } label: {
                         HStack {

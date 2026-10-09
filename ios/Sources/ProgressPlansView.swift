@@ -63,12 +63,12 @@ struct ProgressPlansView: View {
                         Text(error).font(.footnote).foregroundStyle(.red)
                     }
                     if let profile {
-                        let currentLevel = DeficitLevel.allCases.first { $0.rawValue == profile.deficitKcal }
-                        planCard(title: currentLevel?.title ?? "Custom", deficit: profile.deficitKcal,
+                        let currentLevel = DeficitLevel.allCases.first { $0.rawValue == profile.deficitPercent }
+                        planCard(title: currentLevel?.title ?? "Custom", deficit: profile.deficitPercent,
                                  isCurrent: true, profile: profile)
                         DisclosureGroup(isExpanded: $showingOtherPlans) {
                             VStack(alignment: .leading, spacing: 16) {
-                                ForEach(DeficitLevel.allCases.filter { $0.rawValue != profile.deficitKcal }) { level in
+                                ForEach(DeficitLevel.allCases.filter { $0.rawValue != profile.deficitPercent }) { level in
                                     planCard(title: level.title, deficit: level.rawValue,
                                              isCurrent: false, profile: profile)
                                 }
@@ -103,7 +103,7 @@ struct ProgressPlansView: View {
             HStack {
                 Text("Calories over time").font(.title3.bold())
                 Spacer()
-                InfoDisclosure(title: "Calories over time", message: "Orange shows logged food within the allowance. Green fills the remaining allowance; red shows food above it. Each bar reaches the allowance or the food total, whichever is higher.\n\nAllowance uses your current food target, including the current resting-energy average, plus each day’s recorded Health active energy. Earlier target changes are not tracked; days without an active-energy record show the base target. Food totals include only food logged in 00Food.")
+                InfoDisclosure(title: "Calories over time", message: "Orange shows logged food within the allowance. Green fills the remaining allowance; red shows food above it. Each bar reaches the allowance or the food total, whichever is higher.\n\nAllowance is (resting + active energy) × (1 − your current plan’s deficit percentage). Completed days use their recorded Health resting and active energy; missing resting energy falls back to the recent resting average or your details estimate, and missing active energy counts as zero. Today uses the resting estimate plus active energy so far. Earlier plan changes are not tracked. Food totals include only food logged in 00Food.")
             }
             Picker("Period", selection: $calorieHistoryDays) {
                 Text("30 days").tag(30)
@@ -172,18 +172,12 @@ struct ProgressPlansView: View {
         guard first <= today else { return [] }
         var foodByDay: [String: Int] = [:]
         for log in store.logs { foodByDay[log.localDate, default: 0] += log.kcal }
-        var activeByDay: [String: Int] = [:]
-        for point in health.activeHistory {
-            activeByDay[FoodDates.localDate(for: point.date)] = max(0, Int(point.value.rounded()))
-        }
         var days: [DailyCalorieBalance] = []
         var date = first
         while date <= today {
             let key = FoodDates.localDate(for: date)
-            let active = date == today ? health.activeKcal : (activeByDay[key] ?? 0)
             days.append(DailyCalorieBalance(date: date, eaten: foodByDay[key] ?? 0,
-                                            allowance: profile.target(for: profile.deficitKcal,
-                                                resting: health.effectiveRestingKcal(for: profile)) + active))
+                                            allowance: health.budget(for: profile, on: date).allowanceKcal))
             guard let next = calendar.date(byAdding: .day, value: 1, to: date) else { break }
             date = next
         }
@@ -191,8 +185,12 @@ struct ProgressPlansView: View {
     }
 
     private func planCard(title: String, deficit: Int, isCurrent: Bool, profile: FoodProfile) -> some View {
-        let resting = health.effectiveRestingKcal(for: profile)
-        let gap = profile.effectiveDeficit(for: deficit, resting: resting)
+        let budget = health.representativeBudget(for: profile, deficitPercent: deficit)
+        let gap = budget.gapKcal
+        let expenditureExplanation = health.completedAverageTDEEKcal != nil
+            ? "This illustration uses \(budget.tdeeKcal) kcal/day TDEE, averaged across \(health.completedTDEEDaysUsed) paired resting and active Health days from the last seven completed days: a \(gap) kcal/day gap."
+            : "Until paired completed Health days are available, this illustration uses the \(budget.tdeeKcal) kcal/day resting estimate: a \(gap) kcal/day gap."
+
         let healthyRange = healthyWeightRange(for: profile.heightCm)
         let startingWeight = health.usableLatestWeightKg ?? health.weightHistory.last?.value ?? profile.weightKg
         let today = Calendar.current.startOfDay(for: Date())
@@ -209,19 +207,15 @@ struct ProgressPlansView: View {
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(title).font(.title3.bold())
-                InfoDisclosure(title: "About these charts", message: "Dotted lines are illustrations, not predictions.\n\nBMI is an adult screening measure, not a personal diagnosis or target. A fixed calorie gap does not produce a fixed rate of weight loss. Your body adapts, and daily weight and body-fat measurements vary. Use the charts to compare directions, then adjust from your recorded trend.")
+                InfoDisclosure(title: "About these charts", message: "Dotted lines are illustrations, not predictions.\n\nBMI is an adult screening measure, not a personal diagnosis or target. Your daily allowance is TDEE × (1 − your deficit percentage), including exercise. Today uses the seven-day resting estimate plus active energy so far. For the illustration we hold recent completed-day TDEE constant; expenditure and the calorie gap will change as your activity and body change. Your body adapts, and daily weight and body-fat measurements vary. Use the charts to compare directions, then adjust from your recorded trend.\n\n" + expenditureExplanation)
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
                     if isCurrent { Text("Current plan").font(.caption).foregroundStyle(.tint) }
-                    Text("\(deficit) kcal/day").font(.subheadline.bold())
+                    Text("\(deficit)% deficit").font(.subheadline.bold())
                 }
             }
-            Text("Food target \(profile.target(for: deficit, resting: resting)) kcal + Health active energy")
+            Text("Today’s allowance \(profile.budget(resting: health.effectiveRestingKcal(for: profile), active: health.activeKcal, deficitPercent: deficit).allowanceKcal) kcal · \(100 - deficit)% of TDEE")
                 .font(.subheadline).foregroundStyle(.secondary)
-            if gap < deficit {
-                Text("The 1,200 kcal floor makes the effective gap about \(gap) kcal/day before activity.")
-                    .font(.footnote).foregroundStyle(.secondary)
-            }
             if projection.count > 1 {
                 Text("Illustrative \(fullProjection ? "6-month" : "shown") change: about \(shownChange.formatted(.number.precision(.fractionLength(1)))) kg")
                     .font(.footnote).foregroundStyle(.secondary)
@@ -398,7 +392,7 @@ struct ProgressPlansView: View {
         if projectedBodyFat.isEmpty {
             paragraphs.append("Add a body-fat reading in Apple Health to show an illustration.")
         } else {
-            paragraphs.append("Each day shows its last recorded body-fat reading. The dotted line starts at the latest plotted reading, using the available weight for that date. If no history is available, it uses your latest reading and weight. It assumes every kilogram of illustrated weight loss is fat, with lean mass unchanged. It is a rough illustration, not a prediction.")
+            paragraphs.append("Each day shows its last recorded body-fat reading. The dotted line starts at the latest plotted reading, using the available weight for that date. If no history is available, it uses your latest reading and weight. It applies your plan’s percentage deficit to recent completed-day TDEE (resting + active energy), held constant for the illustration. It assumes every kilogram of illustrated weight loss is fat, with lean mass unchanged. It is a rough illustration, not a prediction.")
         }
         if let aceObesityBoundary {
             paragraphs.append("ACE’s \(profile?.estimateProfile == "female" ? "female" : "male") body-fat classification places its obesity boundary at \(Int(aceObesityBoundary.percentage))%. Other category boundaries appear when the illustration crosses them.")
@@ -437,8 +431,7 @@ struct ProgressPlansView: View {
         let today = Calendar.current.startOfDay(for: Date())
         let sixMonths = Calendar.current.date(byAdding: .month, value: 6, to: today) ?? today
         return ProgressProjection.bodyFatProjection(anchor: anchor, startWeightKg: startingWeight,
-            gapKcal: profile.effectiveDeficit(for: profile.deficitKcal,
-            resting: health.effectiveRestingKcal(for: profile)),
+            gapKcal: health.representativeBudget(for: profile).gapKcal,
             minimumWeightKg: healthyWeightRange(for: profile.heightCm).lowerBound, until: sixMonths)
     }
 
@@ -470,7 +463,7 @@ struct ProgressPlansView: View {
             defer { saving = false }
             do {
                 var updated = profile
-                updated.deficitKcal = deficit
+                updated.deficitPercent = deficit
                 try await store.saveProfile(updated)
                 showingOtherPlans = false
             } catch { errorText = error.localizedDescription }

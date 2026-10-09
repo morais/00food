@@ -11,7 +11,9 @@ struct FoodWidgetSnapshot: Codable, Equatable {
     var startMinutes: Int
     var endMinutes: Int
 
-    var allowanceKcal: Int { targetKcal + activeKcal }
+    var budgetKcal: Int? = nil
+
+    var allowanceKcal: Int { budgetKcal ?? (targetKcal + activeKcal) }
     var remainingKcal: Int { allowanceKcal - consumedKcal }
 
     func isCurrent(at date: Date) -> Bool { localDate == Self.localDate(for: date) }

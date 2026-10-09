@@ -28,12 +28,13 @@ struct RootView: View {
 
     private var widgetSnapshot: FoodWidgetSnapshot? {
         guard store.signedIn, let profile = store.profile else { return nil }
+        let budget = health.dailyBudget(for: profile)
         return FoodWidgetSnapshot(localDate: FoodDates.today(),
-                                  targetKcal: profile.target(for: profile.deficitKcal,
-                                                             resting: health.effectiveRestingKcal(for: profile)),
+                                  // Legacy cached snapshots add active energy to this bridge value.
+                                  targetKcal: budget.allowanceKcal - health.activeKcal,
                                   consumedKcal: store.consumedToday, activeKcal: health.activeKcal,
                                   pendingCount: store.estimations.count, startMinutes: activeDayStartMinutes,
-                                  endMinutes: activeDayEndMinutes)
+                                  endMinutes: activeDayEndMinutes, budgetKcal: budget.allowanceKcal)
     }
 
     var body: some View {
@@ -213,9 +214,7 @@ struct HomeView: View {
 
     private var remaining: Int {
         guard let profile = store.profile else { return 0 }
-        return profile.target(for: profile.deficitKcal,
-                              resting: health.effectiveRestingKcal(for: profile))
-            + health.activeKcal - store.consumedToday
+        return health.dailyBudget(for: profile).allowanceKcal - store.consumedToday
     }
     private var selectedLogs: [FoodLog] { store.logs(on: selectedLogDate) }
     private var selectedFeedback: DailyFeedbackRequest? {
@@ -379,13 +378,9 @@ struct HomeView: View {
             .accessibilityHint(showingBalanceDetails ? "Hide calculation" : "Show calculation")
             if showingBalanceDetails, let profile = store.profile {
                 let resting = health.effectiveRestingKcal(for: profile)
-                if resting < 1200 {
-                    Text("Resting estimate (\(resting) kcal); calorie gap (0 kcal). Minimum food target (1,200 kcal) + Health active energy − food.")
-                        .font(.caption).foregroundStyle(.secondary)
-                } else {
-                    Text("Resting estimate (\(resting) kcal) − calorie gap (\(profile.effectiveDeficit(for: profile.deficitKcal, resting: resting)) kcal) + Health active energy − food.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
+                let budget = health.dailyBudget(for: profile)
+                Text("TDEE (\(budget.tdeeKcal) kcal) = resting estimate (\(resting)) + active energy (\(health.activeKcal)). Allowance (\(budget.allowanceKcal) kcal) = TDEE − \(profile.deficitPercent)% gap (\(budget.gapKcal) kcal). Calories left = allowance − food.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             HStack(spacing: 16) {
                 Label("\(store.consumedToday) eaten", systemImage: "fork.knife")
@@ -393,8 +388,7 @@ struct HomeView: View {
             }
             .font(.subheadline)
             if let profile = store.profile {
-                ActiveDayComparison(allowanceKcal: profile.target(for: profile.deficitKcal,
-                    resting: health.effectiveRestingKcal(for: profile)) + health.activeKcal,
+                ActiveDayComparison(allowanceKcal: health.dailyBudget(for: profile).allowanceKcal,
                                     eatenKcal: store.consumedToday, allowanceReady: health.allowanceIsReady)
             }
             if !store.estimations.isEmpty {

@@ -54,7 +54,7 @@ const tools = [
   },
   {
     name: "get_daily_feedback_request", title: "Get Daily Feedback Request",
-    description: "Read one day's foods and tracked calories alongside the previous seven days of available Health water, active and resting energy, weight, and body fat. Follow the returned reviewGuidance. Fruit/veg progress is capped at 5 (meaning at least 5); water is recorded minimum intake and is not capped at 2 L. Missing Health values are null; pending foods are not in calorie totals.",
+    description: "Read one day's foods, tracked calories and percentage-of-TDEE budget alongside the previous seven days of available Health water, active and resting energy, weight, and body fat. Follow the returned reviewGuidance. Fruit/veg progress is capped at 5 (meaning at least 5); water is recorded minimum intake and is not capped at 2 L. Missing Health values are null; pending foods are not in calorie totals.",
     inputSchema: z.toJSONSchema(z.strictObject({ id: uuid }), { io: "input" }), readOnly: true,
   },
   {

@@ -80,7 +80,7 @@ private struct WatchBalanceView: View {
     let date: Date
 
     var body: some View {
-        let allowance = balance.targetKcal + balance.activeKcal
+        let allowance = balance.allowanceKcal
         let remaining = allowance - balance.consumedKcal
         let day = ActiveDayProgress.fraction(at: date, startMinutes: balance.startMinutes, endMinutes: balance.endMinutes)
         let food = Double(balance.consumedKcal) / Double(max(1, allowance))

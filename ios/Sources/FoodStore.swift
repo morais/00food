@@ -559,7 +559,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         case .saveProfile(let profile):
             let _: ProfileResponse = try await call("/v1/profile", method: "PUT", body: [
                 "heightCm": profile.heightCm, "weightKg": profile.weightKg,
-                "estimateProfile": profile.estimateProfile, "deficitKcal": profile.deficitKcal,
+                "estimateProfile": profile.estimateProfile, "deficitPercent": profile.deficitPercent,
             ])
         case .createFood(let food):
             let _: FoodResponse = try await call("/v1/foods", method: "POST", body: [

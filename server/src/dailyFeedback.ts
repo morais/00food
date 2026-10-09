@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { calorieBudget } from "./calorieBudget";
 import type { Env } from "./api";
 import { notifyAgentResponse } from "./agentResponsePush";
 
@@ -25,7 +26,7 @@ export type DailyFeedbackRow = {
 type LogRow = { id: string; food_name: string; serving: string; quantity: number;
   kcal: number; fruit_veg_portions: number; local_date: string; logged_at: string };
 type EstimateRow = { description: string; local_date: string };
-type ProfileRow = { deficit_kcal: number };
+type ProfileRow = { deficit_percent: number };
 
 export const dailyReviewGuidance = [
   "Format the review with light Markdown: a few short paragraphs or bullet points, optional short headings, and bold or italic emphasis. Keep it concise and readable; avoid tables, HTML, images and code blocks.",
@@ -33,6 +34,7 @@ export const dailyReviewGuidance = [
   "Health water is the uncapped recorded intake, not necessarily everything drunk. Report it as at least the recorded amount; reaching 2000 mL means the 2 L tracking goal was met, not that intake stopped at 2 L.",
   "Give a brief, supportive reflection on protein sources and overall diet balance from the food names, servings and descriptions, alongside calories, produce and water. Consider variety across protein foods, fruit/vegetables, grains or other fibre sources, and fats when the logs support it.",
   "No protein grams or other nutrient totals are supplied. Do not invent nutrient quantities, claim adequacy or deficiency, or infer an entire diet from incomplete logs. Note unclear meals and offer one practical food-based suggestion when useful.",
+  "The current plan is a percentage deficit applied to total daily energy expenditure (TDEE = resting + active energy), including exercise. Use the supplied calorieBudget; never subtract a fixed gap from resting energy and then credit all exercise. Earlier days may have used a different plan. Missing Health energy does not mean zero expenditure.",
   "Use directional language, note missing or pending data, and avoid diagnoses or prescriptive calorie advice.",
 ];
 
@@ -73,7 +75,7 @@ export async function dailyFeedbackContext(env: Env, row: DailyFeedbackRow) {
     env.DB.prepare(`SELECT description, local_date FROM pending_estimations
       WHERE tenant_id = ? AND local_date BETWEEN ? AND ? LIMIT 100`)
       .bind(row.tenant_id, first, row.local_date).all<EstimateRow>(),
-    env.DB.prepare("SELECT deficit_kcal FROM profiles WHERE tenant_id = ?")
+    env.DB.prepare("SELECT deficit_percent FROM profiles WHERE tenant_id = ?")
       .bind(row.tenant_id).first<ProfileRow>(),
   ]);
   const health = JSON.parse(row.health_json) as z.infer<typeof healthDay>[];
@@ -94,10 +96,12 @@ export async function dailyFeedbackContext(env: Env, row: DailyFeedbackRow) {
       fruitVegGoalMet: fruitVegTotal >= 5,
       waterIntakeAtLeastMl: waterMl ?? null,
       waterGoalMet: waterMl == null ? null : waterMl >= 2000,
+      calorieBudget: profile && healthDay?.restingKcal != null && healthDay.restingKcal > 0 && healthDay.activeKcal != null
+        ? calorieBudget(healthDay.restingKcal, healthDay.activeKcal, profile.deficit_percent) : null,
       pendingFoods, health: healthDay };
   });
   return { requestId: row.id, feedbackDay: row.local_date, timeZone: row.time_zone,
-    currentPlanCalorieGapKcal: profile?.deficit_kcal ?? null,
+    currentPlanDeficitPercent: profile?.deficit_percent ?? null,
     reviewGuidance: dailyReviewGuidance,
     days, note: "Health values are daily aggregates when available. Missing values are null. Food totals omit pending estimates. The current plan may differ from the plan on earlier days." };
 }

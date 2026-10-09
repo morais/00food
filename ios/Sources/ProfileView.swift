@@ -9,7 +9,7 @@ struct ProfileView: View {
     @State private var heightCm = 170.0
     @State private var savedWeightKg: Double?
     @State private var estimateProfile = "neutral"
-    @State private var deficitKcal = 300
+    @State private var deficitPercent = 10
     @State private var busy = false
     @State private var errorText: String?
     @State private var showingManualWeight = false
@@ -111,7 +111,7 @@ struct ProfileView: View {
                     heightCm = profile.heightCm
                     savedWeightKg = profile.weightKg
                     estimateProfile = profile.estimateProfile
-                    deficitKcal = profile.deficitKcal
+                    deficitPercent = profile.deficitPercent
                 }
             }
             .task {
@@ -132,13 +132,13 @@ struct ProfileView: View {
     }
     private var preview: FoodProfile {
         FoodProfile(heightCm: heightCm, weightKg: recordedWeightKg ?? 70,
-                    estimateProfile: estimateProfile, deficitKcal: deficitKcal)
+                    estimateProfile: estimateProfile, deficitPercent: deficitPercent)
     }
 
     private var recordedWeightKg: Double? { health.usableLatestWeightKg ?? savedWeightKg }
 
     private var restingExplanation: String {
-        let introduction = "When available, your target uses recent Apple Health resting energy. Otherwise it uses a directional estimate from your details and latest recorded weight, using a reference age of 35. It does not account for health conditions or body composition."
+        let introduction = "Your allowance is (resting + active energy) × (1 − your plan’s deficit percentage). When available, the full-day resting estimate uses recent Apple Health resting energy. Active energy so far is included before the percentage is applied. Otherwise it uses a directional estimate from your details and latest recorded weight, using a reference age of 35. It does not account for health conditions or body composition."
         if let average = health.restingAverageKcal, recordedWeightKg != nil {
             let difference = average - preview.restingKcal
             return introduction + "\n\nThe Health average is \(difference >= 0 ? "+" : "")\(difference) kcal/day compared with your details estimate, based on \(health.restingDaysUsed) of the last 7 completed days."

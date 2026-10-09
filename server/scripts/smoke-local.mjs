@@ -47,11 +47,11 @@ const initial = await request("/v1/snapshot");
 assert(initial.profile === null && initial.foods.length === 0 && initial.startedAt === now,
   "new account snapshot or creation date is wrong");
 const savedProfile = (await request("/v1/profile", "PUT", {
-  heightCm: 170, weightKg: 70, estimateProfile: "neutral", deficitKcal: 300, birthYear: 1988,
+  heightCm: 170, weightKg: 70, estimateProfile: "neutral", deficitPercent: 10, birthYear: 1988,
 })).profile;
 assert(savedProfile.birthYear === 1988, "birth year was not saved");
 await request("/v1/profile", "PUT", {
-  heightCm: 170, weightKg: 70, estimateProfile: "neutral", deficitKcal: 300,
+  heightCm: 170, weightKg: 70, estimateProfile: "neutral", deficitPercent: 10,
 });
 assert((await request("/v1/snapshot")).profile.birthYear === 1988,
   "older profile clients cleared the birth year");

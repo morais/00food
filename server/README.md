@@ -29,6 +29,12 @@ Configure a production APNs topic-specific key restricted to the iPhone bundle I
 
 Food proposals, clarification replies, and completed daily reviews atomically queue a per-account push outbox. The Durable Object delivers it with retries, coalescing accepted pushes to at most one per device every 20 minutes. Undelivered signals expire after a day. Only enabled devices belonging to an unexpired, unrevoked app credential receive pushes; MCP credentials cannot register devices. Sign-out and account deletion remove registrations. Pushes contain only a refresh signal, with no food or Health data. APNs acceptance does not guarantee iOS background execution; foreground polling remains the fallback.
 
+## Calorie budgets
+
+Maintain (0%), Gentle (10%), Balanced (15%), Faster (20%). Allowance = (Health resting + active energy) × (1 − deficitPercent / 100), rounded to kcal. Exercise is included before applying the deficit. Today uses a full-day estimate from at least 5 of the last 7 completed resting-energy days, falling back to the latest weight/height/sex and reference age 35, plus active energy recorded so far. Completed-day charts use actual resting and active energy where available. Illustrations hold the recent mean of paired completed-day TDEE totals constant; they do not predict adaptive changes.
+
+Migration `0014_percentage_deficits.sql` preserves existing pace selection (0/300/450/600 kcal → 0/10/15/20%) and cached/offline profiles migrate on decode. The API temporarily accepts and returns legacy `deficitKcal` values for installed builds; all new budget calculations use `deficitPercent`. Daily-review context includes the current percentage and each complete Health day's calculated TDEE, allowance and gap; missing energy yields a null budget. No adaptive calibration is implemented yet.
+
 ## App API
 
 Daily-review context preserves the capped fruit/veg count and uncapped Health water totals, adds explicit minimum-intake and goal-completion fields, and includes `reviewGuidance` in every response. Completed produce progress means at least five portions; recorded water may omit unlogged drinks. Agents are asked to discuss protein sources and diet balance qualitatively from food descriptions, without inventing nutrient totals. This guidance also reaches existing clients with cached tool descriptions. Previously saved reviews remain unchanged.
@@ -40,7 +46,7 @@ App routes use `Authorization: Bearer <app token>`:
 | `POST /v1/auth/apple` | Exchange a native Apple sign-in for an app session |
 | `GET /v1/snapshot` | Account creation date, profile, reusable foods, recent logs, and pending estimates |
 | `PUT /v1/push/device` | Register this app installation for silent agent-response pushes |
-| `PUT /v1/profile` | Height, weight, estimate setting, weight-loss adjustment, optional birth year |
+| `PUT /v1/profile` | Height, weight, estimate setting, deficit percentage (`deficitPercent`: 0, 10, 15 or 20), optional legacy birth year |
 | `POST /v1/foods` | Save a reusable food |
 | `POST /v1/foods/:id/dismiss` | Hide a food from the frequent list until it is logged again |
 | `POST /v1/logs` | Log a serving, using a client UUID for retry safety |

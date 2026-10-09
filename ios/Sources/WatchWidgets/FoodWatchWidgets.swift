@@ -27,7 +27,7 @@ private struct WatchBalanceWidgetView: View {
     var body: some View {
         Group {
             if let balance = entry.balance {
-                let remaining = balance.targetKcal + balance.activeKcal - balance.consumedKcal
+                let remaining = balance.allowanceKcal - balance.consumedKcal
                 if family == .accessoryCircular {
                     VStack(spacing: 1) {
                         Image(systemName: "fork.knife").font(.caption2)

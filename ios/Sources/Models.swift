@@ -22,7 +22,7 @@ struct FoodProfile: Codable, Equatable {
     var heightCm: Double
     var weightKg: Double
     var estimateProfile: String
-    var deficitKcal: Int
+    var deficitPercent: Int
     var updatedAt: String?
 
     var restingKcal: Int {
@@ -36,30 +36,93 @@ struct FoodProfile: Codable, Equatable {
         return Int((10 * weightKg + 6.25 * heightCm - 5 * Double(age) + offset).rounded())
     }
 
-    // Health active energy is added separately. Applying an activity
-    // multiplier here would credit the same movement twice.
-    var roughDailyTarget: Int { target(for: deficitKcal) }
-    func target(for deficit: Int, resting: Int? = nil) -> Int {
-        max(1200, (resting ?? restingKcal) - deficit)
-    }
-    func effectiveDeficit(for deficit: Int, resting: Int? = nil) -> Int {
-        max(0, (resting ?? restingKcal) - target(for: deficit, resting: resting))
+    func budget(resting: Int? = nil, active: Int = 0, deficitPercent: Int? = nil) -> CalorieBudget {
+        CalorieBudget(tdeeKcal: (resting ?? restingKcal) + max(0, active),
+                      deficitPercent: deficitPercent ?? self.deficitPercent)
     }
 }
 
+extension FoodProfile {
+    private enum CodingKeys: String, CodingKey {
+        case heightCm, weightKg, estimateProfile, deficitPercent, deficitKcal, updatedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        heightCm = try values.decode(Double.self, forKey: .heightCm)
+        weightKg = try values.decode(Double.self, forKey: .weightKg)
+        estimateProfile = try values.decode(String.self, forKey: .estimateProfile)
+        if let percent = try values.decodeIfPresent(Int.self, forKey: .deficitPercent) {
+            deficitPercent = percent
+        } else {
+            // Migrate cached profiles and pending offline profile saves in place.
+            deficitPercent = DeficitLevel.fromLegacyKcal(try values.decode(Int.self, forKey: .deficitKcal)).rawValue
+        }
+        updatedAt = try values.decodeIfPresent(String.self, forKey: .updatedAt)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(heightCm, forKey: .heightCm)
+        try values.encode(weightKg, forKey: .weightKg)
+        try values.encode(estimateProfile, forKey: .estimateProfile)
+        try values.encode(deficitPercent, forKey: .deficitPercent)
+        try values.encodeIfPresent(updatedAt, forKey: .updatedAt)
+    }
+}
+
+// Apply the restriction to total expenditure, including exercise. Keep all
+// surfaces on the same rounded budget; future calibration can supply TDEE here.
+struct CalorieBudget: Equatable {
+    let tdeeKcal: Int
+    let deficitPercent: Int
+    var allowanceKcal: Int {
+        Int((Double(max(0, tdeeKcal)) * (1 - Double(deficitPercent) / 100)).rounded())
+    }
+    var gapKcal: Int { max(0, tdeeKcal) - allowanceKcal }
+}
+
 enum DeficitLevel: Int, CaseIterable, Identifiable {
-    case maintain = 0, gentle = 300, steady = 450, faster = 600
+    case maintain = 0, gentle = 10, balanced = 15, faster = 20
     var id: Int { rawValue }
     var title: String {
         switch self {
         case .maintain: "Maintain"
         case .gentle: "Gentle"
-        case .steady: "Steady"
+        case .balanced: "Balanced"
         case .faster: "Faster"
         }
     }
-    static func nearest(to value: Int) -> DeficitLevel {
-        allCases.min { abs($0.rawValue - value) < abs($1.rawValue - value) } ?? .gentle
+    static func fromLegacyKcal(_ value: Int) -> DeficitLevel {
+        if value == 0 { return .maintain }
+        if value < 375 { return .gentle }
+        if value < 525 { return .balanced }
+        return .faster
+    }
+}
+
+// Use paired, completed Health days to illustrate the selected percentage at
+// representative expenditure. Today's partial exercise never anchors a forecast.
+struct TDEESummary {
+    let averageKcal: Int?
+    let daysUsed: Int
+
+    init(resting: [HealthMeasurePoint], active: [HealthMeasurePoint],
+         now: Date = Date(), calendar: Calendar = .current) {
+        let today = calendar.startOfDay(for: now)
+        let earliest = calendar.date(byAdding: .day, value: -7, to: today) ?? today
+        var activeByDay: [Date: Double] = [:]
+        for point in active where point.value.isFinite && point.value >= 0 {
+            activeByDay[calendar.startOfDay(for: point.date)] = point.value
+        }
+        let totals = resting.compactMap { point -> Double? in
+            let day = calendar.startOfDay(for: point.date)
+            guard day >= earliest, day < today, point.value.isFinite, point.value > 0,
+                  let activity = activeByDay[day] else { return nil }
+            return point.value + activity
+        }
+        daysUsed = totals.count
+        averageKcal = totals.isEmpty ? nil : Int((totals.reduce(0, +) / Double(totals.count)).rounded())
     }
 }
 

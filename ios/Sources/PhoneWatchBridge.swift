@@ -32,7 +32,9 @@ import WatchConnectivity
         value.accountId = store.signedIn ? store.accountId : nil
         value.ready = store.signedIn && store.hasLoadedSnapshot && store.profile != nil && store.accountId != nil
         if value.ready, let profile = store.profile {
-            value.targetKcal = profile.target(for: profile.deficitKcal, resting: health.effectiveRestingKcal(for: profile))
+            value.budgetKcal = health.dailyBudget(for: profile).allowanceKcal
+            // Keep older Watch copies correct while their update is installing.
+            value.targetKcal = (value.budgetKcal ?? 0) - health.activeKcal
             value.activeKcal = health.activeKcal
             value.consumedKcal = store.consumedToday
             value.waterMl = health.waterMlToday

@@ -17,6 +17,8 @@ struct HealthDaySnapshot: Codable {
         let activeKcal: Int
         let restingAverageKcal: Int?
         let restingDaysUsed: Int
+        var completedAverageTDEEKcal: Int? = nil
+        var completedTDEEDaysUsed: Int? = nil
     }
 
     let day: Day

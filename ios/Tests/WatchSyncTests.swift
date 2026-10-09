@@ -22,6 +22,26 @@ final class WatchSyncTests: XCTestCase {
         return value
     }
 
+    func testBudgetMigrationPreservesPendingWatchActions() throws {
+        var value = snapshot()
+        value.budgetKcal = 1700
+        let water = WatchCommand(accountId: account, kind: .water)
+        let state = WatchTransferState(snapshot: value, commands: [water])
+        let encoded = try JSONEncoder().encode(state)
+        let fresh = try JSONDecoder().decode(WatchTransferState.self, from: encoded)
+        XCTAssertEqual(fresh.balance()?.allowanceKcal, 1700)
+        XCTAssertEqual(fresh.balance()?.waterMl, 1000)
+        var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        var oldSnapshot = try XCTUnwrap(legacy["snapshot"] as? [String: Any])
+        oldSnapshot.removeValue(forKey: "budgetKcal")
+        legacy["snapshot"] = oldSnapshot
+        let restored = try JSONDecoder().decode(WatchTransferState.self,
+            from: JSONSerialization.data(withJSONObject: legacy))
+        XCTAssertEqual(restored.commands.map(\.id), [water.id])
+        XCTAssertEqual(restored.balance()?.allowanceKcal, 2000)
+        XCTAssertEqual(restored.balance()?.waterMl, 1000)
+    }
+
     func testPendingFoodAndWaterSurviveRestartAndKeepTheOriginalDay() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
