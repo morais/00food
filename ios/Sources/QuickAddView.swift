@@ -24,7 +24,9 @@ struct QuickAddView: View {
     @State private var editingPortions: FoodItem?
     @State private var busy = false
     @State private var errorText: String?
-    @State private var searchPresented = false
+    @State private var searchVisible = false
+    @State private var listIsDragging = false
+    @FocusState private var searchFocused: Bool
 
     private var matches: [FoodItem] {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -45,14 +47,7 @@ struct QuickAddView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
                 .padding(.bottom, 4)
-                Group {
-                    if selectedTab == .saved {
-                        foodList.searchable(text: $query, isPresented: $searchPresented,
-                            placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search your foods")
-                    } else {
-                        foodList
-                    }
-                }
+                foodList
             }
             .navigationTitle("Log food")
             .navigationBarTitleDisplayMode(.inline)
@@ -73,7 +68,8 @@ struct QuickAddView: View {
                 if tab == .new && descriptionText.isEmpty {
                     descriptionText = query.trimmingCharacters(in: .whitespacesAndNewlines)
                 }
-                searchPresented = false
+                searchFocused = false
+                searchVisible = tab == .saved && !query.isEmpty
             }
             .onChange(of: photoItem) { _, item in
                 let loadID = UUID()
@@ -100,6 +96,27 @@ struct QuickAddView: View {
     private var foodList: some View {
         List {
             if selectedTab == .saved {
+                if searchVisible {
+                    Section {
+                        HStack {
+                            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                            TextField("Search your foods", text: $query)
+                                .focused($searchFocused)
+                                .submitLabel(.search)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                            Button {
+                                searchFocused = false
+                                query = ""
+                                withAnimation { searchVisible = false }
+                            } label: {
+                                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel("Clear and hide search")
+                        }
+                    }
+                }
                 if !matches.isEmpty {
                     Section(query.isEmpty ? "Most used · one tap to log" : "Matching foods · one tap to log") {
                         ForEach(matches) { food in
@@ -177,6 +194,23 @@ struct QuickAddView: View {
                     Text("Manual entry")
                 }
             }
+        }
+        .scrollBounceBehavior(.always, axes: .vertical)
+        .onScrollPhaseChange { _, phase in
+            listIsDragging = phase == .tracking || phase == .interacting
+        }
+        .onScrollGeometryChange(for: Bool.self) { geometry in
+            // Normalize the resting offset by the List's top inset. Only an
+            // intentional pull past the top reveals search, including short lists.
+            geometry.contentOffset.y + geometry.contentInsets.top < -36
+        } action: { _, pulledDown in
+            guard pulledDown, listIsDragging, selectedTab == .saved, !searchVisible else { return }
+            withAnimation { searchVisible = true }
+        }
+        .accessibilityAction(named: "Search your foods") {
+            guard selectedTab == .saved else { return }
+            searchVisible = true
+            searchFocused = true
         }
     }
 
