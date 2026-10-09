@@ -16,10 +16,16 @@ struct OnboardingView: View {
             OnboardingDetailsView(draft: $draft, onBack: { step = .welcome },
                                   onContinue: { step = .pace }, onCancel: onCompleted)
         case .pace:
-            OnboardingPaceView(draft: $draft,
-                               onBack: { step = skippedEssentials ? .welcome : .essentials },
-                               onEditDetails: { skippedEssentials = false; step = .essentials },
-                               onCompleted: onCompleted)
+            if let profile = draft.profile {
+                PaceSelectionView(profile: profile, deficitPercent: $draft.deficitPercent,
+                                  firstDay: store.accountStartedAt ?? Calendar.current.startOfDay(for: Date()),
+                                  saveTitle: "Start logging",
+                                  onBack: { step = skippedEssentials ? .welcome : .essentials },
+                                  onCancel: store.profile == nil ? nil : onCompleted) { updated in
+                    try await store.saveProfile(updated)
+                    onCompleted()
+                }
+            }
         case .welcome:
             NavigationStack {
                 ScrollView {
@@ -153,90 +159,6 @@ private struct OnboardingDetailsView: View {
                     ToolbarItem(placement: .topBarTrailing) { Button("Cancel", action: onCancel) }
                 }
             }
-        }
-    }
-}
-
-private struct OnboardingPaceView: View {
-    @Binding var draft: OnboardingDraft
-    let onBack: () -> Void
-    let onEditDetails: () -> Void
-    let onCompleted: () -> Void
-    @Environment(FoodStore.self) private var store
-    @State private var saving = false
-    @State private var errorText: String?
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    ForEach(DeficitLevel.allCases) { level in
-                        Button {
-                            draft.deficitPercent = level.rawValue
-                        } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(level.title).font(.headline)
-                                    Text("\(level.rawValue)% deficit · \(100 - level.rawValue)% of your energy")
-                                        .font(.subheadline).foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                Image(systemName: draft.deficitPercent == level.rawValue ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(draft.deficitPercent == level.rawValue ? Color.accentColor : Color.secondary)
-                            }
-                            .foregroundStyle(.primary).contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain).disabled(saving)
-                        .accessibilityAddTraits(draft.deficitPercent == level.rawValue ? [.isSelected] : [])
-                    }
-                } header: { Text("Your pace") } footer: {
-                    Text("Your allowance is resting plus active energy, reduced by this percentage—including exercise. You can change your pace anytime in Progress & plans.")
-                }
-                if let profile = draft.profile {
-                    Section {
-                        Text("\(profile.heightCm.formatted(.number.precision(.fractionLength(1)))) cm · \(profile.weightKg.formatted(.number.precision(.fractionLength(1)))) kg")
-                        Text("\(profile.estimateProfile.capitalized) estimate setting")
-                            .font(.subheadline).foregroundStyle(.secondary)
-                        Button("Edit details", action: onEditDetails).disabled(saving)
-                    } header: { Text("Your details") } footer: {
-                        Text("Resting energy uses recent completed Health days when available. The fallback estimate uses these details and a reference age of 35.")
-                    }
-                }
-                Section {
-                    Button { save() } label: {
-                        HStack {
-                            Spacer()
-                            if saving { ProgressView() }
-                            Text("Start logging").fontWeight(.semibold)
-                            Spacer()
-                        }
-                    }
-                    .buttonStyle(.borderedProminent).disabled(saving || draft.profile == nil)
-                }
-            }
-            .navigationTitle("Choose your pace")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button("Back", action: onBack).disabled(saving) }
-                if store.profile != nil {
-                    ToolbarItem(placement: .topBarTrailing) { Button("Cancel", action: onCompleted).disabled(saving) }
-                }
-            }
-            .alert("Could not finish setup", isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
-                Button("OK", role: .cancel) {}
-            } message: { Text(errorText ?? "") }
-        }
-    }
-
-    private func save() {
-        guard !saving, let profile = draft.profile else { return }
-        saving = true
-        Task {
-            defer { saving = false }
-            do {
-                try await store.saveProfile(profile)
-                onCompleted()
-            } catch { errorText = error.localizedDescription }
         }
     }
 }

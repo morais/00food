@@ -134,6 +134,33 @@ struct ACEBodyFatBoundary: Identifiable, Equatable {
 }
 
 enum ProgressProjection {
+    static func healthyWeightRange(for heightCm: Double) -> ClosedRange<Double> {
+        let heightSquared = pow(heightCm / 100, 2)
+        return (18.5 * heightSquared)...(24.9 * heightSquared)
+    }
+
+    static func projectedWeight(from weight: Double, gap: Int, minimum: Double, until end: Date,
+                                now: Date = Date(), calendar: Calendar = .current) -> [HealthMeasurePoint] {
+        let today = calendar.startOfDay(for: now)
+        let totalDays = max(0, calendar.dateComponents([.day], from: today, to: end).day ?? 0)
+        var days = Array(stride(from: 0, through: totalDays, by: 7))
+        if days.last != totalDays { days.append(totalDays) }
+        return days.compactMap { day in
+            guard let date = calendar.date(byAdding: .day, value: day, to: today) else { return nil }
+            return HealthMeasurePoint(date: date, value: weight - Double(max(0, gap)) * Double(day) / 7700)
+        }.prefix { $0.value >= minimum }.map { $0 }
+    }
+
+    static func estimatedBMIEntryDate(from weight: Double, gap: Int, upperBound: Double, until end: Date,
+                                      now: Date = Date(), calendar: Calendar = .current) -> Date? {
+        guard weight > upperBound, gap > 0 else { return nil }
+        let today = calendar.startOfDay(for: now)
+        let daysToEntry = Int(ceil((weight - upperBound) * 7700 / Double(gap)))
+        guard let entry = calendar.date(byAdding: .day, value: daysToEntry, to: today),
+              entry <= end else { return nil }
+        return entry
+    }
+
     static func bodyFatAnchor(history: [HealthMeasurePoint], fallback: HealthMeasurePoint?) -> HealthMeasurePoint? {
         // Keep the illustration attached to the last recorded chart dot.
         history.max { $0.date < $1.date } ?? fallback

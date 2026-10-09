@@ -2,6 +2,40 @@ import XCTest
 @testable import ZeroZeroFood
 
 final class ProgressProjectionTests: XCTestCase {
+    func testPacePreviewRecomputesSixMonthWeightAndBMIEntry() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/Lisbon")!
+        let now = calendar.date(from: DateComponents(year: 2026, month: 10, day: 9))!
+        let end = calendar.date(byAdding: .month, value: 6, to: now)!
+        let range = ProgressProjection.healthyWeightRange(for: 175)
+        XCTAssertEqual(range.lowerBound, 56.65625, accuracy: 0.00001)
+        var previousEnd = 81.0
+        for level in DeficitLevel.allCases {
+            let gap = CalorieBudget(tdeeKcal: 2600, deficitPercent: level.rawValue).gapKcal
+            let points = ProgressProjection.projectedWeight(from: 80, gap: gap, minimum: range.lowerBound,
+                                                            until: end, now: now, calendar: calendar)
+            XCTAssertEqual(points.first?.value, 80)
+            XCTAssertEqual(points.last?.date, end)
+            let finalWeight = try XCTUnwrap(points.last?.value)
+            XCTAssertLessThan(finalWeight, previousEnd)
+            previousEnd = finalWeight
+            let entry = ProgressProjection.estimatedBMIEntryDate(from: 80, gap: gap,
+                upperBound: range.upperBound, until: end, now: now, calendar: calendar)
+            if level == .maintain { XCTAssertEqual(finalWeight, 80); XCTAssertNil(entry) }
+            else { XCTAssertNotNil(entry) }
+        }
+    }
+
+    func testWeightIllustrationStopsAtBMIFloorForBothPreviewAndProgress() {
+        let now = Calendar.current.startOfDay(for: Date())
+        let end = Calendar.current.date(byAdding: .month, value: 6, to: now)!
+        let points = ProgressProjection.projectedWeight(from: 60, gap: 700, minimum: 56,
+                                                        until: end, now: now)
+        XCTAssertFalse(points.isEmpty)
+        XCTAssertTrue(points.allSatisfy { $0.value >= 56 })
+        XCTAssertLessThan(points.last!.date, end)
+    }
+
     func testFatProjectionStartsAtLastRecordedChartDotAndTimestamp() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "Europe/Lisbon")!
