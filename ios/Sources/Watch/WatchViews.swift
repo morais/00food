@@ -9,7 +9,7 @@ struct WatchHomeView: View {
     var body: some View {
         NavigationStack(path: $path) {
             ScrollView {
-                VStack(spacing: 8) {
+                VStack(spacing: 4) {
                     TimelineView(.periodic(from: .now, by: 60)) { clock in
                         if let balance = store.state.balance(at: clock.date) {
                             WatchBalanceView(balance: balance, date: clock.date)
@@ -25,20 +25,17 @@ struct WatchHomeView: View {
                     }
                     HStack(spacing: 8) {
                         NavigationLink(value: WatchRoute.food) {
-                            VStack(spacing: 3) {
-                                Image(systemName: "fork.knife.circle.fill")
-                                Text("Log food").font(.caption)
-                            }.frame(maxWidth: .infinity)
+                            Text("Log food").font(.caption).lineLimit(1).minimumScaleFactor(0.8)
+                                .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.borderedProminent).tint(.blue)
                         NavigationLink(value: WatchRoute.water) {
-                            VStack(spacing: 3) {
-                                Image(systemName: "drop.fill")
-                                Text("Water").font(.caption)
-                            }.frame(maxWidth: .infinity)
+                            Text("Water").font(.caption).lineLimit(1).minimumScaleFactor(0.8)
+                                .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.bordered)
                     }
+                    .controlSize(.small)
                     .disabled(store.state.snapshot?.ready != true)
                     if !(store.state.snapshot?.estimates.isEmpty ?? true) || store.state.commands.contains(where: { $0.kind == .estimate }) {
                         NavigationLink(value: WatchRoute.estimates) { Label("Food estimates", systemImage: "sparkles") }
@@ -50,9 +47,10 @@ struct WatchHomeView: View {
                         Text("Updated \(date, style: .relative) ago").font(.caption2).foregroundStyle(.secondary)
                     }
                 }
-                .padding(.horizontal, 6)
+                .padding(.horizontal, 10)
+                .padding(.bottom, 10)
             }
-            .navigationTitle("00Food")
+            .navigationTitle("")
             .navigationDestination(for: WatchRoute.self) { route in
                 switch route {
                 case .food: WatchFoodsView()
@@ -64,6 +62,10 @@ struct WatchHomeView: View {
             .onOpenURL { url in
                 if let route = url.host.flatMap(WatchRoute.init(rawValue:)) { path = [route] }
                 else { path = [] }
+            }
+            .onChange(of: store.confirmation?.id) { _, _ in
+                guard let kind = store.confirmation?.kind, kind == .food || kind == .water else { return }
+                path.removeAll()
             }
         }
         .safeAreaInset(edge: .bottom) { WatchConfirmationView() }
@@ -83,9 +85,9 @@ private struct WatchBalanceView: View {
         let day = ActiveDayProgress.fraction(at: date, startMinutes: balance.startMinutes, endMinutes: balance.endMinutes)
         let food = Double(balance.consumedKcal) / Double(max(1, allowance))
         let color: Color = !balance.allowanceReady ? .gray : food > day ? .orange : .blue
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .firstTextBaseline, spacing: 5) {
-                Text(abs(remaining).formatted()).font(.system(size: 32, weight: .semibold, design: .rounded))
+                Text(abs(remaining).formatted()).font(.system(size: 30, weight: .semibold, design: .rounded))
                     .minimumScaleFactor(0.6).lineLimit(1)
                 Text(remaining >= 0 ? "kcal left" : "kcal over").font(.caption2).foregroundStyle(.secondary)
                     .lineLimit(1)
