@@ -33,6 +33,34 @@ final class OnboardingTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(draft.profile), saved)
     }
 
+    func testCompleteHealthDetailsSkipEssentialsEvenWithoutBiologicalSex() throws {
+        XCTAssertEqual(OnboardingStep.afterHealth(heightCm: 175, weightKg: 80), .pace)
+        let draft = OnboardingDraft(saved: nil, healthHeightCm: 175, healthWeightKg: 80,
+                                    healthEstimateProfile: nil)
+        XCTAssertEqual(try XCTUnwrap(draft.profile).estimateProfile, "neutral")
+    }
+
+    func testMissingOrInvalidHealthDetailsRequireEssentials() {
+        XCTAssertEqual(OnboardingStep.afterHealth(heightCm: nil, weightKg: 80), .essentials)
+        XCTAssertEqual(OnboardingStep.afterHealth(heightCm: 175, weightKg: nil), .essentials)
+        XCTAssertEqual(OnboardingStep.afterHealth(heightCm: .nan, weightKg: 80), .essentials)
+        XCTAssertEqual(OnboardingStep.afterHealth(heightCm: 175, weightKg: .infinity), .essentials)
+        XCTAssertEqual(OnboardingStep.afterHealth(heightCm: 99, weightKg: 80), .essentials)
+        XCTAssertEqual(OnboardingStep.afterHealth(heightCm: 175, weightKg: 401), .essentials)
+    }
+
+    func testPaceChoiceIsSavedWithTheDetailsAndSurvivesEditing() throws {
+        var draft = OnboardingDraft(saved: nil, healthHeightCm: 175, healthWeightKg: 80,
+                                    healthEstimateProfile: "female")
+        for level in DeficitLevel.allCases {
+            draft.deficitPercent = level.rawValue
+            XCTAssertEqual(try XCTUnwrap(draft.profile).deficitPercent, level.rawValue)
+        }
+        draft.height = "176"
+        XCTAssertEqual(try XCTUnwrap(draft.profile).deficitPercent, 20)
+        XCTAssertEqual(try XCTUnwrap(draft.profile).heightCm, 176)
+    }
+
     func testNewUserNeedsMissingHeightAndWeightAndCanEditPrefills() throws {
         var draft = OnboardingDraft(saved: nil, healthHeightCm: nil, healthWeightKg: nil,
                                     healthEstimateProfile: nil)

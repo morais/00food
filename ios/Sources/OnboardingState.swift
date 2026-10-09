@@ -12,6 +12,18 @@ enum OnboardingReplay {
     }
 }
 
+enum OnboardingStep: Equatable {
+    case welcome, essentials, pace
+
+    static func afterHealth(heightCm: Double?, weightKg: Double?) -> OnboardingStep {
+        // Biological sex and body fat are optional. Saved/manual details cannot
+        // stand in for missing Health readings when deciding to skip this form.
+        guard let heightCm, let weightKg, heightCm.isFinite, weightKg.isFinite,
+              (100...250).contains(heightCm), (25...400).contains(weightKg) else { return .essentials }
+        return .pace
+    }
+}
+
 struct OnboardingDraft {
     var height: String
     var weight: String

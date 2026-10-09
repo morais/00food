@@ -4,13 +4,23 @@ struct OnboardingView: View {
     var onCompleted: () -> Void = {}
     @Environment(FoodStore.self) private var store
     @Environment(HealthEnergy.self) private var health
-    @State private var showingDetails = false
+    @State private var step = OnboardingStep.welcome
+    @State private var skippedEssentials = false
+    @State private var draft = OnboardingDraft(saved: nil, healthHeightCm: nil,
+                                               healthWeightKg: nil, healthEstimateProfile: nil)
     @State private var connecting = false
 
     var body: some View {
-        if showingDetails {
-            OnboardingDetailsView(onBack: { showingDetails = false }, onCompleted: onCompleted)
-        } else {
+        switch step {
+        case .essentials:
+            OnboardingDetailsView(draft: $draft, onBack: { step = .welcome },
+                                  onContinue: { step = .pace }, onCancel: onCompleted)
+        case .pace:
+            OnboardingPaceView(draft: $draft,
+                               onBack: { step = skippedEssentials ? .welcome : .essentials },
+                               onEditDetails: { skippedEssentials = false; step = .essentials },
+                               onCompleted: onCompleted)
+        case .welcome:
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
@@ -25,7 +35,7 @@ struct OnboardingView: View {
                             permission("Height", icon: "ruler",
                                 detail: "Prefills your details and sets the healthy BMI range shown in your weight chart.")
                             permission("Biological sex", icon: "person.fill",
-                                detail: "Prefills the optional estimate setting used for the fallback calorie calculation and ACE body-fat reference lines. You can change it or use Neutral.")
+                                detail: "Prefills the optional setting for the fallback calorie estimate and ACE body-fat reference lines. Adult BMI ranges are the same for all sexes. You can change the setting or use Neutral.")
                             permission("Weight", icon: "scalemass",
                                 detail: "Uses your latest reading for progress and a fallback estimate when resting energy isn't available.")
                             permission("Body fat", icon: "chart.xyaxis.line",
@@ -45,7 +55,7 @@ struct OnboardingView: View {
                             Task {
                                 await health.connect()
                                 connecting = false
-                                if health.errorMessage == nil { showingDetails = true }
+                                if health.errorMessage == nil { continueAfterHealth() }
                             }
                         } label: {
                             HStack {
@@ -57,7 +67,12 @@ struct OnboardingView: View {
                         }
                         .buttonStyle(.borderedProminent).controlSize(.large)
                         .disabled(connecting || !health.available)
-                        Button("Continue without Health") { showingDetails = true }
+                        Button("Continue without Health") {
+                            draft = OnboardingDraft(saved: store.profile, healthHeightCm: nil,
+                                                    healthWeightKg: nil, healthEstimateProfile: nil)
+                            skippedEssentials = false
+                            step = .essentials
+                        }
                             .frame(maxWidth: .infinity).disabled(connecting)
                     }
                     .padding(20)
@@ -74,6 +89,15 @@ struct OnboardingView: View {
         }
     }
 
+    private func continueAfterHealth() {
+        draft = OnboardingDraft(saved: store.profile, healthHeightCm: health.latestHeightCm,
+                                healthWeightKg: health.usableLatestWeightKg,
+                                healthEstimateProfile: health.healthEstimateProfile)
+        step = OnboardingStep.afterHealth(heightCm: health.latestHeightCm,
+                                          weightKg: health.usableLatestWeightKg)
+        skippedEssentials = step == .pace
+    }
+
     private func permission(_ title: String, icon: String, detail: String) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: icon).foregroundStyle(.blue).frame(width: 26)
@@ -86,17 +110,12 @@ struct OnboardingView: View {
 }
 
 private struct OnboardingDetailsView: View {
+    @Binding var draft: OnboardingDraft
     let onBack: () -> Void
-    let onCompleted: () -> Void
+    let onContinue: () -> Void
+    let onCancel: () -> Void
     @Environment(FoodStore.self) private var store
     @Environment(HealthEnergy.self) private var health
-    @State private var draft = OnboardingDraft(saved: nil, healthHeightCm: nil,
-                                               healthWeightKg: nil, healthEstimateProfile: nil)
-    @State private var initialized = false
-    @State private var saving = false
-    @State private var errorText: String?
-
-    private var valid: Bool { draft.profile != nil }
 
     var body: some View {
         NavigationStack {
@@ -104,20 +123,12 @@ private struct OnboardingDetailsView: View {
                 Section {
                     TextField("Height in cm", text: $draft.height).keyboardType(.decimalPad)
                 } header: { Text("Height") } footer: {
-                    Text(health.latestHeightCm == nil
-                         ? "Used for your BMI progress range and the fallback resting estimate."
-                         : "Prefilled from Apple Health; you can edit it. Used for your BMI progress range and the fallback resting estimate.")
+                    Text("Used for your BMI progress range and the fallback resting estimate. You can edit any Health prefill.")
                 }
                 Section {
-                    if let recorded = health.usableLatestWeightKg {
-                        LabeledContent("From Apple Health", value: "\(recorded.formatted(.number.precision(.fractionLength(1)))) kg")
-                    } else {
-                        TextField("Weight in kg", text: $draft.weight).keyboardType(.decimalPad)
-                    }
+                    TextField("Weight in kg", text: $draft.weight).keyboardType(.decimalPad)
                 } header: { Text("Weight") } footer: {
-                    Text(health.usableLatestWeightKg == nil
-                         ? "We need a weight for the fallback estimate. This value is saved to your account; you can connect a scale or log a Health weight later."
-                         : "We'll use your latest recorded weight for progress and the fallback estimate.")
+                    Text("Used for progress and the fallback estimate. This value is saved to your account; you can connect a scale or log a Health weight later.")
                 }
                 Section {
                     Picker("Estimate setting", selection: $draft.estimateProfile) {
@@ -126,11 +137,72 @@ private struct OnboardingDetailsView: View {
                         Text("Male").tag("male")
                     }
                 } header: { Text("Optional") } footer: {
-                    Text("Prefilled from Health's biological sex when available. Adjusts the fallback estimate and ACE body-fat reference lines. You can change it, keep Neutral, or edit it later.")
+                    Text("Adjusts the fallback estimate and ACE body-fat reference lines. Adult BMI ranges do not depend on sex. You can keep Neutral or change this later.")
                 }
                 Section {
-                    Text("Your budget is resting plus active energy, reduced by your plan’s percentage. Resting energy uses recent completed Health days when enough history is available. The fallback uses a reference age of 35. Choose your calorie plan later in Progress & plans.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                    Button("Continue") { onContinue() }
+                        .fontWeight(.semibold).frame(maxWidth: .infinity)
+                        .buttonStyle(.borderedProminent).disabled(draft.profile == nil)
+                }
+            }
+            .navigationTitle("Just the essentials")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) { Button("Back", action: onBack) }
+                if store.profile != nil {
+                    ToolbarItem(placement: .topBarTrailing) { Button("Cancel", action: onCancel) }
+                }
+            }
+        }
+    }
+}
+
+private struct OnboardingPaceView: View {
+    @Binding var draft: OnboardingDraft
+    let onBack: () -> Void
+    let onEditDetails: () -> Void
+    let onCompleted: () -> Void
+    @Environment(FoodStore.self) private var store
+    @State private var saving = false
+    @State private var errorText: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    ForEach(DeficitLevel.allCases) { level in
+                        Button {
+                            draft.deficitPercent = level.rawValue
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(level.title).font(.headline)
+                                    Text("\(level.rawValue)% deficit · \(100 - level.rawValue)% of your energy")
+                                        .font(.subheadline).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: draft.deficitPercent == level.rawValue ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(draft.deficitPercent == level.rawValue ? Color.accentColor : Color.secondary)
+                            }
+                            .foregroundStyle(.primary).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain).disabled(saving)
+                        .accessibilityAddTraits(draft.deficitPercent == level.rawValue ? [.isSelected] : [])
+                    }
+                } header: { Text("Your pace") } footer: {
+                    Text("Your allowance is resting plus active energy, reduced by this percentage—including exercise. You can change your pace anytime in Progress & plans.")
+                }
+                if let profile = draft.profile {
+                    Section {
+                        Text("\(profile.heightCm.formatted(.number.precision(.fractionLength(1)))) cm · \(profile.weightKg.formatted(.number.precision(.fractionLength(1)))) kg")
+                        Text("\(profile.estimateProfile.capitalized) estimate setting")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                        Button("Edit details", action: onEditDetails).disabled(saving)
+                    } header: { Text("Your details") } footer: {
+                        Text("Resting energy uses recent completed Health days when available. The fallback estimate uses these details and a reference age of 35.")
+                    }
+                }
+                Section {
                     Button { save() } label: {
                         HStack {
                             Spacer()
@@ -139,27 +211,18 @@ private struct OnboardingDetailsView: View {
                             Spacer()
                         }
                     }
-                    .buttonStyle(.borderedProminent).disabled(saving || !valid)
+                    .buttonStyle(.borderedProminent).disabled(saving || draft.profile == nil)
                 }
             }
-            .navigationTitle("Just the essentials")
+            .navigationTitle("Choose your pace")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Back", action: onBack).disabled(saving)
-                }
+                ToolbarItem(placement: .topBarLeading) { Button("Back", action: onBack).disabled(saving) }
                 if store.profile != nil {
                     ToolbarItem(placement: .topBarTrailing) { Button("Cancel", action: onCompleted).disabled(saving) }
                 }
             }
-            .onAppear {
-                guard !initialized else { return }
-                initialized = true
-                draft = OnboardingDraft(saved: store.profile, healthHeightCm: health.latestHeightCm,
-                                        healthWeightKg: health.usableLatestWeightKg,
-                                        healthEstimateProfile: health.healthEstimateProfile)
-            }
-            .alert("Could not save details", isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
+            .alert("Could not finish setup", isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: { Text(errorText ?? "") }
         }
