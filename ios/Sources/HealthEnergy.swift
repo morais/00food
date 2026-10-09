@@ -224,7 +224,11 @@ private struct DietaryExportState: Codable {
                 refreshedFatDate = latest?.endDate
                 if let historyStart {
                     refreshedFatHistory = try await HealthQueryResult.read(noData: [HealthMeasurePoint]()) {
-                        try await dailyHistory(of: bodyFat, from: historyStart, unit: .percent(), scale: 100)
+                        try await dailyLastReadings(of: bodyFat, from: historyStart, unit: .percent(), scale: 100)
+                    }
+                    if let last = refreshedFatHistory.last, last.date >= (refreshedFatDate ?? .distantPast) {
+                        refreshedFat = last.value
+                        refreshedFatDate = last.date
                     }
                 }
             }
@@ -412,7 +416,7 @@ private struct DietaryExportState: Codable {
             try await dailyHistory(of: bodyMass, from: start, to: end, unit: .gramUnit(with: .kilo), scale: 1)
         }
         let fat = try await read(bodyFatRequested) {
-            try await dailyHistory(of: bodyFat, from: start, to: end, unit: .percent(), scale: 100)
+            try await dailyLastReadings(of: bodyFat, from: start, to: end, unit: .percent(), scale: 100)
         }
         try Task.checkCancellation()
         let dayCount = calendar.dateComponents([.day], from: start, to: end).day ?? 0
@@ -682,6 +686,26 @@ private struct DietaryExportState: Codable {
                                                   value: quantity.doubleValue(for: unit) * scale)
                     } ?? []
                     continuation.resume(returning: points)
+                }
+            }
+            store.execute(query)
+        }
+    }
+
+    private func dailyLastReadings(of type: HKQuantityType, from start: Date, to end: Date = Date(),
+                                   unit: HKUnit, scale: Double) async throws -> [HealthMeasurePoint] {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[HealthMeasurePoint], Error>) in
+            let predicate = HKQuery.predicateForSamples(withStart: start, end: end,
+                                                       options: [.strictStartDate, .strictEndDate])
+            let newestFirst = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
+            let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit,
+                                      sortDescriptors: [newestFirst]) { _, samples, error in
+                if let error { continuation.resume(throwing: error) }
+                else {
+                    let readings = (samples as? [HKQuantitySample] ?? []).map {
+                        HealthMeasurePoint(date: $0.endDate, value: $0.quantity.doubleValue(for: unit) * scale)
+                    }
+                    continuation.resume(returning: HealthHistory.lastReadingEachDay(readings))
                 }
             }
             store.execute(query)

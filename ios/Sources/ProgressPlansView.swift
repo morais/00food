@@ -398,7 +398,7 @@ struct ProgressPlansView: View {
         if projectedBodyFat.isEmpty {
             paragraphs.append("Add a body-fat reading in Apple Health to show an illustration.")
         } else {
-            paragraphs.append("The dotted line starts at the last plotted Health body-fat reading (a daily average), using the available weight for that date. If no history is available, it uses your latest reading and weight. It assumes every kilogram of illustrated weight loss is fat, with lean mass unchanged. It is a rough illustration, not a prediction.")
+            paragraphs.append("Each day shows its last recorded body-fat reading. The dotted line starts at the latest plotted reading, using the available weight for that date. If no history is available, it uses your latest reading and weight. It assumes every kilogram of illustrated weight loss is fat, with lean mass unchanged. It is a rough illustration, not a prediction.")
         }
         if let aceObesityBoundary {
             paragraphs.append("ACE’s \(profile?.estimateProfile == "female" ? "female" : "male") body-fat classification places its obesity boundary at \(Int(aceObesityBoundary.percentage))%. Other category boundaries appear when the illustration crosses them.")

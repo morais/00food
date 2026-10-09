@@ -14,6 +14,8 @@ For daily reviews, tell the agent you want them and approve the additional food/
 
 Daily-review context includes guidance to reflect on protein sources and overall diet variety as well as calories, produce and hydration. No protein grams or nutrient totals are measured, so the agent should keep this qualitative and acknowledge incomplete logs. The fruit/veg tracker stops at five: a completed goal means **at least five portions**. Health water is an uncapped recorded amount, which may be less than everything drunk; meeting the 2 L tracking goal does not imply intake stopped there. These explanations are included with each context response, including requests created before this change. Saved reviews are not rewritten automatically.
 
+Reviews support light Markdown: short headings, bullet or numbered lists, bold/italic emphasis and web links. Agents receive this formatting guidance with each daily-review context. Keep reviews concise and avoid tables, HTML, images and code blocks.
+
 Your AI service's availability, access requirements, and instructions affect responses. Current OpenAI instructions are at [MCP Events](https://developers.openai.com/plugins/build/mcp-events) and [plugin quickstart](https://developers.openai.com/plugins/quickstart).
 
 ## Other compatible agents

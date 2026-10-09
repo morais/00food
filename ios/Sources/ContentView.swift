@@ -445,7 +445,7 @@ struct HomeView: View {
                     .font(.subheadline.weight(.semibold))
             }
             if request.state == "ready", let feedback = request.feedback {
-                Text(feedback).font(.subheadline).textSelection(.enabled)
+                DailyReviewText(markdown: feedback)
             } else {
                 Label("Waiting for your agent", systemImage: "clock")
                     .font(.subheadline).foregroundStyle(.secondary)

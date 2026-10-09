@@ -28,6 +28,7 @@ type EstimateRow = { description: string; local_date: string };
 type ProfileRow = { deficit_kcal: number };
 
 export const dailyReviewGuidance = [
+  "Format the review with light Markdown: a few short paragraphs or bullet points, optional short headings, and bold or italic emphasis. Keep it concise and readable; avoid tables, HTML, images and code blocks.",
   "Treat fruit/vegetable progress of 5 as at least 5 portions, never exactly 5: this tracker caps the daily count at its goal.",
   "Health water is the uncapped recorded intake, not necessarily everything drunk. Report it as at least the recorded amount; reaching 2000 mL means the 2 L tracking goal was met, not that intake stopped at 2 L.",
   "Give a brief, supportive reflection on protein sources and overall diet balance from the food names, servings and descriptions, alongside calories, produce and water. Consider variety across protein foods, fruit/vegetables, grains or other fibre sources, and fats when the logs support it.",

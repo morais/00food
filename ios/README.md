@@ -31,6 +31,8 @@ For TestFlight, create the app record in App Store Connect, use separate App Sto
 
 ## Agent response checks
 
+Body-fat history uses the last recorded Health sample in each local calendar day, retaining its timestamp. The latest chart dot and illustration start therefore match the latest value shown elsewhere. Daily-review Health summaries use the same per-day body-fat selection. Reviews render headings, lists, inline emphasis and web links with Foundation's Markdown parser and native SwiftUI text.
+
 Pending food estimates, clarification replies, and daily reviews refresh automatically while the iPhone app is active and online: every 15 seconds for two minutes, then every minute. Returning to the app checks immediately. The loop stops after all replies arrive, on sign-out, offline, or in the background. These checks reuse the conditional snapshot request, preserve cached content, and do not query Health or show polling errors.
 
 Agent replies also queue a silent push to registered iPhones. This requests a background snapshot refresh with a 20-second limit and no Health reads. iOS decides whether and when to run it; foreground checks remain the fallback. Registration requires a signed-in account, renews every 12 hours while active, and is removed on sign-out. Release builds use production APNs; Debug registration remains disabled unless a separate development key is configured. The app needs Push Notifications, a matching distribution profile, and the remote-notification background mode. Open a new TestFlight build once to register the device; no alert permission prompt is needed.

@@ -6,6 +6,18 @@ struct HealthMeasurePoint: Identifiable {
     var id: Date { date }
 }
 
+enum HealthHistory {
+    static func lastReadingEachDay(_ readings: [HealthMeasurePoint],
+                                   calendar: Calendar = .current) -> [HealthMeasurePoint] {
+        var days: [Date: HealthMeasurePoint] = [:]
+        for reading in readings {
+            let day = calendar.startOfDay(for: reading.date)
+            if days[day] == nil || days[day]!.date < reading.date { days[day] = reading }
+        }
+        return days.values.sorted { $0.date < $1.date }
+    }
+}
+
 struct FoodProfile: Codable, Equatable {
     var heightCm: Double
     var weightKg: Double
@@ -62,8 +74,7 @@ struct ACEBodyFatBoundary: Identifiable, Equatable {
 
 enum ProgressProjection {
     static func bodyFatAnchor(history: [HealthMeasurePoint], fallback: HealthMeasurePoint?) -> HealthMeasurePoint? {
-        // Chart dots are daily averages. Anchor to the same value and date,
-        // rather than mixing that dot with an individual reading or today.
+        // Keep the illustration attached to the last recorded chart dot.
         history.max { $0.date < $1.date } ?? fallback
     }
 
@@ -73,13 +84,15 @@ enum ProgressProjection {
         guard anchor.date <= end, startWeightKg.isFinite, startWeightKg > 0,
               anchor.value.isFinite, (0...100).contains(anchor.value) else { return [] }
         let totalDays = max(0, calendar.dateComponents([.day], from: anchor.date, to: end).day ?? 0)
-        var days = Array(stride(from: 0, through: totalDays, by: 7))
-        if days.last != totalDays { days.append(totalDays) }
-        return days.compactMap { day -> HealthMeasurePoint? in
-            let weight = startWeightKg - Double(max(0, gapKcal)) * Double(day) / 7700
-            guard weight >= minimumWeightKg,
-                  let date = calendar.date(byAdding: .day, value: day, to: anchor.date) else { return nil }
-            return day == 0 ? anchor : HealthMeasurePoint(date: date,
+        var dates = stride(from: 0, through: totalDays, by: 7).compactMap {
+            calendar.date(byAdding: .day, value: $0, to: anchor.date)
+        }
+        if dates.last != end { dates.append(end) }
+        return dates.compactMap { date -> HealthMeasurePoint? in
+            let elapsedDays = date.timeIntervalSince(anchor.date) / 86400
+            let weight = startWeightKg - Double(max(0, gapKcal)) * elapsedDays / 7700
+            guard weight >= minimumWeightKg else { return nil }
+            return date == anchor.date ? anchor : HealthMeasurePoint(date: date,
                 value: bodyFatPercent(startWeightKg: startWeightKg, startBodyFatPercent: anchor.value,
                                       projectedWeightKg: weight))
         }
