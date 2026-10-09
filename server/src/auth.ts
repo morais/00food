@@ -112,8 +112,12 @@ export async function issueCredential(
 }
 
 export async function revokeCredential(env: Env, principal: Principal): Promise<void> {
-  await env.DB.prepare("UPDATE credentials SET revoked_at = ? WHERE token_hash = ? AND tenant_id = ?")
-    .bind(new Date().toISOString(), principal.tokenHash, principal.tenantId).run();
+  await env.DB.batch([
+    env.DB.prepare("UPDATE credentials SET revoked_at = ? WHERE token_hash = ? AND tenant_id = ?")
+      .bind(new Date().toISOString(), principal.tokenHash, principal.tenantId),
+    env.DB.prepare("DELETE FROM push_devices WHERE credential_hash = ? AND tenant_id = ?")
+      .bind(principal.tokenHash, principal.tenantId),
+  ]);
 }
 
 export async function findOrCreateTenant(

@@ -92,6 +92,8 @@ export async function deleteTenantData(env: Env, tenantId: string, appleSubject:
     } while (cursor);
   }
   await env.DB.batch([
+    env.DB.prepare("DELETE FROM push_pending WHERE tenant_id = ?").bind(tenantId),
+    env.DB.prepare("DELETE FROM push_devices WHERE tenant_id = ?").bind(tenantId),
     env.DB.prepare("DELETE FROM daily_feedback_deliveries WHERE tenant_id = ?").bind(tenantId),
     env.DB.prepare("DELETE FROM mcp_event_deliveries WHERE tenant_id = ?").bind(tenantId),
     env.DB.prepare("DELETE FROM mcp_event_subscriptions WHERE tenant_id = ?").bind(tenantId),

@@ -4,6 +4,7 @@ import { notifyDailyFeedbackEvent, notifyFoodEvent, recordFoodEvent } from "./fo
 import { dailyFeedbackInput, dailyFeedbackView, dateBefore, localToday, validHealthWindow,
   type DailyFeedbackRow } from "./dailyFeedback";
 import { dailyFeedbackDeliveryInsert, webhookDeliveryInsert } from "./mcpWebhookEvents";
+import { notifyAgentResponse } from "./agentResponsePush";
 
 export interface Env {
   DB: D1Database;
@@ -16,6 +17,10 @@ export interface Env {
   APPLE_TEAM_ID?: string;
   APPLE_KEY_ID?: string;
   APPLE_PRIVATE_KEY?: string;
+  APNS_KEY_ID?: string;
+  APNS_PRIVATE_KEY?: string;
+  APNS_DEVELOPMENT_KEY_ID?: string;
+  APNS_DEVELOPMENT_PRIVATE_KEY?: string;
   OAUTH_SIGNING_SECRET?: string;
   MCP_VERIFIED_CLIENTS?: string;
   REVIEW_TENANT_IDS?: string;
@@ -170,6 +175,7 @@ export async function proposeEstimation(env: Env, tenantId: string, estimationId
     parsed.fruitVegPortions ?? null, now, estimationId, tenantId,
   ).first<EstimationRow>();
   if (!row) return fail(404, "Estimation not found");
+  await notifyAgentResponse(env, tenantId);
   return json({ estimation: estimationView(row) });
 }
 

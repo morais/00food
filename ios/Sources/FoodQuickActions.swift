@@ -36,6 +36,17 @@ enum FoodQuickLaunch: String, Identifiable {
 }
 
 final class FoodAppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        let token = deviceToken.map { String(format: "%02x", $0) }.joined()
+        Task { @MainActor in AgentResponsePush.shared.deviceToken = token }
+    }
+
+    func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+                     fetchCompletionHandler completion: @escaping (UIBackgroundFetchResult) -> Void) {
+        guard userInfo["foodSync"] as? Bool == true else { completion(.noData); return }
+        Task { @MainActor in completion(await AgentResponsePush.shared.receive()) }
+    }
+
     func application(
         _ application: UIApplication,
         configurationForConnecting connectingSceneSession: UISceneSession,

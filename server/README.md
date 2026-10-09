@@ -23,7 +23,13 @@ Install `APPLE_PRIVATE_KEY` and `OAUTH_SIGNING_SECRET` as Wrangler secrets. Neve
 
 For local work, use a separate ignored `wrangler.toml` with `PUBLIC_ORIGIN = "http://localhost:8787"`, `workers_dev = true`, and no custom-domain route. Apply `npx wrangler d1 migrations apply 00food --local`, start `npm run dev`, and run `node scripts/smoke-local.mjs` in another terminal. The smoke test inserts disposable local credentials and checks profile saving, idempotent logging, photo upload, MCP photo retrieval, agent proposal, and user acceptance. Native Apple login needs a deployed HTTPS origin to test end to end.
 
-## API
+## Silent agent-response pushes
+
+Configure a production APNs topic-specific key restricted to the iPhone bundle ID (`APPLE_APP_CLIENT_ID`). Set `APNS_KEY_ID` in Wrangler variables and install its private key as the `APNS_PRIVATE_KEY` secret. An optional separate development key uses `APNS_DEVELOPMENT_KEY_ID` and `APNS_DEVELOPMENT_PRIVATE_KEY`; without it, development registrations stay disabled. Enable Push Notifications on the iPhone App ID and regenerate its distribution profile. Apply migration `0013_agent_response_push.sql` before deploying the Worker.
+
+Food proposals, clarification replies, and completed daily reviews atomically queue a per-account push outbox. The Durable Object delivers it with retries, coalescing accepted pushes to at most one per device every 20 minutes. Undelivered signals expire after a day. Only enabled devices belonging to an unexpired, unrevoked app credential receive pushes; MCP credentials cannot register devices. Sign-out and account deletion remove registrations. Pushes contain only a refresh signal, with no food or Health data. APNs acceptance does not guarantee iOS background execution; foreground polling remains the fallback.
+
+## App API
 
 App routes use `Authorization: Bearer <app token>`:
 
@@ -31,6 +37,7 @@ App routes use `Authorization: Bearer <app token>`:
 | --- | --- |
 | `POST /v1/auth/apple` | Exchange a native Apple sign-in for an app session |
 | `GET /v1/snapshot` | Account creation date, profile, reusable foods, recent logs, and pending estimates |
+| `PUT /v1/push/device` | Register this app installation for silent agent-response pushes |
 | `PUT /v1/profile` | Height, weight, estimate setting, weight-loss adjustment, optional birth year |
 | `POST /v1/foods` | Save a reusable food |
 | `POST /v1/foods/:id/dismiss` | Hide a food from the frequent list until it is logged again |

@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { deliverDailyFeedbackEvents, deliverWebhookEvents } from "./mcpWebhookEvents";
 import type { Env } from "./api";
+import { deliverAgentResponsePushes } from "./agentResponsePush";
 
 /// One object per account that sends queued MCP webhook deliveries from its
 /// alarm, so an account's deliveries run one at a time and retry with backoff.
@@ -8,7 +9,7 @@ import type { Env } from "./api";
 export class FoodEventStream extends DurableObject<Env> {
   async fetch(request: Request): Promise<Response> {
     const path = new URL(request.url).pathname;
-    if (path !== "/publish" && path !== "/publish-daily") return new Response(null, { status: 404 });
+    if (!["/publish", "/publish-daily", "/publish-response"].includes(path)) return new Response(null, { status: 404 });
     const tenantId = request.headers.get("x-tenant-id");
     if (!tenantId) return new Response(null, { status: 400 });
     await this.ctx.storage.put("tenantId", tenantId);
@@ -21,6 +22,7 @@ export class FoodEventStream extends DurableObject<Env> {
     if (!tenantId) return;
     const deliveries = await Promise.allSettled([
       deliverWebhookEvents(this.env, tenantId), deliverDailyFeedbackEvents(this.env, tenantId),
+      deliverAgentResponsePushes(this.env, tenantId),
     ]);
     const due = deliveries.map(result => result.status === "fulfilled" ? result.value : Date.now() + 30000);
     if (deliveries.some(result => result.status === "rejected")) console.warn("MCP event delivery will retry");

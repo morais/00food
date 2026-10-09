@@ -12,6 +12,11 @@ APPLE_WEB_CLIENT_ID = "com.example.zerozerofood.signin"
 APPLE_WEB_REDIRECT_URI = "https://api.example.com/auth/apple/callback"
 APPLE_TEAM_ID = "REPLACE_WITH_APPLE_TEAM_ID"
 APPLE_KEY_ID = "REPLACE_WITH_SIGN_IN_WITH_APPLE_KEY_ID"
+# Optional silent push. Store its .p8 key with `wrangler secret put APNS_PRIVATE_KEY`.
+# Use a production, topic-specific APNs key for APPLE_APP_CLIENT_ID.
+# APNS_KEY_ID = "REPLACE_WITH_PRODUCTION_APNS_KEY_ID"
+# Development devices remain disabled unless APNS_DEVELOPMENT_KEY_ID and
+# the separate APNS_DEVELOPMENT_PRIVATE_KEY secret are also configured.
 MCP_VERIFIED_CLIENTS = '{"https://chatgpt.com/connector_platform_oauth_redirect":"ChatGPT"}'
 
 # Optional: email the operator when Sign in with Apple creates a new tenant.

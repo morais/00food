@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { Env } from "./api";
+import { notifyAgentResponse } from "./agentResponsePush";
 
 const healthDay = z.strictObject({
   localDate: z.iso.date(),
@@ -85,7 +86,9 @@ export async function dailyFeedbackContext(env: Env, row: DailyFeedbackRow): Pro
 }
 
 export async function saveDailyFeedback(env: Env, tenantId: string, id: string, feedback: string): Promise<DailyFeedbackRow | null> {
-  return env.DB.prepare(`UPDATE daily_feedback_requests SET state = 'ready', feedback_text = ?, updated_at = ?
+  const row = await env.DB.prepare(`UPDATE daily_feedback_requests SET state = 'ready', feedback_text = ?, updated_at = ?
     WHERE id = ? AND tenant_id = ? RETURNING *`).bind(feedback, new Date().toISOString(), id, tenantId)
     .first<DailyFeedbackRow>();
+  if (row) await notifyAgentResponse(env, tenantId);
+  return row;
 }

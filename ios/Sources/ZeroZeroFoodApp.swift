@@ -9,6 +9,7 @@ import SwiftUI
 
     init() {
         let foodStore = FoodStore()
+        AgentResponsePush.shared.store = foodStore
         let healthData = HealthEnergy()
         _store = State(initialValue: foodStore)
         _health = State(initialValue: healthData)

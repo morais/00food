@@ -23,6 +23,7 @@ private struct EstimationResponse: Decodable { var estimation: PendingEstimation
 private struct OKResponse: Decodable { var ok: Bool? }
 private struct AcceptedResponse: Decodable { var foodId: String; var logId: String }
 private struct DailyFeedbackResponse: Decodable { var request: DailyFeedbackRequest }
+private struct PushRegistrationResponse: Decodable { var ok: Bool; var enabled: Bool }
 
 struct MCPConnection: Decodable, Identifiable {
     var id: String
@@ -289,14 +290,21 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
 
     // A staged operation may already have started a sync. Background work must
     // wait for that sync before iOS suspends the app, so the MCP event is sent.
-    func refreshAndWait() async throws {
+    func refreshAndWait(quiet: Bool = false) async throws {
         while isSyncing { try await Task.sleep(for: .milliseconds(100)) }
         try Task.checkCancellation()
-        try await refresh(force: true)
+        let previousCheck = lastSnapshotAt
+        try await refresh(force: true, quiet: quiet)
         try Task.checkCancellation()
-        if isOffline || syncError != nil || pendingSyncCount > 0 {
+        if lastSnapshotAt == previousCheck || isOffline || syncError != nil || pendingSyncCount > 0 {
             throw FoodServiceError(message: "Daily feedback is waiting for a successful sync")
         }
+    }
+
+    func registerPushDevice(installationId: String, deviceToken: String, environment: String) async throws {
+        let _: PushRegistrationResponse = try await call("/v1/push/device", method: "PUT", body: [
+            "installationId": installationId, "deviceToken": deviceToken, "environment": environment,
+        ])
     }
 
     func saveProfile(_ input: FoodProfile) async throws {

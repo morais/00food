@@ -34,6 +34,9 @@ function seed(db: ReturnType<typeof migratedD1>["db"], tenant: string): void {
     VALUES (?, ?, '2026-10-07', 'UTC', '[{"weightKg":70}]', 'pending', ?, ?)`, `daily-${tenant}`, tenant, now, now);
   run(`INSERT INTO daily_feedback_deliveries (id, tenant_id, request_id, subscription_id, next_attempt_at)
     VALUES (?, ?, ?, ?, ?)`, `ddel-${tenant}`, tenant, `daily-${tenant}`, `sub-${tenant}`, now);
+  run(`INSERT INTO push_devices (tenant_id, installation_id, credential_hash, device_token, environment, updated_at)
+    VALUES (?, ?, ?, ?, 'production', ?)`, tenant, `installation-${tenant}`, `hash-${tenant}`, `token-${tenant}`, now);
+  run(`INSERT INTO push_pending (tenant_id, version, queued_at, due_at) VALUES (?, 'v', 0, 0)`, tenant);
 }
 
 describe("account deletion", () => {

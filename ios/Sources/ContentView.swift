@@ -16,6 +16,10 @@ struct RootView: View {
         .init(accountToken: store.token, active: scenePhase == .active,
               online: !store.isOffline, requests: store.pendingAgentResponseKeys)
     }
+    private var pushScope: AgentResponsePush.Scope {
+        .init(account: store.token, device: AgentResponsePush.shared.deviceToken,
+              active: scenePhase == .active, online: !store.isOffline)
+    }
 
     private var widgetSnapshot: FoodWidgetSnapshot? {
         guard store.signedIn, let profile = store.profile else { return nil }
@@ -55,6 +59,10 @@ struct RootView: View {
                 // Conditional snapshot requests keep the current UI and Health readings in place.
                 try? await store.refresh(force: true, quiet: true)
             }
+        }
+        .task(id: pushScope) {
+            guard pushScope.active, pushScope.online else { return }
+            await AgentResponsePush.shared.registerDevice(using: store)
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {

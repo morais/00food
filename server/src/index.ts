@@ -5,6 +5,7 @@ import { authenticate, publicOrigin } from "./auth";
 import { deleteAccount, signInWithApple, signOut } from "./appAuth";
 import { disconnectMcpConnection, listMcpConnections } from "./mcpConnections";
 import { sweepExpiredAuthData } from "./cleanup";
+import { routePushDevice, notifyAgentResponse } from "./agentResponsePush";
 import { isSignInRoute, signInAllowed, sourceAllowed, tenantAllowed, tooManyRequests } from "./rateLimit";
 import {
   appleCallback, authChallenge, authorizationServerMetadata, beginAuthorization,
@@ -42,6 +43,7 @@ export default {
       if (!principal) return json({ error: "Unauthorized" }, 401);
       if (!(await tenantAllowed(env, principal.tenantId))) return tooManyRequests();
       if (path === "/v1/auth/logout" && method === "POST") return signOut(env, principal);
+      if (path === "/v1/push/device") return routePushDevice(req, env, principal);
       if (path === "/v1/auth/delete-account" && method === "POST") return deleteAccount(req, env, principal, ctx);
       if (path === "/v1/account/mcp-connections" && method === "GET") return listMcpConnections(env, principal);
       const connection = /^\/v1\/account\/mcp-connections\/([a-f0-9-]{36})$/.exec(path);
@@ -55,5 +57,11 @@ export default {
     ctx.waitUntil(sweepExpiredAuthData(env).catch((cause) => {
       console.error("Scheduled cleanup failed", cause instanceof Error ? cause.message : "unknown error");
     }));
+    // Recover a durable outbox if its initial alarm notification was interrupted.
+    ctx.waitUntil((async () => {
+      const pending = await env.DB.prepare("SELECT tenant_id FROM push_pending ORDER BY due_at LIMIT 100")
+        .all<{ tenant_id: string }>();
+      for (const row of pending.results) await notifyAgentResponse(env, row.tenant_id);
+    })());
   },
 };
