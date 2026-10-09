@@ -1,5 +1,11 @@
 import Foundation
 
+struct HealthMeasurePoint: Identifiable {
+    let date: Date
+    let value: Double
+    var id: Date { date }
+}
+
 struct FoodProfile: Codable, Equatable {
     var heightCm: Double
     var weightKg: Double
@@ -55,6 +61,30 @@ struct ACEBodyFatBoundary: Identifiable, Equatable {
 }
 
 enum ProgressProjection {
+    static func bodyFatAnchor(history: [HealthMeasurePoint], fallback: HealthMeasurePoint?) -> HealthMeasurePoint? {
+        // Chart dots are daily averages. Anchor to the same value and date,
+        // rather than mixing that dot with an individual reading or today.
+        history.max { $0.date < $1.date } ?? fallback
+    }
+
+    static func bodyFatProjection(anchor: HealthMeasurePoint, startWeightKg: Double,
+                                  gapKcal: Int, minimumWeightKg: Double, until end: Date,
+                                  calendar: Calendar = .current) -> [HealthMeasurePoint] {
+        guard anchor.date <= end, startWeightKg.isFinite, startWeightKg > 0,
+              anchor.value.isFinite, (0...100).contains(anchor.value) else { return [] }
+        let totalDays = max(0, calendar.dateComponents([.day], from: anchor.date, to: end).day ?? 0)
+        var days = Array(stride(from: 0, through: totalDays, by: 7))
+        if days.last != totalDays { days.append(totalDays) }
+        return days.compactMap { day -> HealthMeasurePoint? in
+            let weight = startWeightKg - Double(max(0, gapKcal)) * Double(day) / 7700
+            guard weight >= minimumWeightKg,
+                  let date = calendar.date(byAdding: .day, value: day, to: anchor.date) else { return nil }
+            return day == 0 ? anchor : HealthMeasurePoint(date: date,
+                value: bodyFatPercent(startWeightKg: startWeightKg, startBodyFatPercent: anchor.value,
+                                      projectedWeightKg: weight))
+        }
+    }
+
     // ACE Personal Training Manual classification chart, reproduced by ACE:
     // https://www.acefitness.org/fitness-certifications/ace-answers/exam-preparation-blog/3815/anthropometric-measurements-when-to-use-this-assessment/
     static func aceBoundaries(for estimateProfile: String) -> [ACEBodyFatBoundary] {

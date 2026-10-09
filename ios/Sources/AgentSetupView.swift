@@ -7,7 +7,7 @@ enum AgentSetupCopy {
 
     Subscribe to food.estimate_requested and food.clarification_added so you can respond to new requests and revise estimates when I add context. Subscribe to food.logged for context; do not estimate foods that I have already approved.
 
-    Ask me whether I want daily reviews. If I do, call list_pending_daily_feedback and let me approve the additional permissions, then subscribe to day.feedback_requested. Read each requested day's food and available Health summaries and submit brief, supportive feedback. Note missing data and avoid diagnoses or prescriptive calorie advice. Do not enable daily feedback in the app on my behalf.
+    Ask me whether I want daily reviews. If I do, call list_pending_daily_feedback and let me approve the additional permissions, then subscribe to day.feedback_requested. Read each requested day's food and available Health summaries and follow its reviewGuidance. Five fruit/vegetable portions means at least five; recorded water is a minimum, so meeting 2 L does not mean I stopped there. Include a brief reflection on protein sources and overall diet variety from the logged foods, without inventing nutrient grams or assuming the logs are complete. Note missing data and avoid diagnoses or prescriptive calorie advice. Do not enable daily feedback in the app on my behalf.
 
     Confirm which event subscriptions are active. If this client cannot subscribe to events, explain that I need to ask you to check pending requests manually.
     """

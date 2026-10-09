@@ -398,7 +398,7 @@ struct ProgressPlansView: View {
         if projectedBodyFat.isEmpty {
             paragraphs.append("Add a body-fat reading in Apple Health to show an illustration.")
         } else {
-            paragraphs.append("The dotted line starts from your latest Health body-fat reading and assumes every kilogram of illustrated weight loss is fat, with lean mass unchanged. It is a rough illustration, not a prediction.")
+            paragraphs.append("The dotted line starts at the last plotted Health body-fat reading (a daily average), using the available weight for that date. If no history is available, it uses your latest reading and weight. It assumes every kilogram of illustrated weight loss is fat, with lean mass unchanged. It is a rough illustration, not a prediction.")
         }
         if let aceObesityBoundary {
             paragraphs.append("ACE’s \(profile?.estimateProfile == "female" ? "female" : "male") body-fat classification places its obesity boundary at \(Int(aceObesityBoundary.percentage))%. Other category boundaries appear when the illustration crosses them.")
@@ -425,19 +425,21 @@ struct ProgressPlansView: View {
     }
 
     private var projectedBodyFat: [HealthMeasurePoint] {
-        guard let profile, let bodyFatPercent = health.latestBodyFatPercent else { return [] }
-        let startingWeight = health.usableLatestWeightKg ?? health.weightHistory.last?.value ?? profile.weightKg
+        guard let profile else { return [] }
+        let fallback = health.latestBodyFatPercent.flatMap { value in
+            health.latestBodyFatDate.map { HealthMeasurePoint(date: $0, value: value) }
+        }
+        guard let anchor = ProgressProjection.bodyFatAnchor(history: health.bodyFatHistory, fallback: fallback) else { return [] }
+        let anchorDay = Calendar.current.startOfDay(for: anchor.date)
+        let nextDay = Calendar.current.date(byAdding: .day, value: 1, to: anchorDay) ?? anchorDay
+        let startingWeight = health.weightHistory.filter { $0.date < nextDay }.max { $0.date < $1.date }?.value
+            ?? health.usableLatestWeightKg ?? profile.weightKg
         let today = Calendar.current.startOfDay(for: Date())
         let sixMonths = Calendar.current.date(byAdding: .month, value: 6, to: today) ?? today
-        return projectedWeight(from: startingWeight, gap: profile.effectiveDeficit(for: profile.deficitKcal,
+        return ProgressProjection.bodyFatProjection(anchor: anchor, startWeightKg: startingWeight,
+            gapKcal: profile.effectiveDeficit(for: profile.deficitKcal,
             resting: health.effectiveRestingKcal(for: profile)),
-                               minimum: healthyWeightRange(for: profile.heightCm).lowerBound,
-                               until: sixMonths).map { point in
-            HealthMeasurePoint(date: point.date,
-                               value: ProgressProjection.bodyFatPercent(
-                                startWeightKg: startingWeight, startBodyFatPercent: bodyFatPercent,
-                                projectedWeightKg: point.value))
-        }
+            minimumWeightKg: healthyWeightRange(for: profile.heightCm).lowerBound, until: sixMonths)
     }
 
     private func projectedWeight(from weight: Double, gap: Int, minimum: Double, until end: Date) -> [HealthMeasurePoint] {

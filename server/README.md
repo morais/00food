@@ -31,6 +31,8 @@ Food proposals, clarification replies, and completed daily reviews atomically qu
 
 ## App API
 
+Daily-review context preserves the capped fruit/veg count and uncapped Health water totals, adds explicit minimum-intake and goal-completion fields, and includes `reviewGuidance` in every response. Completed produce progress means at least five portions; recorded water may omit unlogged drinks. Agents are asked to discuss protein sources and diet balance qualitatively from food descriptions, without inventing nutrient totals. This guidance also reaches existing clients with cached tool descriptions. Previously saved reviews remain unchanged.
+
 App routes use `Authorization: Bearer <app token>`:
 
 | Route | Purpose |

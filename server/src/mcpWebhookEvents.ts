@@ -29,7 +29,7 @@ export const eventDefinitions = [
   { name: "food.clarification_added", description: "The person added context to a pending food estimate. Read the pending food and revise the estimate.",
     delivery: ["webhook"], inputSchema: emptyArguments,
     payloadSchema: schema({ estimation_id: string, clarification: string }, ["estimation_id", "clarification"]) },
-  { name: "day.feedback_requested", description: "A completed day is ready for a short food and activity reflection. Call get_daily_feedback_request for its seven-day context, then submit_daily_feedback.",
+  { name: "day.feedback_requested", description: "A completed day is ready for a short food and activity reflection. Call get_daily_feedback_request for its seven-day context and reviewGuidance, then submit_daily_feedback. Cover protein sources and diet balance too; capped produce and recorded water totals are not exact total intake.",
     delivery: ["webhook"], inputSchema: emptyArguments,
     payloadSchema: schema({ request_id: string, local_date: string }, ["request_id", "local_date"]) },
 ];

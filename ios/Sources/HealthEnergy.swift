@@ -2,12 +2,6 @@ import Foundation
 import HealthKit
 import Observation
 
-struct HealthMeasurePoint: Identifiable {
-    let date: Date
-    let value: Double
-    var id: Date { date }
-}
-
 struct RestingEnergySummary {
     let averageKcal: Int?
     let daysUsed: Int

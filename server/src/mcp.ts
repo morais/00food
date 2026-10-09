@@ -3,7 +3,7 @@ import { publicOrigin, type Principal, type Scope } from "./auth";
 import { appName, estimationView, findEstimation, foodView, json, proposeEstimation, proposalInput,
   setFoodFruitVegPortions, type Env } from "./api";
 import { authChallenge } from "./oauth";
-import { dailyFeedbackContext, dailyFeedbackView, findDailyFeedback, saveDailyFeedback,
+import { dailyFeedbackContext, dailyFeedbackView, dailyReviewGuidance, findDailyFeedback, saveDailyFeedback,
   type DailyFeedbackRow } from "./dailyFeedback";
 import { foodEventsUri, listFoodEvents, recentFoodEvents } from "./foodEvents";
 import { eventDefinitions, McpEventsError, subscribeWebhookEvent, unsubscribeWebhookEvent } from "./mcpWebhookEvents";
@@ -54,12 +54,12 @@ const tools = [
   },
   {
     name: "get_daily_feedback_request", title: "Get Daily Feedback Request",
-    description: "Read one day's foods and tracked calories alongside the previous seven days of available Health water, active and resting energy, weight, and body fat. Missing Health values are null; pending foods are not in calorie totals.",
+    description: "Read one day's foods and tracked calories alongside the previous seven days of available Health water, active and resting energy, weight, and body fat. Follow the returned reviewGuidance. Fruit/veg progress is capped at 5 (meaning at least 5); water is recorded minimum intake and is not capped at 2 L. Missing Health values are null; pending foods are not in calorie totals.",
     inputSchema: z.toJSONSchema(z.strictObject({ id: uuid }), { io: "input" }), readOnly: true,
   },
   {
     name: "submit_daily_feedback", title: "Submit Daily Feedback",
-    description: "Write a brief, supportive reflection on the completed day. Use directional language, note missing or pending data, and avoid diagnoses or prescriptive calorie advice.",
+    description: "Write a reflection on the completed day after reading get_daily_feedback_request. " + dailyReviewGuidance.join(" "),
     inputSchema: z.toJSONSchema(z.strictObject({ id: uuid, feedback: z.string().trim().min(1).max(4000) }),
       { io: "input" }), readOnly: false,
   },

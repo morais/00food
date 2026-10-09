@@ -27,6 +27,14 @@ type LogRow = { id: string; food_name: string; serving: string; quantity: number
 type EstimateRow = { description: string; local_date: string };
 type ProfileRow = { deficit_kcal: number };
 
+export const dailyReviewGuidance = [
+  "Treat fruit/vegetable progress of 5 as at least 5 portions, never exactly 5: this tracker caps the daily count at its goal.",
+  "Health water is the uncapped recorded intake, not necessarily everything drunk. Report it as at least the recorded amount; reaching 2000 mL means the 2 L tracking goal was met, not that intake stopped at 2 L.",
+  "Give a brief, supportive reflection on protein sources and overall diet balance from the food names, servings and descriptions, alongside calories, produce and water. Consider variety across protein foods, fruit/vegetables, grains or other fibre sources, and fats when the logs support it.",
+  "No protein grams or other nutrient totals are supplied. Do not invent nutrient quantities, claim adequacy or deficiency, or infer an entire diet from incomplete logs. Note unclear meals and offer one practical food-based suggestion when useful.",
+  "Use directional language, note missing or pending data, and avoid diagnoses or prescriptive calorie advice.",
+];
+
 export const dailyFeedbackView = (row: DailyFeedbackRow) => ({
   id: row.id, localDate: row.local_date, state: row.state, feedback: row.feedback_text,
   createdAt: row.created_at, updatedAt: row.updated_at,
@@ -55,7 +63,7 @@ export async function findDailyFeedback(env: Env, tenantId: string, id: string):
     .bind(id, tenantId).first<DailyFeedbackRow>();
 }
 
-export async function dailyFeedbackContext(env: Env, row: DailyFeedbackRow): Promise<unknown> {
+export async function dailyFeedbackContext(env: Env, row: DailyFeedbackRow) {
   const first = dateBefore(row.local_date, 6);
   const [logs, estimates, profile] = await Promise.all([
     env.DB.prepare(`SELECT id, food_name, serving, quantity, kcal, fruit_veg_portions, local_date, logged_at
@@ -76,12 +84,20 @@ export async function dailyFeedbackContext(env: Env, row: DailyFeedbackRow): Pro
     }));
     const pendingFoods = estimates.results.filter(item => item.local_date === localDate)
       .map(item => item.description);
+    const fruitVegTotal = foods.reduce((total, item) => total + item.fruitVegPortions, 0);
+    const healthDay = healthByDate.get(localDate) ?? null;
+    const waterMl = healthDay?.waterMl;
     return { localDate, foods, foodKcal: foods.reduce((total, item) => total + item.kcal, 0),
-      fruitVegPortions: Math.min(5, foods.reduce((total, item) => total + item.fruitVegPortions, 0)),
-      pendingFoods, health: healthByDate.get(localDate) ?? null };
+      fruitVegPortions: Math.min(5, fruitVegTotal),
+      fruitVegPortionsQualifier: fruitVegTotal >= 5 ? "at_least" : "logged_estimate",
+      fruitVegGoalMet: fruitVegTotal >= 5,
+      waterIntakeAtLeastMl: waterMl ?? null,
+      waterGoalMet: waterMl == null ? null : waterMl >= 2000,
+      pendingFoods, health: healthDay };
   });
   return { requestId: row.id, feedbackDay: row.local_date, timeZone: row.time_zone,
     currentPlanCalorieGapKcal: profile?.deficit_kcal ?? null,
+    reviewGuidance: dailyReviewGuidance,
     days, note: "Health values are daily aggregates when available. Missing values are null. Food totals omit pending estimates. The current plan may differ from the plan on earlier days." };
 }
 

@@ -12,6 +12,8 @@
 
 For daily reviews, tell the agent you want them and approve the additional food/Health summary permissions when requested. Ask it to subscribe to `day.feedback_requested`. Enable **Request a daily review** in Settings for automatic requests, or request individual past days from the food log. The automatic setting uploads a completed day's food context and up to six earlier days of available Health totals the next time the app opens; it does not run the agent itself.
 
+Daily-review context includes guidance to reflect on protein sources and overall diet variety as well as calories, produce and hydration. No protein grams or nutrient totals are measured, so the agent should keep this qualitative and acknowledge incomplete logs. The fruit/veg tracker stops at five: a completed goal means **at least five portions**. Health water is an uncapped recorded amount, which may be less than everything drunk; meeting the 2 L tracking goal does not imply intake stopped there. These explanations are included with each context response, including requests created before this change. Saved reviews are not rewritten automatically.
+
 Your AI service's availability, access requirements, and instructions affect responses. Current OpenAI instructions are at [MCP Events](https://developers.openai.com/plugins/build/mcp-events) and [plugin quickstart](https://developers.openai.com/plugins/quickstart).
 
 ## Other compatible agents
