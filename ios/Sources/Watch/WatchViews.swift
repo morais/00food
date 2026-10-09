@@ -43,8 +43,6 @@ struct WatchHomeView: View {
                     }
                     if store.pendingCount > 0 {
                         Text("\(store.pendingCount) waiting to sync").font(.caption2).foregroundStyle(.secondary)
-                    } else if let date = store.state.snapshot?.updatedAt, date != .distantPast {
-                        Text("Updated \(date, style: .relative) ago").font(.caption2).foregroundStyle(.secondary)
                     }
                 }
                 .padding(.horizontal, 10)
