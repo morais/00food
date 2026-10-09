@@ -102,6 +102,13 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     var consumedToday: Int { todaysLogs.reduce(0) { $0 + $1.kcal } }
     var fruitVegToday: Int { min(5, todaysLogs.reduce(0) { $0 + $1.countedFruitVegPortions }) }
     var pendingDailyFeedbackCount: Int { dailyFeedback.filter { $0.state == "pending" }.count }
+    var pendingAgentResponseKeys: [String] {
+        let food = estimations.filter { $0.state == "pending" || $0.state == "uploading" }
+            .map { "food:\($0.id):\($0.updatedAt)" }
+        let days = dailyFeedback.filter { $0.state == "pending" }
+            .map { "day:\($0.id):\($0.updatedAt)" }
+        return (food + days).sorted()
+    }
     var missingDailyFeedbackCount: Int { missingDailyFeedbackDates(includeHistory: true).count }
     var dailyFeedbackEnabledAt: String? {
         guard let accountId else { return nil }
@@ -235,7 +242,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     /// Syncs queued changes and reloads the snapshot. Without `force`, a call
     /// within `refreshInterval` of the last successful load is skipped unless
     /// local changes are waiting to sync.
-    func refresh(force: Bool = false) async throws {
+    func refresh(force: Bool = false, quiet: Bool = false) async throws {
         guard signedIn, !isSyncing else { return }
         if !force, operations.isEmpty, let last = lastSnapshotAt,
            Date().timeIntervalSince(last) < Self.refreshInterval { return }
@@ -273,10 +280,10 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         } catch {
             if Task.isCancelled { return }
             if Self.isConnectionError(error) {
-                isOffline = true
+                if !quiet { isOffline = true }
                 scheduleRetry()
             }
-            else { syncError = error.localizedDescription }
+            else if !quiet { syncError = error.localizedDescription }
         }
     }
 

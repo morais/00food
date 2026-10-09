@@ -29,6 +29,10 @@ xcodebuild -project ZeroZeroFood.xcodeproj -scheme ZeroZeroFood \
 For TestFlight, create the app record in App Store Connect, use separate App Store distribution provisioning profiles for the app and widget extension with their required capabilities, archive the release scheme, export an IPA, and upload it to App Store Connect. Set `MARKETING_VERSION` to `1.0` and `CURRENT_PROJECT_VERSION` to the Lisbon local build timestamp (`TZ=Europe/Lisbon date +%Y%m%d%H%M`) before archiving, as in 00Todo. Once Apple finishes processing, `scripts/assign-testflight.py --app-id APP_ID --group-name Internal --build BUILD_NUMBER` creates or finds the app's internal group, assigns the build, and verifies the relationship. Add existing internal testers on the group's Testers page in App Store Connect. Set `ASC_KEY_PATH` to the App Store Connect API key when `~/.appstoreconnect/private_keys` contains more than one key; the Sign in with Apple key is separate.
 
 
+## Agent response checks
+
+Pending food estimates, clarification replies, and daily reviews refresh automatically while the iPhone app is active and online: every 15 seconds for two minutes, then every minute. Returning to the app checks immediately. The loop stops after all replies arrive, on sign-out, offline, or in the background. These checks reuse the conditional snapshot request, preserve cached content, and do not query Health or show polling errors.
+
 ## Apple Watch
 
 The companion Watch app requires watchOS 11 or later and uses the account set up on the paired iPhone. Today shows calories left, eaten/active energy, the same two-point day pace, water glasses, and up to five fruit/veg portions. Log food lists the 50 most-used visible saved foods; tap to log one serving, or adjust the portion. New food uses the Watch's native text entry (including dictation) and queues a text-only request for the existing MCP agent. Pending requests and proposals show their status; estimates are reviewed on iPhone. Water adds 250 mL with an Undo action. The circular complication shows calories left; the rectangular complication/Smart Stack widget also opens food and water logging.

@@ -12,6 +12,11 @@ struct RootView: View {
     @State private var errorText: String?
     @State private var feedbackSyncing = false
 
+    private var responsePollingScope: AgentResponsePolling.Scope {
+        .init(accountToken: store.token, active: scenePhase == .active,
+              online: !store.isOffline, requests: store.pendingAgentResponseKeys)
+    }
+
     private var widgetSnapshot: FoodWidgetSnapshot? {
         guard store.signedIn, let profile = store.profile else { return nil }
         return FoodWidgetSnapshot(localDate: FoodDates.today(),
@@ -37,11 +42,18 @@ struct RootView: View {
             }
             openPendingWidgetLaunch()
             if store.signedIn && scenePhase == .active {
-                do { try await store.refresh() } catch { errorText = error.localizedDescription }
+                do { try await store.refresh(force: true) } catch { errorText = error.localizedDescription }
                 health.setHistoryStart(store.accountStartedAt)
                 await health.refresh()
                 syncDietaryEnergy()
                 await queueDailyFeedback()
+            }
+        }
+        .task(id: responsePollingScope) {
+            guard responsePollingScope.shouldPoll else { return }
+            await AgentResponsePolling.run {
+                // Conditional snapshot requests keep the current UI and Health readings in place.
+                try? await store.refresh(force: true, quiet: true)
             }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -51,7 +63,7 @@ struct RootView: View {
             }
             if phase == .active && store.signedIn {
                 Task {
-                    try? await store.refresh()
+                    try? await store.refresh(force: true)
                     try? await store.refreshConnections()
                     health.setHistoryStart(store.accountStartedAt)
                     await health.refresh()
