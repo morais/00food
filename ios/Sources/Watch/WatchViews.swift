@@ -66,7 +66,9 @@ struct WatchHomeView: View {
                 path.removeAll()
             }
         }
-        .safeAreaInset(edge: .bottom) { WatchConfirmationView() }
+        .overlay(alignment: .top) {
+            WatchConfirmationView().padding(.horizontal, 8).padding(.top, 28)
+        }
         .alert("Could not save", isPresented: Binding(get: { store.errorMessage != nil }, set: { if !$0 { store.errorMessage = nil } })) {
             Button("OK") { store.errorMessage = nil }
         } message: { Text(store.errorMessage ?? "") }

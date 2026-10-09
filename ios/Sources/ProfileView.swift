@@ -6,12 +6,10 @@ struct ProfileView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("activeDayStartMinutes") private var storedActiveDayStartMinutes = 7 * 60
     @AppStorage("activeDayEndMinutes") private var storedActiveDayEndMinutes = 23 * 60
-    var isOnboarding: Bool = false
     @State private var heightCm = 170.0
     @State private var savedWeightKg: Double?
     @State private var estimateProfile = "neutral"
     @State private var deficitKcal = 300
-    @State private var birthYear = ""
     @State private var busy = false
     @State private var errorText: String?
     @State private var showingManualWeight = false
@@ -43,14 +41,6 @@ struct ProfileView: View {
                         Text("Male").tag("male")
                     }
                     HStack {
-                        Text("Birth year")
-                        Spacer()
-                        TextField("Optional", text: $birthYear)
-                            .multilineTextAlignment(.trailing)
-                            .keyboardType(.numberPad)
-                            .accessibilityLabel("Birth year, optional")
-                    }
-                    HStack {
                         Text("Resting estimate")
                         Spacer()
                         Text(recordedWeightKg == nil ? "Add weight first" : "\(preview.restingKcal) kcal/day")
@@ -58,7 +48,7 @@ struct ProfileView: View {
                         InfoDisclosure(title: "Resting estimate from your details", message: restingExplanation)
                     }
                 } header: { Text("Your details") } footer: {
-                    Text("Birth year improves the fallback resting estimate. Leave it empty to use age 35 as a reference.")
+                    Text("The fallback resting estimate uses a reference age of 35.")
                 }
                 Section {
                     HStack {
@@ -105,21 +95,13 @@ struct ProfileView: View {
                 } footer: {
                     Text("Sets the active-day marker on the home screen. The food marker uses your current allowance, including Health active energy so far.")
                 }
-                if isOnboarding {
-                    Section {
-                        Button("Start logging") { save() }
-                            .frame(maxWidth: .infinity).disabled(busy || !valid)
-                    }
-                }
             }
-            .navigationTitle(isOnboarding ? "Set up 00Food" : "Your details")
+            .navigationTitle("Your details")
             .toolbar {
-                if !isOnboarding {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Done") { save() }
-                            .fontWeight(.semibold)
-                            .disabled(busy || !valid)
-                    }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { save() }
+                        .fontWeight(.semibold)
+                        .disabled(busy || !valid)
                 }
             }
             .onAppear {
@@ -130,7 +112,6 @@ struct ProfileView: View {
                     savedWeightKg = profile.weightKg
                     estimateProfile = profile.estimateProfile
                     deficitKcal = profile.deficitKcal
-                    birthYear = profile.birthYear.map(String.init) ?? ""
                 }
             }
             .task {
@@ -147,26 +128,22 @@ struct ProfileView: View {
     }
 
     private var valid: Bool {
-        let year = birthYear.trimmingCharacters(in: .whitespacesAndNewlines)
-        let currentYear = Calendar.current.component(.year, from: Date())
-        return (100...250).contains(heightCm) && recordedWeightKg != nil &&
-            (year.isEmpty || (Int(year).map { (1900...(currentYear - 18)).contains($0) } ?? false))
+        (100...250).contains(heightCm) && recordedWeightKg != nil
     }
     private var preview: FoodProfile {
         FoodProfile(heightCm: heightCm, weightKg: recordedWeightKg ?? 70,
-                    estimateProfile: estimateProfile, deficitKcal: deficitKcal,
-                    birthYear: Int(birthYear.trimmingCharacters(in: .whitespacesAndNewlines)))
+                    estimateProfile: estimateProfile, deficitKcal: deficitKcal)
     }
 
     private var recordedWeightKg: Double? { health.usableLatestWeightKg ?? savedWeightKg }
 
     private var restingExplanation: String {
-        let introduction = "When available, your target uses recent Apple Health resting energy. Otherwise it uses a directional estimate from your details and latest recorded weight. It does not account for health conditions or body composition."
+        let introduction = "When available, your target uses recent Apple Health resting energy. Otherwise it uses a directional estimate from your details and latest recorded weight, using a reference age of 35. It does not account for health conditions or body composition."
         if let average = health.restingAverageKcal, recordedWeightKg != nil {
             let difference = average - preview.restingKcal
             return introduction + "\n\nThe Health average is \(difference >= 0 ? "+" : "")\(difference) kcal/day compared with your details estimate, based on \(health.restingDaysUsed) of the last 7 completed days."
         }
-        return introduction + "\n\nThe Health average needs at least 5 of the last 7 completed days with readable resting energy (currently \(health.restingDaysUsed)). Birth year improves the details estimate; without it, age 35 is used as a reference."
+        return introduction + "\n\nThe Health average needs at least 5 of the last 7 completed days with readable resting energy (currently \(health.restingDaysUsed))."
     }
 
     private var startTime: Binding<Date> {
@@ -197,7 +174,7 @@ struct ProfileView: View {
                 try await store.saveProfile(preview)
                 storedActiveDayStartMinutes = activeDayStartMinutes
                 storedActiveDayEndMinutes = activeDayEndMinutes
-                if !isOnboarding { dismiss() }
+                dismiss()
             } catch { errorText = error.localizedDescription }
         }
     }

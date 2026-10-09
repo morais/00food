@@ -560,7 +560,6 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
             let _: ProfileResponse = try await call("/v1/profile", method: "PUT", body: [
                 "heightCm": profile.heightCm, "weightKg": profile.weightKg,
                 "estimateProfile": profile.estimateProfile, "deficitKcal": profile.deficitKcal,
-                "birthYear": profile.birthYear as Any? ?? NSNull(),
             ])
         case .createFood(let food):
             let _: FoodResponse = try await call("/v1/foods", method: "POST", body: [

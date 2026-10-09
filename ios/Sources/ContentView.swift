@@ -35,7 +35,7 @@ struct RootView: View {
         Group {
             if !store.signedIn { SignInView() }
             else if !store.hasLoadedSnapshot { accountLoadView }
-            else if store.profile == nil { ProfileView(isOnboarding: true) }
+            else if store.profile == nil { OnboardingView() }
             else { HomeView() }
         }
         .task {

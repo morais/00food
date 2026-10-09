@@ -24,7 +24,7 @@ struct QuickAddView: View {
     @State private var editingPortions: FoodItem?
     @State private var busy = false
     @State private var errorText: String?
-    @FocusState private var searchFocused: Bool
+    @State private var searchPresented = false
 
     private var matches: [FoodItem] {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -45,89 +45,12 @@ struct QuickAddView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
                 .padding(.bottom, 4)
-                List {
+                Group {
                     if selectedTab == .saved {
-                        Section {
-                            TextField("Search your foods", text: $query)
-                                .focused($searchFocused)
-                                .submitLabel(.search)
-                        }
-                        if !matches.isEmpty {
-                            Section(query.isEmpty ? "Most used · one tap to log" : "Matching foods · one tap to log") {
-                                ForEach(matches) { food in
-                                    Button { log(food) } label: { foodRow(food) }
-                                        .disabled(busy)
-                                        .swipeActions(edge: .trailing) {
-                                            Button("5 a day", systemImage: "leaf") { editingPortions = food }
-                                        }
-                                        .contextMenu {
-                                            Button("Set fruit & veg portions") { editingPortions = food }
-                                        }
-                                }
-                            }
-                        } else {
-                            Section {
-                                Text(query.isEmpty ? "Your food library starts with you and your agent. Approve an estimate or log a food manually to save it here." :
-                                     "No saved food matches your search. Search covers your personal library, not a built-in food catalogue.")
-                                    .foregroundStyle(.secondary)
-                                Button(query.isEmpty ? "Add your first food" : "Add \"\(query)\" as new food") {
-                                    selectedTab = .new
-                                }
-                            }
-                        }
+                        foodList.searchable(text: $query, isPresented: $searchPresented,
+                            placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search your foods")
                     } else {
-                        Section("Ask your agent") {
-                            TextField("Describe food and portion", text: $descriptionText, axis: .vertical)
-                                .lineLimit(1...6)
-                                .submitLabel(.done)
-                            HStack(spacing: 12) {
-                                PhotosPicker(selection: $photoItem, matching: .images) {
-                                    Label("Photos", systemImage: "photo.on.rectangle")
-                                        .frame(maxWidth: .infinity)
-                                }
-                                .buttonStyle(.bordered)
-                                if UIImagePickerController.isSourceTypeAvailable(.camera) {
-                                    Button { photoItem = nil; showingCamera = true } label: {
-                                        Label("Camera", systemImage: "camera")
-                                            .frame(maxWidth: .infinity)
-                                    }
-                                    .buttonStyle(.bordered)
-                                }
-                            }
-                            if let photoData, let image = UIImage(data: photoData) {
-                                Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 180)
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                                    .accessibilityLabel("Photo attached to this food")
-                                Button("Remove photo", role: .destructive) {
-                                    self.photoData = nil
-                                    photoItem = nil
-                                }
-                            }
-                            if loadingPhoto { ProgressView("Preparing photo…") }
-                            Button { requestEstimate() } label: {
-                                HStack {
-                                    Spacer()
-                                    if busy { ProgressView().tint(.white) }
-                                    else { Image(systemName: "sparkles") }
-                                    Text(busy ? "Sending to your agent…" : "Ask my agent to estimate")
-                                        .fontWeight(.semibold)
-                                    Spacer()
-                                }
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.large)
-                            .disabled(!canRequestEstimate)
-                            Text("Your agent receives the description and attached photo together, then you review its estimate before logging.")
-                                .font(.footnote).foregroundStyle(.secondary)
-                        }
-                        Section {
-                            Button { showingManual = true } label: {
-                                Label("Enter calories myself", systemImage: "pencil")
-                            }
-                            .disabled(busy)
-                        } header: {
-                            Text("Manual entry")
-                        }
+                        foodList
                     }
                 }
             }
@@ -147,10 +70,10 @@ struct QuickAddView: View {
             }
             .sheet(item: $editingPortions) { FruitVegPortionsView(food: $0) }
             .onChange(of: selectedTab) { _, tab in
-                searchFocused = false
                 if tab == .new && descriptionText.isEmpty {
                     descriptionText = query.trimmingCharacters(in: .whitespacesAndNewlines)
                 }
+                searchPresented = false
             }
             .onChange(of: photoItem) { _, item in
                 let loadID = UUID()
@@ -171,6 +94,89 @@ struct QuickAddView: View {
             .alert("Could not log food", isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: { Text(errorText ?? "") }
+        }
+    }
+
+    private var foodList: some View {
+        List {
+            if selectedTab == .saved {
+                if !matches.isEmpty {
+                    Section(query.isEmpty ? "Most used · one tap to log" : "Matching foods · one tap to log") {
+                        ForEach(matches) { food in
+                            Button { log(food) } label: { foodRow(food) }
+                                .disabled(busy)
+                                .swipeActions(edge: .trailing) {
+                                    Button("5 a day", systemImage: "leaf") { editingPortions = food }
+                                }
+                                .contextMenu {
+                                    Button("Set fruit & veg portions") { editingPortions = food }
+                                }
+                        }
+                    }
+                } else {
+                    Section {
+                        Text(query.isEmpty ? "Your food library starts with you and your agent. Approve an estimate or log a food manually to save it here." :
+                             "No saved food matches your search. Search covers your personal library, not a built-in food catalogue.")
+                            .foregroundStyle(.secondary)
+                        Button(query.isEmpty ? "Add your first food" : "Add \"\(query)\" as new food") {
+                            selectedTab = .new
+                        }
+                    }
+                }
+            } else {
+                Section("Ask your agent") {
+                    TextField("Describe food and portion", text: $descriptionText, axis: .vertical)
+                        .lineLimit(1...6)
+                        .submitLabel(.done)
+                    HStack(spacing: 12) {
+                        PhotosPicker(selection: $photoItem, matching: .images) {
+                            Label("Photos", systemImage: "photo.on.rectangle")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                            Button { photoItem = nil; showingCamera = true } label: {
+                                Label("Camera", systemImage: "camera")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                    if let photoData, let image = UIImage(data: photoData) {
+                        Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 180)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .accessibilityLabel("Photo attached to this food")
+                        Button("Remove photo", role: .destructive) {
+                            self.photoData = nil
+                            photoItem = nil
+                        }
+                    }
+                    if loadingPhoto { ProgressView("Preparing photo…") }
+                    Button { requestEstimate() } label: {
+                        HStack {
+                            Spacer()
+                            if busy { ProgressView().tint(.white) }
+                            else { Image(systemName: "sparkles") }
+                            Text(busy ? "Sending to your agent…" : "Ask my agent to estimate")
+                                .fontWeight(.semibold)
+                            Spacer()
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .disabled(!canRequestEstimate)
+                    Text("Your agent receives the description and attached photo together, then you review its estimate before logging.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+                Section {
+                    Button { showingManual = true } label: {
+                        Label("Enter calories myself", systemImage: "pencil")
+                    }
+                    .disabled(busy)
+                } header: {
+                    Text("Manual entry")
+                }
+            }
         }
     }
 

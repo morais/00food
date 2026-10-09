@@ -23,13 +23,11 @@ struct FoodProfile: Codable, Equatable {
     var weightKg: Double
     var estimateProfile: String
     var deficitKcal: Int
-    var birthYear: Int?
     var updatedAt: String?
 
     var restingKcal: Int {
-        // Mifflin-St Jeor uses age; a missing birth year retains the earlier
-        // reference age so existing profiles keep a directional estimate.
-        let age = birthYear.map { Calendar.current.component(.year, from: Date()) - $0 } ?? 35
+        // Keep the fallback directional without asking for date of birth.
+        let age = 35
         let offset: Double = switch estimateProfile {
         case "male": 5
         case "female": -161

@@ -27,6 +27,8 @@ struct SignInView: View {
                     .font(.subheadline).multilineTextAlignment(.center).foregroundStyle(.secondary)
                 Text("No built-in food catalogue or bundled AI agent. Manual logging is always available.")
                     .font(.footnote).multilineTextAlignment(.center).foregroundStyle(.secondary)
+                Text("Designed for Apple Watch and other trackers that sync active and resting energy to Apple Health.")
+                    .font(.footnote).multilineTextAlignment(.center).foregroundStyle(.secondary)
                 Button("See how to connect your agent") { showingAgentSetup = true }
                     .font(.subheadline)
                 Spacer()
