@@ -2,6 +2,7 @@ import SwiftUI
 import WidgetKit
 
 struct RootView: View {
+    @Binding var replayOnboarding: Bool
     @Environment(FoodStore.self) private var store
     @Environment(HealthEnergy.self) private var health
     @Environment(\.scenePhase) private var scenePhase
@@ -11,6 +12,10 @@ struct RootView: View {
     private var pendingWidgetLaunch = ""
     @State private var errorText: String?
     @State private var feedbackSyncing = false
+
+    init(replayOnboarding: Binding<Bool> = .constant(false)) {
+        _replayOnboarding = replayOnboarding
+    }
 
     private var responsePollingScope: AgentResponsePolling.Scope {
         .init(accountToken: store.token, active: scenePhase == .active,
@@ -35,7 +40,9 @@ struct RootView: View {
         Group {
             if !store.signedIn { SignInView() }
             else if !store.hasLoadedSnapshot { accountLoadView }
-            else if store.profile == nil { OnboardingView() }
+            else if store.profile == nil || replayOnboarding {
+                OnboardingView(onCompleted: { replayOnboarding = false })
+            }
             else { HomeView() }
         }
         .task {

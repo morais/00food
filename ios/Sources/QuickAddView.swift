@@ -25,7 +25,6 @@ struct QuickAddView: View {
     @State private var busy = false
     @State private var errorText: String?
     @State private var searchVisible = false
-    @State private var listIsDragging = false
     @FocusState private var searchFocused: Bool
 
     private var matches: [FoodItem] {
@@ -196,15 +195,12 @@ struct QuickAddView: View {
             }
         }
         .scrollBounceBehavior(.always, axes: .vertical)
-        .onScrollPhaseChange { _, phase in
-            listIsDragging = phase == .tracking || phase == .interacting
-        }
         .onScrollGeometryChange(for: Bool.self) { geometry in
             // Normalize the resting offset by the List's top inset. Only an
             // intentional pull past the top reveals search, including short lists.
             geometry.contentOffset.y + geometry.contentInsets.top < -36
         } action: { _, pulledDown in
-            guard pulledDown, listIsDragging, selectedTab == .saved, !searchVisible else { return }
+            guard pulledDown, selectedTab == .saved, !searchVisible else { return }
             withAnimation { searchVisible = true }
         }
         .accessibilityAction(named: "Search your foods") {

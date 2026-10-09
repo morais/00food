@@ -24,6 +24,8 @@ private struct DietaryExportState: Codable {
     var waterMlToday = 0
     var latestWeightKg: Double?
     var latestWeightDate: Date?
+    var latestHeightCm: Double?
+    var healthEstimateProfile: String?
     var latestBodyFatPercent: Double?
     var latestBodyFatDate: Date?
     var weightHistory: [HealthMeasurePoint] = []
@@ -36,6 +38,7 @@ private struct DietaryExportState: Codable {
     var weightRequested = UserDefaults.standard.bool(forKey: "healthWeightRequested")
     var bodyFatRequested = UserDefaults.standard.bool(forKey: "healthBodyFatRequested")
     var waterRequested = UserDefaults.standard.bool(forKey: "healthWaterRequested")
+    var profileDetailsRequested = UserDefaults.standard.bool(forKey: "healthProfileDetailsRequested")
     var errorMessage: String?
     var waterErrorMessage: String?
     var waterSaving = false
@@ -60,6 +63,8 @@ private struct DietaryExportState: Codable {
     private let bodyMass = HKObjectType.quantityType(forIdentifier: .bodyMass)!
     private let bodyFat = HKObjectType.quantityType(forIdentifier: .bodyFatPercentage)!
     private let water = HKObjectType.quantityType(forIdentifier: .dietaryWater)!
+    private let height = HKObjectType.quantityType(forIdentifier: .height)!
+    private let biologicalSex = HKObjectType.characteristicType(forIdentifier: .biologicalSex)!
 
     var available: Bool { HKHealthStore.isHealthDataAvailable() }
     var isRefreshingWater: Bool { waterRefreshCount > 0 }
@@ -126,13 +131,14 @@ private struct DietaryExportState: Codable {
     }
 
     private func requestReadAuthorization() async throws {
-        try await store.requestAuthorization(toShare: [], read: [energy, restingEnergy, bodyMass, bodyFat, water])
+        try await store.requestAuthorization(toShare: [], read: [energy, restingEnergy, bodyMass, bodyFat, water, height, biologicalSex])
         requested = true
         restingRequested = true
         weightRequested = true
         bodyFatRequested = true
         waterRequested = true
-        for key in ["healthRequested", "healthRestingRequested", "healthWeightRequested", "healthBodyFatRequested", "healthWaterRequested"] {
+        profileDetailsRequested = true
+        for key in ["healthRequested", "healthRestingRequested", "healthWeightRequested", "healthBodyFatRequested", "healthWaterRequested", "healthProfileDetailsRequested"] {
             UserDefaults.standard.set(true, forKey: key)
         }
     }
@@ -166,6 +172,7 @@ private struct DietaryExportState: Codable {
         resetReadingsForNewDay()
         let requestedDay = readingDay
         guard available else { return }
+        if profileDetailsRequested { await refreshProfileDetails() }
         if !requested {
             if weightRequested { try? await refreshWeight() }
             if waterRequested { await refreshWater() }
@@ -287,6 +294,31 @@ private struct DietaryExportState: Codable {
         guard requestedDay == HealthDaySnapshot.Day() else { resetReadingsForNewDay(); return }
         applyWeight(readings)
         cacheReadings(body: true)
+    }
+
+    private func refreshProfileDetails() async {
+        // These optional setup readings must not interrupt the energy budget.
+        // A denied/unset value leaves the editable manual fallback available.
+        do {
+            let sample = try await HealthQueryResult.read(noData: Optional<HKQuantitySample>.none) {
+                try await newestSample(of: height)
+            }
+            let cm = sample?.quantity.doubleValue(for: .meterUnit(with: .centi))
+            latestHeightCm = cm.flatMap { $0.isFinite && (100...250).contains($0) ? $0 : nil }
+        } catch {
+            if !HealthQueryResult.isTemporarilyUnavailable(error) { latestHeightCm = nil }
+        }
+        do {
+            switch try store.biologicalSex().biologicalSex {
+            case .female: healthEstimateProfile = "female"
+            case .male: healthEstimateProfile = "male"
+            case .other: healthEstimateProfile = "neutral"
+            case .notSet: healthEstimateProfile = nil
+            @unknown default: healthEstimateProfile = nil
+            }
+        } catch {
+            if !HealthQueryResult.isTemporarilyUnavailable(error) { healthEstimateProfile = nil }
+        }
     }
 
     func refreshWater() async {

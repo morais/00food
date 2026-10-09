@@ -5,6 +5,7 @@ import SwiftUI
     @State private var store: FoodStore
     @State private var health: HealthEnergy
     @State private var watchBridge: PhoneWatchBridge
+    @State private var replayOnboarding: Bool
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -14,11 +15,12 @@ import SwiftUI
         _store = State(initialValue: foodStore)
         _health = State(initialValue: healthData)
         _watchBridge = State(initialValue: PhoneWatchBridge(store: foodStore, health: healthData))
+        _replayOnboarding = State(initialValue: OnboardingReplay.consumeRequest())
     }
 
     var body: some Scene {
         WindowGroup {
-            RootView()
+            RootView(replayOnboarding: $replayOnboarding)
                 .environment(store)
                 .environment(health)
                 .onChange(of: watchBridge.content, initial: true) { _, _ in watchBridge.resume() }

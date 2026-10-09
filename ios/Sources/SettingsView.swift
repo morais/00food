@@ -98,10 +98,16 @@ private struct DeveloperView: View {
     @Environment(FoodStore.self) private var store
     @Environment(HealthEnergy.self) private var health
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(OnboardingReplay.requestKey) private var replayOnNextLaunch = false
 
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    Toggle("Replay onboarding on next launch", isOn: $replayOnNextLaunch)
+                } header: { Text("Onboarding") } footer: {
+                    Text("Close and reopen 00Food to see the welcome and Health explanation again. Your food logs and selected plan are kept. You can review and save your details or cancel. The switch resets after launch.")
+                }
                 Section("Apple Health") {
                     Button("Refresh Health data") {
                         Task {
