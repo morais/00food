@@ -23,6 +23,36 @@ Install `APPLE_PRIVATE_KEY` and `OAUTH_SIGNING_SECRET` as Wrangler secrets. Neve
 
 For local work, use a separate ignored `wrangler.toml` with `PUBLIC_ORIGIN = "http://localhost:8787"`, `workers_dev = true`, and no custom-domain route. Apply `npx wrangler d1 migrations apply 00food --local`, start `npm run dev`, and run `node scripts/smoke-local.mjs` in another terminal. The smoke test inserts disposable local credentials and checks profile saving, idempotent logging, photo upload, MCP photo retrieval, agent proposal, and user acceptance. Native Apple login needs a deployed HTTPS origin to test end to end.
 
+## Dedicated MCP reviewer access
+
+After migrations, run `node scripts/provision-review.mjs` (Node 22.18+) to seed a
+dedicated account with synthetic saved foods, a food log, a pending yogurt-bowl
+estimate, and a completed-day request with seven synthetic Health days. It saves
+the one-year sign-in code and fixture IDs in ignored `.review-access.json` with
+mode 0600; only the SHA-256 code hash goes into D1. Put the printed tenant UUID
+in `REVIEW_TENANT_IDS` under `[vars]` in the ignored deployment config and deploy.
+`--local` uses a separate local database and `.review-access.local.json`.
+
+Reviewers can select **Reviewer access** alongside Apple in the MCP OAuth flow,
+enter the code from the portal's secure reviewer-access field, and approve the
+normal food/daily scopes. The code has no app or MCP bearer permissions. It
+requires no Apple account, mailbox, phone, or iPhone. The rate-limited callback
+requires a valid pending OAuth flow and same-origin form submission; grants still
+require explicit consent and PKCE. Keep the code out of Git, ZIPs, and chat.
+
+The same code signs in at `/dashboard/login` to a read-only `/dashboard` showing
+only the demo account's saved foods, logs, proposals, and daily reflections.
+Sessions are signed, expire in a day, and recheck code expiry, revocation, and
+the tenant allowlist on every read. The dashboard cannot approve or log foods.
+
+Run `node scripts/smoke-review.mjs` after deployment to verify the OAuth flow and
+all five review workflows, reset the synthetic fixtures, and revoke its temporary
+grant. `node scripts/provision-review.mjs --reset` restores only the saved fixture
+IDs for another run; dates remain fixed to the original fixture day.
+Remove the allowlisted UUID or revoke `review_credentials.revoked_at` to disable
+sign-in and dashboard access. Separately revoke issued MCP credentials and their
+webhook subscriptions when review ends, since ordinary grants outlive sign-in.
+
 ## Silent agent-response pushes
 
 Configure a production APNs topic-specific key restricted to the iPhone bundle ID (`APPLE_APP_CLIENT_ID`). Set `APNS_KEY_ID` in Wrangler variables and install its private key as the `APNS_PRIVATE_KEY` secret. An optional separate development key uses `APNS_DEVELOPMENT_KEY_ID` and `APNS_DEVELOPMENT_PRIVATE_KEY`; without it, development registrations stay disabled. Enable Push Notifications on the iPhone App ID and regenerate its distribution profile. Apply migration `0013_agent_response_push.sql` before deploying the Worker.

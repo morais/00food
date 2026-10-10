@@ -1,5 +1,6 @@
 import { routeApi, json, type Env } from "./api";
 import { routeMcp } from "./mcp";
+import { dashboard, dashboardLogin, dashboardLogout, dashboardReviewLogin } from "./dashboard";
 export { FoodEventStream } from "./FoodEventStream";
 import { authenticate, publicOrigin } from "./auth";
 import { deleteAccount, signInWithApple, signOut } from "./appAuth";
@@ -20,6 +21,10 @@ export default {
     if (path === "/health" && method === "GET") return json({ ok: true });
     if (!(await sourceAllowed(env, req))) return tooManyRequests();
     if (isSignInRoute(path, method) && !(await signInAllowed(env, req))) return tooManyRequests();
+    if (path === "/dashboard" && method === "GET") return dashboard(req, env);
+    if (path === "/dashboard/login" && method === "GET") return dashboardLogin(env);
+    if (path === "/dashboard/login/review" && method === "POST") return dashboardReviewLogin(req, env);
+    if (path === "/dashboard/logout" && method === "POST") return dashboardLogout(req, env);
     if (path === "/.well-known/oauth-protected-resource" && method === "GET") return protectedResourceMetadata(env);
     if (path === "/.well-known/oauth-protected-resource/mcp" && method === "GET") return protectedResourceMetadata(env);
     if (path === "/.well-known/oauth-authorization-server" && method === "GET") return authorizationServerMetadata(env);

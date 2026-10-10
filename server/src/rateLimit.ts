@@ -7,8 +7,8 @@ export const tooManyRequests = (): Response => {
 };
 
 const signInPosts = new Set(["/v1/auth/apple", "/oauth/register", "/oauth/token", "/auth/apple/callback",
-  "/auth/review/callback", "/oauth/consent"]);
-const signInPages = new Set(["/oauth/authorize", "/oauth/login"]);
+  "/auth/review/callback", "/oauth/consent", "/dashboard/login/review", "/dashboard/logout"]);
+const signInPages = new Set(["/oauth/authorize", "/oauth/login", "/dashboard/login"]);
 
 /// Routes that start a sign-in or mint a credential share the stricter limiter.
 export const isSignInRoute = (path: string, method: string): boolean =>

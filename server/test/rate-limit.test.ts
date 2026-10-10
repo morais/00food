@@ -26,6 +26,7 @@ describe("sign-in route coverage", () => {
     ["POST", "/auth/review/callback"], ["GET", "/oauth/login"], ["GET", "/oauth/authorize"],
     ["POST", "/oauth/token"], ["POST", "/oauth/register"], ["POST", "/oauth/consent"],
     ["POST", "/auth/apple/callback"], ["POST", "/v1/auth/apple"],
+    ["GET", "/dashboard/login"], ["POST", "/dashboard/login/review"], ["POST", "/dashboard/logout"],
   ])("throttles %s %s", (method, path) => expect(isSignInRoute(path, method)).toBe(true));
 
   it("leaves ordinary API and consent page loads on the general limiter", () => {

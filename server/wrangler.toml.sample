@@ -19,6 +19,11 @@ APPLE_KEY_ID = "REPLACE_WITH_SIGN_IN_WITH_APPLE_KEY_ID"
 # the separate APNS_DEVELOPMENT_PRIVATE_KEY secret are also configured.
 MCP_VERIFIED_CLIENTS = '{"https://chatgpt.com/connector_platform_oauth_redirect":"ChatGPT"}'
 
+# Optional dedicated demo tenant, provisioned by scripts/provision-review.mjs.
+# Codes select this account for normal OAuth consent or its read-only dashboard;
+# they are never API bearer tokens. Leave unset to disable reviewer sign-in.
+# REVIEW_TENANT_IDS = "<dedicated-review-tenant-uuid>"
+
 # Optional: email the operator when Sign in with Apple creates a new tenant.
 # Commented out because it requires Cloudflare Email Routing on a domain in
 # your account, and an uncommented binding would fail `wrangler deploy` for
