@@ -526,6 +526,12 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Water").font(.headline)
+                InfoDisclosure(
+                    title: "8 glasses a day",
+                    message: hydrationGuidance,
+                    linkTitle: "Source: EFSA, Dietary Reference Values for Water (2010)",
+                    linkURL: URL(string: "https://www.efsa.europa.eu/en/efsajournal/pub/1459")
+                )
                 Spacer()
                 Text("\(units.water(Double(health.waterMlToday))) today")
                     .font(.subheadline).foregroundStyle(.secondary)
@@ -561,10 +567,30 @@ struct HomeView: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
     }
 
+    private var hydrationGuidance: String {
+        let totalWater = units == .metric ? "2–2.5 litres" :
+            "\(units.waterValue(2_000).formatted(.number.precision(.fractionLength(1))))–\(units.water(2_500))"
+        return "Aim for 8 glasses (\(units.water(250)) each) of fluids daily. The European Food Safety Authority recommends \(totalWater) of total water per day for adults, including water from food. Your needs may increase with exercise or hot weather."
+    }
+
+    private var fruitVegGuidance: String {
+        let portion = units == .metric ? "80 g" :
+            "\((units.weightValue(0.08) * 16).formatted(.number.precision(.fractionLength(1)))) oz"
+        let dailyAmount = units == .metric ? "400 g" :
+            "\((units.weightValue(0.4) * 16).formatted(.number.precision(.fractionLength(1)))) oz"
+        return "Aim for at least 5 portions of fruit and vegetables daily (about \(portion) each). This follows WHO guidance of \(dailyAmount) per day, associated with better long-term health."
+    }
+
     private var fiveADayCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("5 a day").font(.headline)
+                InfoDisclosure(
+                    title: "5 a day",
+                    message: fruitVegGuidance,
+                    linkTitle: "Source: WHO, Healthy diet",
+                    linkURL: URL(string: "https://www.who.int/news-room/fact-sheets/detail/healthy-diet")
+                )
                 Spacer()
                 Text("\(store.fruitVegToday) of 5")
                     .font(.subheadline.weight(.semibold))
