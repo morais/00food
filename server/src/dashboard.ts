@@ -25,7 +25,9 @@ function page(env: Env, body: string, status = 200): Response {
   </style><header>${escapeHtml(appName(env))}</header><main>${body}</main></html>`, { status, headers: {
     "content-type": "text/html; charset=utf-8", "cache-control": "no-store",
     "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
-    "referrer-policy": "no-referrer", "x-content-type-options": "nosniff",
+    // Form POSTs need their real Origin for the strict checks below. The
+    // same-origin policy retains it without sending referrers to other sites.
+    "referrer-policy": "same-origin", "x-content-type-options": "nosniff",
   } });
 }
 function redirect(env: Env, path: string): Response {

@@ -120,6 +120,21 @@ describe("dedicated reviewer access", () => {
 });
 
 describe("read-only reviewer dashboard", () => {
+  it("preserves same-origin form posts and rejects opaque or missing origins", async () => {
+    const { db, env } = await fixture();
+    try {
+      expect(dashboardLogin(env).headers.get("referrer-policy")).toBe("same-origin");
+      for (const originHeader of ["null", "https://evil.example", undefined]) {
+        const req = new Request(origin + "/dashboard/login/review", {
+          method: "POST", headers: originHeader ? { origin: originHeader } : {},
+          body: new URLSearchParams({ accessCode: code }),
+        });
+        expect((await dashboardReviewLogin(req, env)).status).toBe(403);
+        expect(dashboardLogout(req, env).status).toBe(403);
+      }
+    } finally { db.close(); }
+  });
+
   it("scopes the signed session to demo data, escapes output, and rechecks revocation", async () => {
     const { db, env, ids } = await fixture();
     try {
@@ -137,6 +152,7 @@ describe("read-only reviewer dashboard", () => {
       db.prepare("UPDATE foods SET name = 'Other tenant secret' WHERE id = ?").run(otherIds.oats);
       const response = await dashboard(req, env);
       expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(response.headers.get("referrer-policy")).toBe("same-origin");
       const html = await response.text();
       expect(html).toContain("Banana oats");
       expect(html).toContain("&lt;script&gt;private&lt;/script&gt;");
