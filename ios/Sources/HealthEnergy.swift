@@ -14,11 +14,6 @@ struct RestingEnergySummary {
     }
 }
 
-private struct DietaryExportState: Codable {
-    var enabledAt: Date
-    var exported: [String: String] = [:] // Log ID to local day, for matching deletions.
-}
-
 @MainActor @Observable final class HealthEnergy {
     var activeKcal = 0
     var waterMlToday = 0
@@ -47,7 +42,9 @@ private struct DietaryExportState: Codable {
     var waterSaving = false
     private(set) var isRefreshing = false
     var hasLoadedAllowance = false
-    var dietaryExportEnabled = false
+    private(set) var dietaryWriteAuthorized = false
+    private(set) var needsPermissionRequest = false
+    private(set) var requestingPermissions = false
     var dietaryErrorMessage: String?
     private var historyStart: Date?
     private var dietaryAccountId: String?
@@ -126,10 +123,15 @@ private struct DietaryExportState: Codable {
     }
 
     func configureDietaryExport(accountId: String?) {
-        guard dietaryAccountId != accountId else { return }
-        dietaryAccountId = accountId
-        dietaryExportEnabled = accountId.flatMap { Self.loadDietaryState(for: $0) } != nil
-        dietaryErrorMessage = nil
+        if dietaryAccountId != accountId {
+            dietaryAccountId = accountId
+            dietaryErrorMessage = nil
+        }
+        dietaryWriteAuthorized = dietaryExportAuthorized
+        if let accountId, Self.loadDietaryState(for: accountId) == nil,
+           let state = DietaryExportState.enrolling(existing: nil, authorized: dietaryWriteAuthorized) {
+            Self.saveDietaryState(state, for: accountId)
+        }
     }
 
     func setHistoryStart(_ date: Date?) {
@@ -149,13 +151,18 @@ private struct DietaryExportState: Codable {
             return
         }
         do {
-            try await requestReadAuthorization()
+            try await requestReadAuthorization(includeDietaryWrite: true)
+            await refreshPermissionStatus()
             await refresh()
         } catch { errorMessage = error.localizedDescription }
     }
 
-    private func requestReadAuthorization() async throws {
-        try await store.requestAuthorization(toShare: [], read: [energy, restingEnergy, bodyMass, bodyFat, water, height, biologicalSex])
+    private var readTypes: Set<HKObjectType> { [energy, restingEnergy, bodyMass, bodyFat, water, height, biologicalSex] }
+    private var writeTypes: Set<HKSampleType> { [dietaryEnergy, water, bodyMass] }
+
+    private func requestReadAuthorization(includeDietaryWrite: Bool = false, includeAllWrites: Bool = false) async throws {
+        let sharing: Set<HKSampleType> = includeAllWrites ? writeTypes : includeDietaryWrite ? [dietaryEnergy] : []
+        try await store.requestAuthorization(toShare: sharing, read: readTypes)
         requested = true
         restingRequested = true
         weightRequested = true
@@ -165,6 +172,25 @@ private struct DietaryExportState: Codable {
         for key in ["healthRequested", "healthRestingRequested", "healthWeightRequested", "healthBodyFatRequested", "healthWaterRequested", "healthProfileDetailsRequested"] {
             UserDefaults.standard.set(true, forKey: key)
         }
+    }
+
+    func refreshPermissionStatus() async {
+        guard available else { return }
+        // This detects types never requested, not whether read access was denied.
+        let status = try? await store.statusForAuthorizationRequest(toShare: writeTypes, read: readTypes)
+        needsPermissionRequest = status == .shouldRequest
+        configureDietaryExport(accountId: dietaryAccountId)
+    }
+
+    func requestRemainingPermissions() async {
+        guard available, !requestingPermissions else { return }
+        requestingPermissions = true
+        defer { requestingPermissions = false }
+        do {
+            try await requestReadAuthorization(includeAllWrites: true)
+            await refreshPermissionStatus()
+            await refresh()
+        } catch { errorMessage = error.localizedDescription }
     }
 
     func refresh() async {
@@ -180,6 +206,7 @@ private struct DietaryExportState: Codable {
         }
         isRefreshing = true
         defer { isRefreshing = false }
+        await refreshPermissionStatus()
         await refreshValues()
         // A foreground transition can race with Health becoming readable after
         // unlock. Retry once quietly, without retrying permission/write errors.
@@ -566,29 +593,8 @@ private struct DietaryExportState: Codable {
         await refreshWater()
     }
 
-    func enableDietaryExport(accountId: String, logs: [FoodLog]) async {
-        guard available else {
-            dietaryErrorMessage = "Apple Health is not available on this device."
-            return
-        }
-        do {
-            try await store.requestAuthorization(toShare: [dietaryEnergy], read: [dietaryEnergy])
-            guard dietaryExportAuthorized else {
-                dietaryErrorMessage = "Allow 00Food to write Dietary Energy in iPhone Settings → Health → Data Access & Devices."
-                return
-            }
-            if Self.loadDietaryState(for: accountId) == nil {
-                Self.saveDietaryState(DietaryExportState(enabledAt: Date()), for: accountId)
-            }
-            configureDietaryExport(accountId: accountId)
-            dietaryExportEnabled = true
-            dietaryErrorMessage = nil
-            await syncDietaryEnergy(logs: logs, accountId: accountId)
-        } catch { dietaryErrorMessage = error.localizedDescription }
-    }
-
     func syncDietaryEnergy(logs: [FoodLog], accountId: String) async {
-        guard dietaryExportAuthorized,
+        guard dietaryAccountId == accountId, dietaryExportAuthorized,
               Self.loadDietaryState(for: accountId) != nil else { return }
         if dietarySyncing {
             queuedDietaryLogs = logs
@@ -623,8 +629,7 @@ private struct DietaryExportState: Codable {
             Self.saveDietaryState(state, for: accountId)
         }
         for log in logs where state.exported[log.id] == nil {
-            guard let loggedAt = FoodDates.parseTimestamp(log.loggedAt), loggedAt >= state.enabledAt,
-                  log.kcal > 0 else { continue }
+            guard state.shouldExport(log), let loggedAt = FoodDates.parseTimestamp(log.loggedAt) else { continue }
             let syncId = Self.dietarySyncId(accountId: accountId, logId: log.id)
             if try await hasDietarySample(syncId: syncId) == false {
                 let sample = HKQuantitySample(type: dietaryEnergy,

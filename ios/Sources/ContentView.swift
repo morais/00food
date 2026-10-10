@@ -116,6 +116,7 @@ struct RootView: View {
             if let snapshot { FoodWidgetSnapshotStore.save(snapshot) }
             else { FoodWidgetSnapshotStore.clear() }
         }
+        .onChange(of: health.dietaryWriteAuthorized) { _, _ in syncDietaryEnergy() }
         .onChange(of: store.logs, initial: true) { _, _ in syncDietaryEnergy() }
         .onChange(of: store.accountId) { _, _ in syncDietaryEnergy() }
         .alert("Could not refresh", isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {

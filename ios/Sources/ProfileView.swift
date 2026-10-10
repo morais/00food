@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct ProfileView: View {
     @Environment(FoodStore.self) private var store
@@ -14,6 +15,7 @@ struct ProfileView: View {
     @State private var busy = false
     @State private var errorText: String?
     @State private var showingManualWeight = false
+    @State private var showingHealthPermissions = false
     @State private var activeDayStartMinutes = 7 * 60
     @State private var activeDayEndMinutes = 23 * 60
 
@@ -79,11 +81,14 @@ struct ProfileView: View {
                         Spacer()
                         Text("\(health.activeKcal) kcal").foregroundStyle(.secondary)
                     }
-                    if !health.requested || !health.weightRequested {
-                        Button("Connect Apple Health") {
-                            Task { await health.connect() }
+                    if health.needsPermissionRequest {
+                        Button("Request remaining permissions") {
+                            Task { await health.requestRemainingPermissions() }
                         }
+                        .disabled(health.requestingPermissions)
                     }
+                    Button("Review Health permissions") { showingHealthPermissions = true }
+                        .disabled(!health.available)
                     if let fat = health.latestBodyFatPercent {
                         HStack {
                             Text("Latest body fat")
@@ -99,6 +104,11 @@ struct ProfileView: View {
                     }
                     DelayedNotice(message: health.errorMessage, isRefreshing: health.isRefreshing) { error in
                         Text(error).font(.footnote).foregroundStyle(.red)
+                    }
+                    if health.dietaryWriteAuthorized {
+                        DelayedNotice(message: health.dietaryErrorMessage, isRefreshing: health.isRefreshing) { error in
+                            Text(error).font(.footnote).foregroundStyle(.orange)
+                        }
                     }
                 } header: { Text("Apple Health") } footer: {
                     Text("00Food uses your latest recorded weight. Saving these details also saves that weight in your 00Food profile. Logging weight manually updates Apple Health and your profile; water entries stay in Apple Health. Other Health history stays on this device unless you request Daily feedback.")
@@ -146,6 +156,14 @@ struct ProfileView: View {
             }
             .sheet(isPresented: $showingManualWeight) {
                 ManualWeightView { savedWeightKg = $0 }
+            }
+            .alert("Health permissions", isPresented: $showingHealthPermissions) {
+                Button("Open Health") {
+                    UIApplication.shared.open(URL(string: "x-apple-health://")!)
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("In Health, tap your profile picture → Privacy → Apps → 00Food to change read and write access. Apple does not tell apps which read permissions were declined, so you can review them here even when no missing permission is detected.")
             }
             .alert("Could not save details", isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
                 Button("OK", role: .cancel) {}

@@ -49,11 +49,11 @@ struct OnboardingView: View {
                             permission("Biological sex", icon: "person.fill",
                                 detail: "Prefills the optional setting for the fallback calorie estimate and ACE body-fat reference lines.")
                             permission("Food calories", icon: "fork.knife",
-                                detail: "Optional export writes new food logs as Dietary Energy so Apple Health can show your food calorie totals. Permission is requested when you enable export.")
+                                detail: "Writes new food logs as Dietary Energy so Apple Health can show your food calorie totals, if you allow it.")
                             permission("Water", icon: "drop.fill",
                                 detail: "Shows your recorded water intake and progress toward your daily goal.")
                         }
-                        Text("The next sheet asks for read access. Write access is requested separately: water when you log a glass, weight when you log it manually, and food calories when you enable export.")
+                        Text("The next sheet asks to read these values and write food calories. You choose what to allow. Water and weight write access is requested when you log them.")
                             .font(.footnote).foregroundStyle(.secondary)
                         Text("Your details and latest weight are saved to your account. Other Health history stays on this device unless you request a daily review.")
                             .font(.footnote).foregroundStyle(.secondary)

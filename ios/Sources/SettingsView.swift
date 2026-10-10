@@ -119,23 +119,7 @@ private struct DeveloperView: View {
                         Text(error).font(.footnote).foregroundStyle(.red)
                     }
                 }
-                Section("Dietary Energy") {
-                    if let accountId = store.accountId {
-                        if health.dietaryExportEnabled && health.dietaryExportAuthorized {
-                            Label("New food logs are written to Apple Health", systemImage: "checkmark.circle.fill")
-                                .labelStyle(.tintedIcon(.green))
-                        } else {
-                            Button("Write new food logs to Apple Health") {
-                                Task { await health.enableDietaryExport(accountId: accountId, logs: store.logs) }
-                            }
-                        }
-                        Text("After you enable export, new 00Food logs are written as Dietary Energy. Deleting a log removes its matching Health entry. Earlier logs are not exported.")
-                            .font(.footnote).foregroundStyle(.secondary)
-                    }
-                    if let error = health.dietaryErrorMessage {
-                        Text(error).font(.footnote).foregroundStyle(.red)
-                    }
-                }
+
             }
             .navigationTitle("Developer")
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
