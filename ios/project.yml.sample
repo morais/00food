@@ -124,6 +124,7 @@ targets:
       - path: Sources/Watch
       - path: Sources/WatchShared
       - path: Sources/Models.swift
+      - path: Sources/ForbesBodyComposition.swift
       - path: Sources/ActiveDayProgress.swift
       - path: Resources/Watch/Assets.xcassets
       - path: Resources/App/PrivacyInfo.xcprivacy
@@ -167,6 +168,7 @@ targets:
       - path: Sources/WatchWidgets
       - path: Sources/WatchShared
       - path: Sources/Models.swift
+      - path: Sources/ForbesBodyComposition.swift
       - path: Resources/App/PrivacyInfo.xcprivacy
     info:
       path: Resources/WatchWidgets/Info.plist

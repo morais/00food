@@ -24,6 +24,9 @@ struct ProgressPlansView: View {
     @State private var calorieHistoryDays = 30
 
     private var profile: FoodProfile? { store.profile }
+    private var compositionBaseline: BodyCompositionBaseline? {
+        profile.flatMap { health.bodyCompositionBaseline(for: $0) }
+    }
     private var firstDay: Date { store.accountStartedAt ?? Date() }
     private var aceObesityBoundary: ACEBodyFatBoundary? {
         ProgressProjection.aceBoundaries(for: profile?.estimateProfile ?? "").first
@@ -213,6 +216,15 @@ struct ProgressPlansView: View {
                         .accessibilityValue("Illustration \(Self.spokenPercent(point.value)) body fat")
                         .accessibilityHidden(!Self.isMonthStart(point.date))
                 }
+                if let baseline = compositionBaseline {
+                    PointMark(x: .value("Date", baseline.date),
+                              y: .value("Smoothed start", baseline.composition.bodyFatPercentage))
+                        .symbol {
+                            Circle().strokeBorder(.teal, lineWidth: 2).frame(width: 9, height: 9)
+                        }
+                        .accessibilityLabel("Smoothed starting body fat")
+                        .accessibilityValue(Self.spokenPercent(baseline.composition.bodyFatPercentage))
+                }
             }
             .frame(height: 180)
             .chartYAxisLabel("%")
@@ -228,6 +240,9 @@ struct ProgressPlansView: View {
             HStack(spacing: 14) {
                 Label("Body fat", systemImage: "circle.fill").labelStyle(.tintedIcon(.teal))
                 Label("Illustration", systemImage: "circle.dotted").labelStyle(.tintedIcon(.teal))
+                if compositionBaseline != nil {
+                    Label("Smoothed", systemImage: "circle").labelStyle(.tintedIcon(.teal))
+                }
             }
             .font(.caption).foregroundStyle(.secondary)
             if !visibleACEBoundaries.isEmpty {
@@ -259,12 +274,18 @@ struct ProgressPlansView: View {
     private var bodyFatExplanation: String {
         var paragraphs: [String] = []
         if health.bodyFatHistory.isEmpty {
-            paragraphs.append("No body-fat readings since you joined. An illustration, if shown, starts from your latest Health reading.")
+            paragraphs.append("No body-fat readings since you joined. An illustration, if shown, uses your latest available Health reading.")
         }
         if projectedBodyFat.isEmpty {
             paragraphs.append("Add a body-fat reading in Apple Health to show an illustration.")
         } else {
-            paragraphs.append("Each day shows its last recorded body-fat reading. The dotted line starts at the latest plotted reading, using the available weight for that date. If no history is available, it uses your latest reading and weight. It applies your plan’s percentage deficit to recent completed-day TDEE (resting + active energy), held constant for the illustration. It assumes every kilogram of illustrated weight loss is fat, with lean mass unchanged. It is a rough illustration, not a prediction.")
+            paragraphs.append("Recorded dots show each day’s last body-fat reading. The hollow starting marker uses a seven-day median of available body-fat and weight readings, with one reading per day. With less history it uses the available readings, then the latest earlier weight or saved weight if needed. New Health or scale readings recalibrate the starting point on each refresh.")
+            paragraphs.append("The Forbes model starts with fat mass = weight × body-fat percentage, and assigns FM / (FM + 10.4) of sustained weight loss to fat. It recalculates that fraction in small steps as fat mass falls. The rest is fat-free mass, which includes more than muscle. ACE target dates use the same changing body composition.")
+            paragraphs.append("Only the plan’s projected sustained loss is partitioned; individual scale drops are not counted as fat loss. Smoothing reduces short-term noise, but Health and scale readings cannot separate water or glycogen fluctuations. The weight illustration still uses about 7,700 kcal per kg and holds recent completed-day TDEE constant. It is a rough illustration, not a prediction.")
+            if let baseline = compositionBaseline {
+                let body = baseline.composition
+                paragraphs.append("Smoothed start: \(body.weightKg.formatted(.number.precision(.fractionLength(1)))) kg, \(body.bodyFatPercentage.formatted(.number.precision(.fractionLength(1))))% body fat; \(body.fatMassKg.formatted(.number.precision(.fractionLength(1)))) kg fat and \(body.fatFreeMassKg.formatted(.number.precision(.fractionLength(1)))) kg fat-free mass. Starting fat-loss share: \((body.fatFraction * 100).formatted(.number.precision(.fractionLength(0))))%. Based on \(baseline.fatReadingDays) body-fat and \(baseline.weightReadingDays) weight days near \(baseline.date.formatted(date: .abbreviated, time: .omitted)).")
+            }
         }
         if let aceObesityBoundary {
             paragraphs.append("ACE’s \(profile?.estimateProfile == "female" ? "female" : "male") body-fat classification places its obesity boundary at \(Int(aceObesityBoundary.percentage))%. Other category boundaries appear when the illustration crosses them.")
@@ -292,17 +313,11 @@ struct ProgressPlansView: View {
 
     private var projectedBodyFat: [HealthMeasurePoint] {
         guard let profile else { return [] }
-        let fallback = health.latestBodyFatPercent.flatMap { value in
-            health.latestBodyFatDate.map { HealthMeasurePoint(date: $0, value: value) }
-        }
-        guard let anchor = ProgressProjection.bodyFatAnchor(history: health.bodyFatHistory, fallback: fallback) else { return [] }
-        let anchorDay = Calendar.current.startOfDay(for: anchor.date)
-        let nextDay = Calendar.current.date(byAdding: .day, value: 1, to: anchorDay) ?? anchorDay
-        let startingWeight = health.weightHistory.filter { $0.date < nextDay }.max { $0.date < $1.date }?.value
-            ?? health.usableLatestWeightKg ?? profile.weightKg
+        guard let baseline = compositionBaseline else { return [] }
+        let anchor = HealthMeasurePoint(date: baseline.date, value: baseline.composition.bodyFatPercentage)
         let today = Calendar.current.startOfDay(for: Date())
         let sixMonths = Calendar.current.date(byAdding: .month, value: 6, to: today) ?? today
-        return ProgressProjection.bodyFatProjection(anchor: anchor, startWeightKg: startingWeight,
+        return ProgressProjection.bodyFatProjection(anchor: anchor, startWeightKg: baseline.composition.weightKg,
             gapKcal: health.representativeBudget(for: profile).gapKcal,
             minimumWeightKg: ProgressProjection.healthyWeightRange(for: profile.heightCm).lowerBound, until: sixMonths)
     }

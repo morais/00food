@@ -170,20 +170,25 @@ enum ProgressProjection {
                                   gapKcal: Int, minimumWeightKg: Double, until end: Date,
                                   calendar: Calendar = .current) -> [HealthMeasurePoint] {
         guard anchor.date <= end, startWeightKg.isFinite, startWeightKg > 0,
-              anchor.value.isFinite, (0...100).contains(anchor.value) else { return [] }
+              let initial = ForbesBodyComposition(weightKg: startWeightKg, bodyFatPercentage: anchor.value) else { return [] }
         let totalDays = max(0, calendar.dateComponents([.day], from: anchor.date, to: end).day ?? 0)
-        var dates = stride(from: 0, through: totalDays, by: 7).compactMap {
+        var dates = stride(from: 0, through: totalDays, by: 1).compactMap {
             calendar.date(byAdding: .day, value: $0, to: anchor.date)
         }
         if dates.last != end { dates.append(end) }
-        return dates.compactMap { date -> HealthMeasurePoint? in
-            let elapsedDays = date.timeIntervalSince(anchor.date) / 86400
-            let weight = startWeightKg - Double(max(0, gapKcal)) * elapsedDays / 7700
-            guard weight >= minimumWeightKg else { return nil }
-            return date == anchor.date ? anchor : HealthMeasurePoint(date: date,
-                value: bodyFatPercent(startWeightKg: startWeightKg, startBodyFatPercent: anchor.value,
-                                      projectedWeightKg: weight))
+        var composition = initial
+        var previousDate = anchor.date
+        var points: [HealthMeasurePoint] = []
+        for date in dates {
+            let elapsedDays = date.timeIntervalSince(previousDate) / 86400
+            let loss = Double(max(0, gapKcal)) * elapsedDays / 7700
+            guard composition.weightKg - loss >= minimumWeightKg,
+                  let next = composition.losing(sustainedWeightKg: loss) else { break }
+            composition = next
+            points.append(date == anchor.date ? anchor : HealthMeasurePoint(date: date, value: composition.bodyFatPercentage))
+            previousDate = date
         }
+        return points
     }
 
     // ACE Personal Training Manual classification chart, reproduced by ACE:
@@ -214,11 +219,9 @@ enum ProgressProjection {
     }
 
     static func bodyFatPercent(startWeightKg: Double, startBodyFatPercent: Double,
-                               projectedWeightKg: Double) -> Double {
-        guard startWeightKg > 0, projectedWeightKg > 0 else { return 0 }
-        let startingFatKg = startWeightKg * startBodyFatPercent / 100
-        let fatLostKg = max(0, startWeightKg - projectedWeightKg)
-        return min(100, max(0, 100 * (startingFatKg - fatLostKg) / projectedWeightKg))
+                               projectedWeightKg: Double) -> Double? {
+        ForbesBodyComposition(weightKg: startWeightKg, bodyFatPercentage: startBodyFatPercent)?
+            .losing(sustainedWeightKg: startWeightKg - projectedWeightKg)?.bodyFatPercentage
     }
 }
 

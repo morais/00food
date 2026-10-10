@@ -52,7 +52,9 @@ final class ProgressProjectionTests: XCTestCase {
         XCTAssertEqual(points.last?.date, end)
         XCTAssertLessThan(try XCTUnwrap(points.last?.value), dot.value)
         XCTAssertNil(ACEThresholdForecast.crossingDate(for: 25, in: points))
-        XCTAssertNotNil(ACEThresholdForecast.crossingDate(for: 18, in: points))
+        XCTAssertNotNil(ACEThresholdForecast.crossingDate(for: 20, in: points))
+        XCTAssertNil(ACEThresholdForecast.crossingDate(for: 18, in: points),
+                     "Forbes reaches lower percentages later than the former all-fat illustration")
     }
 
     func testFatProjectionFallbackKeepsReadingTimestampAndMaintainIsFlat() throws {
@@ -65,15 +67,15 @@ final class ProgressProjectionTests: XCTestCase {
         XCTAssertNil(ProgressProjection.bodyFatAnchor(history: [], fallback: nil))
     }
 
-    func testBodyFatProjectionTreatsWeightLostAsFat() {
-        // 80 kg at 25% fat starts with 20 kg of fat. After losing 5 kg of fat,
-        // 15 kg of fat remains in a 75 kg body: 20%.
-        XCTAssertEqual(ProgressProjection.bodyFatPercent(startWeightKg: 80,
+    func testBodyFatProjectionUsesChangingForbesFraction() throws {
+        // Integrated Forbes: loss = (FM0 - FM1) + 10.4 * ln(FM0 / FM1).
+        // At 80 kg / 25%, a 5 kg sustained loss partitions into ~3.192 kg fat.
+        XCTAssertEqual(try XCTUnwrap(ProgressProjection.bodyFatPercent(startWeightKg: 80,
                                                            startBodyFatPercent: 25,
-                                                           projectedWeightKg: 75), 20, accuracy: 0.001)
-        XCTAssertEqual(ProgressProjection.bodyFatPercent(startWeightKg: 80,
+                                                           projectedWeightKg: 75)), 22.41093356, accuracy: 0.000001)
+        XCTAssertEqual(try XCTUnwrap(ProgressProjection.bodyFatPercent(startWeightKg: 80,
                                                            startBodyFatPercent: 25,
-                                                           projectedWeightKg: 80), 25, accuracy: 0.001)
+                                                           projectedWeightKg: 80)), 25, accuracy: 0.001)
     }
 
     func testOnlyCrossedACEBoundariesAreAddedForEachProfile() {

@@ -97,6 +97,24 @@ struct RestingEnergySummary {
         return weight
     }
 
+    private var latestWeightPoint: HealthMeasurePoint? {
+        guard let kg = usableLatestWeightKg, let date = latestWeightDate else { return nil }
+        return HealthMeasurePoint(date: date, value: kg)
+    }
+
+    var smoothedWeightKg: Double? {
+        BodyCompositionBaseline.smoothedWeight(weightHistory, latest: latestWeightPoint)
+    }
+
+    func bodyCompositionBaseline(for profile: FoodProfile) -> BodyCompositionBaseline? {
+        let fat = latestBodyFatPercent.flatMap { value in
+            latestBodyFatDate.map { HealthMeasurePoint(date: $0, value: value) }
+        }
+        return BodyCompositionBaseline.make(bodyFat: bodyFatHistory, weight: weightHistory,
+                                            latestBodyFat: fat, latestWeight: latestWeightPoint,
+                                            fallbackWeightKg: profile.weightKg)
+    }
+
     func effectiveRestingKcal(for profile: FoodProfile) -> Int {
         if let restingAverageKcal { return restingAverageKcal }
         var current = profile

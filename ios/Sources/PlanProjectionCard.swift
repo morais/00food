@@ -22,7 +22,7 @@ struct PlanProjectionCard: View {
             : "Until paired completed Health days are available, this illustration uses the \(budget.tdeeKcal) kcal/day resting estimate: a \(gap) kcal/day gap."
 
         let healthyRange = ProgressProjection.healthyWeightRange(for: profile.heightCm)
-        let startingWeight = health.usableLatestWeightKg ?? health.weightHistory.last?.value ?? profile.weightKg
+        let startingWeight = health.smoothedWeightKg ?? health.usableLatestWeightKg ?? profile.weightKg
         let today = Calendar.current.startOfDay(for: Date())
         let sixMonths = Calendar.current.date(byAdding: .month, value: 6, to: today) ?? today
         let projection = ProgressProjection.projectedWeight(from: startingWeight, gap: gap,
@@ -34,10 +34,14 @@ struct PlanProjectionCard: View {
                            health.weightHistory.map(\.value).max() ?? 0,
                            projection.map(\.value).max() ?? 0) + 4
         let shownChange = (projection.first?.value ?? 0) - (projection.last?.value ?? 0)
+        let bodyStart = health.bodyCompositionBaseline(for: profile).flatMap {
+            ForbesBodyComposition(weightKg: startingWeight, bodyFatPercentage: $0.composition.bodyFatPercentage)
+        }
+        let bodyEnd = bodyStart?.losing(sustainedWeightKg: shownChange)
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(title).font(.title3.bold())
-                InfoDisclosure(title: "About these charts", message: "Dotted lines are illustrations, not predictions.\n\nBMI is an adult screening measure, not a personal diagnosis or target. Your daily allowance is TDEE × (1 − your deficit percentage), including exercise. Today uses the seven-day resting estimate plus active energy so far. For the illustration we hold recent completed-day TDEE constant; expenditure and the calorie gap will change as your activity and body change. Your body adapts, and daily weight and body-fat measurements vary. Use the charts to compare directions, then adjust from your recorded trend.\n\n" + expenditureExplanation)
+                InfoDisclosure(title: "About these charts", message: "Dotted lines are illustrations, not predictions.\n\nBMI is an adult screening measure, not a personal diagnosis or target. Your daily allowance is TDEE × (1 − your deficit percentage), including exercise. Today uses the seven-day resting estimate plus active energy so far. For the illustration we hold recent completed-day TDEE constant; expenditure and the calorie gap will change as your activity and body change. Your body adapts, and daily weight and body-fat measurements vary. Use the charts to compare directions, then adjust from your recorded trend.\n\nThe weight starting point uses a seven-day median when available. Weight change still uses about 7,700 kcal per kg. If body-fat data is available, the fat and fat-free mass split uses the Forbes model: FM / (FM + 10.4), recalculated as fat mass decreases. Body fat uses the median of available daily readings from the seven-day window ending at its latest reading. New Health readings recalibrate that starting percentage. Only projected sustained loss is split; daily scale changes are not interpreted as fat loss, and water or glycogen changes cannot be identified separately.\n\n" + expenditureExplanation)
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("\(deficit)% deficit").font(.subheadline.bold())
@@ -48,11 +52,15 @@ struct PlanProjectionCard: View {
             if projection.count > 1 {
                 Text("Illustrative \(fullProjection ? "6-month" : "shown") change: about \(shownChange.formatted(.number.precision(.fractionLength(1)))) kg")
                     .font(.footnote).foregroundStyle(.secondary)
+                if let bodyStart, let bodyEnd {
+                    Text("About \((bodyStart.fatMassKg - bodyEnd.fatMassKg).formatted(.number.precision(.fractionLength(1)))) kg fat · \((bodyStart.fatFreeMassKg - bodyEnd.fatFreeMassKg).formatted(.number.precision(.fractionLength(1)))) kg fat-free mass")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
             }
             Text("Adult BMI 18.5–24.9 at your height: \(healthyRange.lowerBound.formatted(.number.precision(.fractionLength(1))))–\(healthyRange.upperBound.formatted(.number.precision(.fractionLength(1)))) kg")
                 .font(.footnote).foregroundStyle(.secondary)
             if health.weightHistory.isEmpty {
-                Text("No weight readings since you joined. The dotted line starts from your latest recorded weight, or your saved weight if unavailable.")
+                Text("No weight readings since you joined. The dotted line uses your latest available weight, or your saved weight if unavailable.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
             if !fullProjection {
