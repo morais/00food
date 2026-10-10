@@ -24,6 +24,10 @@ MCP_VERIFIED_CLIENTS = '{"https://chatgpt.com/connector_platform_oauth_redirect"
 # they are never API bearer tokens. Leave unset to disable reviewer sign-in.
 # REVIEW_TENANT_IDS = "<dedicated-review-tenant-uuid>"
 
+# OpenAI plugin-submission domain verification. Set the exact portal token in
+# the ignored deployment config; this public endpoint is disabled when unset.
+# OPENAI_APPS_CHALLENGE_TOKEN = "REPLACE_WITH_OPENAI_APPS_CHALLENGE_TOKEN"
+
 # Optional: email the operator when Sign in with Apple creates a new tenant.
 # Commented out because it requires Cloudflare Email Routing on a domain in
 # your account, and an uncommented binding would fail `wrangler deploy` for

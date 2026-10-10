@@ -6,6 +6,7 @@ import { authenticate, publicOrigin } from "./auth";
 import { deleteAccount, signInWithApple, signOut } from "./appAuth";
 import { disconnectMcpConnection, listMcpConnections } from "./mcpConnections";
 import { sweepExpiredAuthData } from "./cleanup";
+import { openAIAppsChallenge } from "./openAIAppsChallenge";
 import { routePushDevice, notifyAgentResponse } from "./agentResponsePush";
 import { isSignInRoute, signInAllowed, sourceAllowed, tenantAllowed, tooManyRequests } from "./rateLimit";
 import {
@@ -20,6 +21,9 @@ export default {
     const method = req.method;
     if (path === "/health" && method === "GET") return json({ ok: true });
     if (!(await sourceAllowed(env, req))) return tooManyRequests();
+    if (path === "/.well-known/openai-apps-challenge" && (method === "GET" || method === "HEAD")) {
+      return openAIAppsChallenge(req, env);
+    }
     if (isSignInRoute(path, method) && !(await signInAllowed(env, req))) return tooManyRequests();
     if (path === "/dashboard" && method === "GET") return dashboard(req, env);
     if (path === "/dashboard/login" && method === "GET") return dashboardLogin(env);

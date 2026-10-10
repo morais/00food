@@ -25,6 +25,12 @@ For local work, use a separate ignored `wrangler.toml` with `PUBLIC_ORIGIN = "ht
 
 ## Dedicated MCP reviewer access
 
+For OpenAI domain verification, set the portal's exact
+`OPENAI_APPS_CHALLENGE_TOKEN` under `[vars]` in ignored `wrangler.toml` and deploy.
+`GET /.well-known/openai-apps-challenge` returns only that token as uncached plain
+text, without a newline. The route supports HEAD, returns 404 when unset, and
+has no trailing-slash alias. In the portal, verify the `PUBLIC_ORIGIN` domain.
+
 After migrations, run `node scripts/provision-review.mjs` (Node 22.18+) to seed a
 dedicated account with synthetic saved foods, a food log, a pending yogurt-bowl
 estimate, and a completed-day request with seven synthetic Health days. It saves
