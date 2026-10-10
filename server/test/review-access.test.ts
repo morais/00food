@@ -112,7 +112,7 @@ describe("dedicated reviewer access", () => {
   it("hides disabled reviewer login and rejects expired or consumed flows", async () => {
     const { db, env } = await fixture();
     try {
-      expect(dashboardLogin({ ...env, REVIEW_TENANT_IDS: "" }).status).toBe(404);
+      expect((await dashboardLogin(new Request(origin + "/dashboard/login"), { ...env, REVIEW_TENANT_IDS: "", APPLE_PRIVATE_KEY: "" })).status).toBe(503);
       expect((await reviewCallback(post("/auth/review/callback", { flow: randomToken(24), accessCode: code }), env)).status).toBe(401);
       expect((await reviewCallback(post("/auth/review/callback", {}, { origin }), { ...env, REVIEW_TENANT_IDS: "" })).status).toBe(404);
     } finally { db.close(); }
@@ -123,7 +123,7 @@ describe("read-only reviewer dashboard", () => {
   it("preserves same-origin form posts and rejects opaque or missing origins", async () => {
     const { db, env } = await fixture();
     try {
-      expect(dashboardLogin(env).headers.get("referrer-policy")).toBe("same-origin");
+      expect((await dashboardLogin(new Request(origin + "/dashboard/login"), env)).headers.get("referrer-policy")).toBe("same-origin");
       for (const originHeader of ["null", "https://evil.example", undefined]) {
         const req = new Request(origin + "/dashboard/login/review", {
           method: "POST", headers: originHeader ? { origin: originHeader } : {},

@@ -23,6 +23,25 @@ Install `APPLE_PRIVATE_KEY` and `OAUTH_SIGNING_SECRET` as Wrangler secrets. Neve
 
 For local work, use a separate ignored `wrangler.toml` with `PUBLIC_ORIGIN = "http://localhost:8787"`, `workers_dev = true`, and no custom-domain route. Apply `npx wrangler d1 migrations apply 00food --local`, start `npm run dev`, and run `node scripts/smoke-local.mjs` in another terminal. The smoke test inserts disposable local credentials and checks profile saving, idempotent logging, photo upload, MCP photo retrieval, agent proposal, and user acceptance. Native Apple login needs a deployed HTTPS origin to test end to end.
 
+## Web dashboard
+
+`GET /dashboard` opens a read-only view of the signed-in account's saved foods,
+logs, estimate requests, and daily reflections. Unsigned visitors are redirected
+to `/dashboard/login`, which offers Sign in with Apple and, when configured,
+Reviewer access. Apple sign-in reuses the MCP Services ID, authorization helper,
+identity verification, and `/auth/apple/callback` URL, and resolves the same
+account as the app and MCP connection. It needs no additional Apple registration,
+Worker secret, or D1 migration.
+
+The Apple flow is bound to a signed ten-minute browser cookie and nonce. Its
+callback exchanges the one-use Apple code and verifies both identity tokens.
+A signed, HttpOnly, Secure browser session lasts 24 hours and is scoped to
+`/dashboard`; it creates no app or MCP grants. Every view rechecks the account's
+Apple identity. Reviewer sessions instead recheck their code and tenant allowlist.
+The dashboard cannot approve meals, log foods, or change Apple Health.
+`POST /dashboard/logout` clears the browser session and requires a same-origin
+form submission, as does reviewer sign-in.
+
 ## Dedicated MCP reviewer access
 
 For OpenAI domain verification, set the portal's exact
@@ -46,7 +65,8 @@ requires no Apple account, mailbox, phone, or iPhone. The rate-limited callback
 requires a valid pending OAuth flow and same-origin form submission; grants still
 require explicit consent and PKCE. Keep the code out of Git, ZIPs, and chat.
 
-The same code signs in at `/dashboard/login` to a read-only `/dashboard` showing
+Expand **Reviewer access** at `/dashboard/login` and enter the same code to open
+a read-only `/dashboard` showing
 only the demo account's saved foods, logs, proposals, and daily reflections.
 Sessions are signed, expire in a day, and recheck code expiry, revocation, and
 the tenant allowlist on every read. The dashboard cannot approve or log foods.

@@ -5,14 +5,14 @@ import { appName, type Env } from "./api";
 /// Off unless *both* the `SIGNUP_ALERTS` send_email binding and
 /// `SIGNUP_ALERT_TO` are configured, so a default deployment — which has
 /// neither — sends nothing and needs no Email Routing setup at all. Anyone with
-/// a verified Apple ID can create a tenant from the app or an MCP client, and
+/// a verified Apple ID can create a tenant from the app, an MCP client, or the web dashboard, and
 /// an operator should find out when it happens rather than
 /// discovering it in a bill.
 export function signupAlertsConfigured(env: Env): boolean {
   return Boolean(env.SIGNUP_ALERTS && env.SIGNUP_ALERT_TO?.trim());
 }
 
-export type SignupSource = "app" | "mcp";
+export type SignupSource = "app" | "mcp" | "dashboard";
 
 export interface NewTenantAlert {
   source: SignupSource;
@@ -25,6 +25,7 @@ export interface NewTenantAlert {
 const SIGNUP_SURFACES: Record<SignupSource, string> = {
   app: "native app",
   mcp: "MCP client connection",
+  dashboard: "web dashboard",
 };
 
 /// Never throws and never rejects. A signup must not fail, or even slow down,
