@@ -40,3 +40,7 @@ active energy is 420, giving 805 kcal remaining today with a zero calorie gap.
 Promotional captures install the demo on a simulator with a fixed status bar,
 capture each scene, and uninstall it. Never install this demo onto a physical
 device or upload its binary to TestFlight.
+
+Apple Watch uses the separate [Watch screenshot demo](../WatchScreenshotDemo/README.md)
+and `ios/scripts/prepare-watch-screenshot-demo.py`, following the same isolated
+production-view approach.

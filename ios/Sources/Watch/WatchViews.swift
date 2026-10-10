@@ -162,12 +162,34 @@ private struct WatchQuantityView: View {
     @State private var quantity = 1.0
     var body: some View {
         ScrollView {
-            VStack(spacing: 12) {
+            VStack(spacing: 8) {
                 Text(food.name).font(.headline)
-                Text(food.serving).font(.caption).foregroundStyle(.secondary)
-                Stepper(value: $quantity, in: 0.5...10, step: 0.5) { Text("\(quantity.formatted()) portions") }
+                Text(food.serving).font(.caption2).foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    Button { quantity = max(0.5, quantity - 0.5) } label: {
+                        Image(systemName: "minus")
+                    }
+                    .accessibilityLabel("Decrease portion")
+                    .disabled(quantity <= 0.5)
+                    VStack(spacing: 2) {
+                        Text(quantity.formatted()).font(.title3.monospacedDigit())
+                        Text("portions").font(.caption2).foregroundStyle(.secondary)
+                            .lineLimit(1).minimumScaleFactor(0.6)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(quantity.formatted()) portions")
+                    Button { quantity = min(10, quantity + 0.5) } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel("Increase portion")
+                    .disabled(quantity >= 10)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.mini)
                 Text("\(Int((Double(food.kcal) * quantity).rounded())) kcal").font(.title3)
                 Button("Log food") { store.log(food, quantity: quantity); dismiss() }.buttonStyle(.borderedProminent)
+                    .controlSize(.mini)
             }
         }
     }
