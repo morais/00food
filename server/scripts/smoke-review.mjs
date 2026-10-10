@@ -77,6 +77,8 @@ try {
   const tools = (await rpc("tools/list", {})).tools;
   assert(tools.length === 10, "Unexpected tool catalog");
   assert(tools.every(t => ["readOnlyHint", "openWorldHint", "destructiveHint"].every(k => typeof t.annotations?.[k] === "boolean")), "Missing tool annotations");
+  assert(JSON.stringify(tools.filter(t => t.annotations.destructiveHint).map(t => t.name).sort()) ===
+    JSON.stringify(["propose_food_estimate", "set_food_fruit_veg_portions", "submit_daily_feedback"]), "Overwrite annotations missing");
   const call = async (name, args = {}) => JSON.parse((await rpc("tools/call", { name, arguments: args })).content[0].text);
   const pending = (await call("list_pending_foods")).foods;
   assert(pending.some(f => f.id === saved.ids.estimate && f.state === "pending"), "Pending fixture missing");

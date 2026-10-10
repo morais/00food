@@ -27,7 +27,7 @@ const tools = [
   },
   {
     name: "propose_food_estimate", title: "Propose Food Estimate",
-    description: "Propose a directional calorie estimate and 0–5 fruit/vegetable portions for one serving. Count meaningful produce portions, not a garnish; use 0 when uncertain. Explain the choices in reasoning. The person reviews them before logging.",
+    description: "Propose a directional calorie estimate and 0–5 fruit/vegetable portions for one serving, replacing any previous proposal for this request. Count meaningful produce portions, not a garnish; use 0 when uncertain. Explain the choices in reasoning. The person reviews them before logging.",
     inputSchema: z.toJSONSchema(proposalInput.extend({ id: uuid, reasoning: z.string().trim().min(1).max(2000),
       fruitVegPortions: z.number().int().min(0).max(5) }), { io: "input" }), readOnly: false,
   },
@@ -38,7 +38,7 @@ const tools = [
   },
   {
     name: "set_food_fruit_veg_portions", title: "Set Food Fruit and Vegetable Portions",
-    description: "Correct a saved food's rough 0–5 fruit/vegetable portions per serving. Existing logs of that food are updated too. Use only when the person asks to classify or correct a food.",
+    description: "Replace a saved food's rough 0–5 fruit/vegetable portions per serving and recalculate the portions in all existing logs of that food. Previous portion values are overwritten. Use only when the person asks to classify or correct a food.",
     inputSchema: z.toJSONSchema(z.strictObject({ id: uuid,
       fruitVegPortions: z.number().int().min(0).max(5) }), { io: "input" }), readOnly: false,
   },
@@ -59,14 +59,15 @@ const tools = [
   },
   {
     name: "submit_daily_feedback", title: "Submit Daily Feedback",
-    description: "Write a reflection on the completed day after reading get_daily_feedback_request. " + dailyReviewGuidance.join(" "),
+    description: "Write a reflection on the completed day after reading get_daily_feedback_request, replacing any previous reflection for this request. " + dailyReviewGuidance.join(" "),
     inputSchema: z.toJSONSchema(z.strictObject({ id: uuid, feedback: z.string().trim().min(1).max(4000) }),
       { io: "input" }), readOnly: false,
   },
 ].map(tool => ({ ...tool,
   securitySchemes: [{ type: "oauth2" as const, scopes: [scopeForTool(tool)] }],
   annotations: { title: tool.title, readOnlyHint: tool.readOnly,
-    openWorldHint: false, destructiveHint: false, idempotentHint: tool.readOnly } }));
+    // Each write tool can replace stored values, rather than only adding data.
+    openWorldHint: false, destructiveHint: !tool.readOnly, idempotentHint: tool.readOnly } }));
 
 function scopeForTool(tool: { name: string; readOnly: boolean }): Scope {
   const daily = tool.name === "list_pending_daily_feedback" || tool.name === "get_daily_feedback_request"
