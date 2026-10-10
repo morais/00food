@@ -125,10 +125,20 @@ private struct DeveloperView: View {
     @Environment(HealthEnergy.self) private var health
     @Environment(\.dismiss) private var dismiss
     @AppStorage(OnboardingReplay.requestKey) private var replayOnNextLaunch = false
+    @AppStorage(MeasurementPreference.key) private var unitPreference = MeasurementPreference.system.rawValue
 
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    Picker("Measurement system", selection: $unitPreference) {
+                        ForEach(MeasurementPreference.allCases, id: \.rawValue) { preference in
+                            Text(preference.title).tag(preference.rawValue)
+                        }
+                    }
+                } header: { Text("Units") } footer: {
+                    Text("Follow iPhone uses its Measurement System setting. US uses pounds, feet/inches, and US fluid ounces; UK uses imperial fluid ounces. The override also applies to your Watch. Calorie values and the amount logged by each water glass stay the same.")
+                }
                 Section {
                     Toggle("Replay onboarding on next launch", isOn: $replayOnNextLaunch)
                 } header: { Text("Onboarding") } footer: {
@@ -157,7 +167,8 @@ struct ManualWeightView: View {
     @Environment(FoodStore.self) private var store
     @Environment(HealthEnergy.self) private var health
     @Environment(\.dismiss) private var dismiss
-    @State private var weightKg = 70.0
+    @Environment(\.foodUnits) private var units
+    @State private var weightKg: Double? = 70.0
     @State private var busy = false
     @State private var errorText: String?
     var onLogged: (Double) -> Void = { _ in }
@@ -169,10 +180,7 @@ struct ManualWeightView: View {
                     HStack {
                         Text("Weight")
                         Spacer()
-                        TextField("kg", value: $weightKg, format: .number.precision(.fractionLength(1)))
-                            .multilineTextAlignment(.trailing).keyboardType(.decimalPad)
-                            .accessibilityLabel("Weight in kilograms")
-                        Text("kg").foregroundStyle(.secondary)
+                        WeightInput(kilograms: $weightKg)
                     }
                 } footer: {
                     Text("Saves today's weight to Apple Health and updates the weight used by your 00Food target. It will appear in your progress chart.")
@@ -183,7 +191,7 @@ struct ManualWeightView: View {
                 ToolbarItem(placement: .topBarLeading) { Button("Cancel") { dismiss() }.disabled(busy) }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Log") { save() }
-                        .disabled(busy || !weightKg.isFinite || !(25...400).contains(weightKg))
+                        .disabled(busy || (weightKg.map { !$0.isFinite || !(25...400).contains($0) } ?? true))
                 }
             }
             .onAppear { weightKg = health.usableLatestWeightKg ?? store.profile?.weightKg ?? 70 }
@@ -194,7 +202,7 @@ struct ManualWeightView: View {
     }
 
     private func save() {
-        guard !busy else { return }
+        guard !busy, let weightKg else { return }
         busy = true
         Task {
             defer { busy = false }

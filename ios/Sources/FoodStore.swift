@@ -630,6 +630,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
                 "timeZone": upload.timeZone, "healthDays": healthDays,
             ]
             if let previousID = upload.replacesRequestId { body["replacesRequestId"] = previousID }
+            if let units = upload.displayUnits { body["displayUnits"] = units }
             let _: DailyFeedbackResponse = try await call("/v1/daily-feedback", method: "POST", body: body)
         }
     }

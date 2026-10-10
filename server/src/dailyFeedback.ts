@@ -16,6 +16,7 @@ export const dailyFeedbackInput = z.strictObject({
   id: z.uuid(), localDate: z.iso.date(), timeZone: z.string().min(1).max(100),
   healthDays: z.array(healthDay).max(7),
   replacesRequestId: z.uuid().optional(),
+  displayUnits: z.enum(["metric", "us", "uk"]).default("metric"),
 });
 
 export type DailyFeedbackRow = {
@@ -23,6 +24,7 @@ export type DailyFeedbackRow = {
   health_json: string; state: "pending" | "ready"; feedback_text: string | null;
   created_at: string; updated_at: string;
   needs_refresh?: number;
+  display_units?: "metric" | "us" | "uk";
 };
 
 type LogRow = { id: string; food_name: string; serving: string; quantity: number;
@@ -38,6 +40,7 @@ export const dailyReviewGuidance = [
   "No protein grams or other nutrient totals are supplied. Do not invent nutrient quantities, claim adequacy or deficiency, or infer an entire diet from incomplete logs. Note unclear meals and offer one practical food-based suggestion when useful.",
   "The current plan is a percentage deficit applied to total daily energy expenditure (TDEE = resting + active energy), including exercise. Use the supplied calorieBudget; never subtract a fixed gap from resting energy and then credit all exercise. Earlier days may have used a different plan. Missing Health energy does not mean zero expenditure.",
   "Use directional language, note missing or pending data, and avoid diagnoses or prescriptive calorie advice.",
+  "Follow preferredDisplayUnits for body weights and water in the written review: metric uses kg and mL/L, us uses lb and US fl oz (29.5735295625 mL each), uk uses lb and imperial fl oz (28.4130625 mL each). Context numbers always stay in kg and mL; convert only the written values. Calories, body-fat percentages, food servings and produce portions stay unchanged. The water goal remains 2000 mL in every system.",
 ];
 
 export const dailyFeedbackView = (row: DailyFeedbackRow) => ({
@@ -104,6 +107,7 @@ export async function dailyFeedbackContext(env: Env, row: DailyFeedbackRow) {
       pendingFoods, health: healthDay };
   });
   return { requestId: row.id, feedbackDay: row.local_date, timeZone: row.time_zone,
+    preferredDisplayUnits: row.display_units ?? "metric",
     currentPlanDeficitPercent: profile?.deficit_percent ?? null,
     reviewGuidance: dailyReviewGuidance,
     days, note: "Health values are daily aggregates when available. Missing values are null. Food totals omit pending estimates. The current plan may differ from the plan on earlier days." };

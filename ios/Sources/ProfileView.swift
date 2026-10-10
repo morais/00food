@@ -5,9 +5,10 @@ struct ProfileView: View {
     @Environment(FoodStore.self) private var store
     @Environment(HealthEnergy.self) private var health
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.foodUnits) private var units
     @AppStorage("activeDayStartMinutes") private var storedActiveDayStartMinutes = 7 * 60
     @AppStorage("activeDayEndMinutes") private var storedActiveDayEndMinutes = 23 * 60
-    @State private var heightCm = 170.0
+    @State private var heightCm: Double? = 170.0
     @State private var savedWeightKg: Double?
     @State private var estimateProfile = "neutral"
     @State private var showingPacePicker = false
@@ -26,15 +27,12 @@ struct ProfileView: View {
                     HStack {
                         Text("Height")
                         Spacer()
-                        TextField("cm", value: $heightCm, format: .number.precision(.fractionLength(0)))
-                            .multilineTextAlignment(.trailing).keyboardType(.decimalPad)
-                            .accessibilityLabel("Height in centimeters")
-                        Text("cm").foregroundStyle(.secondary)
+                        HeightInput(centimeters: $heightCm)
                     }
                     HStack {
                         Text("Weight")
                         Spacer()
-                        Text(recordedWeightKg.map { "\($0.formatted(.number.precision(.fractionLength(1)))) kg" } ?? "Not recorded")
+                        Text(recordedWeightKg.map(units.weight) ?? "Not recorded")
                             .foregroundStyle(.secondary)
                     }
                     Button("Log weight manually") { showingManualWeight = true }
@@ -100,7 +98,7 @@ struct ProfileView: View {
                     HStack {
                         Text("Water today")
                         Spacer()
-                        Text("\(health.waterMlToday.formatted()) mL").foregroundStyle(.secondary)
+                        Text(units.water(Double(health.waterMlToday))).foregroundStyle(.secondary)
                     }
                     DelayedNotice(message: health.errorMessage, isRefreshing: health.isRefreshing) { error in
                         Text(error).font(.footnote).foregroundStyle(.red)
@@ -172,11 +170,11 @@ struct ProfileView: View {
     }
 
     private var valid: Bool {
-        (100...250).contains(heightCm) && recordedWeightKg != nil
+        heightCm.map { $0.isFinite && (100...250).contains($0) } == true && recordedWeightKg != nil
     }
     private var currentDeficitPercent: Int { store.profile?.deficitPercent ?? DeficitLevel.gentle.rawValue }
     private var preview: FoodProfile {
-        FoodProfile(heightCm: heightCm, weightKg: recordedWeightKg ?? 70,
+        FoodProfile(heightCm: heightCm.flatMap { $0.isFinite ? $0 : nil } ?? 170, weightKg: recordedWeightKg ?? 70,
                     estimateProfile: estimateProfile, deficitPercent: currentDeficitPercent)
     }
 

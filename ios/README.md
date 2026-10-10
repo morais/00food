@@ -62,3 +62,9 @@ When Apple Health supplies body fat (including connected scales), forecasts use 
 Each refresh recalibrates from a trailing seven-calendar-day median, counting one reading per local day. Less history uses available readings. Observed daily weight drops are not converted into fat loss; the model partitions only the plan’s projected sustained change. Smoothing dampens short-term noise but cannot identify water or glycogen changes separately. The underlying directional weight forecast still uses about 7,700 kcal/kg and fixed recent TDEE.
 
 Model reference: [Hall, Body fat and fat-free mass interrelationships: Forbes’s theory revisited (2007)](https://doi.org/10.1017/S0007114507691946).
+
+## Measurement systems
+
+The app follows the iPhone Measurement System setting, including its manual metric/US/UK selection rather than guessing from language or region. Weight entry, chart axes, weight/fat-free mass forecasts and BMI ranges use kg or lb; height entry uses cm or separate feet/inches. Water totals use mL, US fluid ounces or UK imperial fluid ounces. VoiceOver labels follow the same units. Tap Settings → Version → Developer → Measurement system to force a system; the preference is sent to Watch in its cached snapshot.
+
+Stored profile data, Health writes and MCP numeric summaries remain in kg/cm/mL. A water action still writes 250 mL (about 8.5 US fl oz or 8.8 imperial fl oz), and eight glasses still represent 2000 mL. Future daily-review requests include preferred display units for the agent; existing review text retains the units it was written in. Calories, body-fat percentages, food servings, the five-a-day count and water-goal completion stay unchanged.

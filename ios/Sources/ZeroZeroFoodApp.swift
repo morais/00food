@@ -7,6 +7,12 @@ import SwiftUI
     @State private var watchBridge: PhoneWatchBridge
     @State private var replayOnboarding: Bool
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(MeasurementPreference.key) private var unitPreference = MeasurementPreference.system.rawValue
+    @State private var measurementSystem = Locale.current.measurementSystem
+
+    private var units: FoodUnitSystem {
+        (MeasurementPreference(rawValue: unitPreference) ?? .system).resolved(measurementSystem: measurementSystem)
+    }
 
     init() {
         let foodStore = FoodStore()
@@ -23,6 +29,12 @@ import SwiftUI
             RootView(replayOnboarding: $replayOnboarding)
                 .environment(store)
                 .environment(health)
+                .environment(\.foodUnits, units)
+                .onChange(of: units) { _, _ in watchBridge.resume() }
+                .onReceive(NotificationCenter.default.publisher(for: NSLocale.currentLocaleDidChangeNotification)) { _ in
+                    measurementSystem = Locale.current.measurementSystem
+                    watchBridge.resume()
+                }
                 .onChange(of: watchBridge.content, initial: true) { _, _ in watchBridge.resume() }
                 .task {
                     watchBridge.resume()
@@ -30,6 +42,7 @@ import SwiftUI
                 }
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active {
+                        measurementSystem = Locale.current.measurementSystem
                         watchBridge.resume()
                         DailyFeedbackBackground.schedule(for: store)
                     }

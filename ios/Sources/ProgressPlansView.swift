@@ -10,11 +10,11 @@ private struct DailyCalorieBalance: Identifiable {
 
 struct ProgressPlansView: View {
     @Environment(FoodStore.self) private var store
+    @Environment(\.foodUnits) private var units
 
     // VoiceOver wording for chart marks. Projections are daily, so only the
     // first of each month is exposed to keep the chart navigable.
     private static func spokenDay(_ date: Date) -> String { date.formatted(date: .abbreviated, time: .omitted) }
-    private static func spokenKg(_ kg: Double) -> String { "\(kg.formatted(.number.precision(.fractionLength(1)))) kilograms" }
     private static func spokenPercent(_ value: Double) -> String { "\(value.formatted(.number.precision(.fractionLength(1)))) percent" }
     private static func isMonthStart(_ date: Date) -> Bool { Calendar.current.component(.day, from: date) == 1 }
     @Environment(HealthEnergy.self) private var health
@@ -280,11 +280,11 @@ struct ProgressPlansView: View {
             paragraphs.append("Add a body-fat reading in Apple Health to show an illustration.")
         } else {
             paragraphs.append("Recorded dots show each day’s last body-fat reading. The hollow starting marker uses a seven-day median of available body-fat and weight readings, with one reading per day. With less history it uses the available readings, then the latest earlier weight or saved weight if needed. New Health or scale readings recalibrate the starting point on each refresh.")
-            paragraphs.append("The Forbes model starts with fat mass = weight × body-fat percentage, and assigns FM / (FM + 10.4) of sustained weight loss to fat. It recalculates that fraction in small steps as fat mass falls. The rest is fat-free mass, which includes more than muscle. ACE target dates use the same changing body composition.")
-            paragraphs.append("Only the plan’s projected sustained loss is partitioned; individual scale drops are not counted as fat loss. Smoothing reduces short-term noise, but Health and scale readings cannot separate water or glycogen fluctuations. The weight illustration still uses about 7,700 kcal per kg and holds recent completed-day TDEE constant. It is a rough illustration, not a prediction.")
+            paragraphs.append("The Forbes model starts with fat mass = weight × body-fat percentage / 100, and assigns FM / (FM + 10.4) of sustained weight loss to fat. It recalculates that fraction in small steps as fat mass falls. The rest is fat-free mass, which includes more than muscle. ACE target dates use the same changing body composition.")
+            paragraphs.append("Only the plan’s projected sustained loss is partitioned; individual scale drops are not counted as fat loss. Smoothing reduces short-term noise, but Health and scale readings cannot separate water or glycogen fluctuations. The weight illustration still uses \(units.weightEnergyExplanation) and holds recent completed-day TDEE constant. It is a rough illustration, not a prediction.")
             if let baseline = compositionBaseline {
                 let body = baseline.composition
-                paragraphs.append("Smoothed start: \(body.weightKg.formatted(.number.precision(.fractionLength(1)))) kg, \(body.bodyFatPercentage.formatted(.number.precision(.fractionLength(1))))% body fat; \(body.fatMassKg.formatted(.number.precision(.fractionLength(1)))) kg fat and \(body.fatFreeMassKg.formatted(.number.precision(.fractionLength(1)))) kg fat-free mass. Starting fat-loss share: \((body.fatFraction * 100).formatted(.number.precision(.fractionLength(0))))%. Based on \(baseline.fatReadingDays) body-fat and \(baseline.weightReadingDays) weight days near \(baseline.date.formatted(date: .abbreviated, time: .omitted)).")
+                paragraphs.append("Smoothed start: \(units.weight(body.weightKg)), \(body.bodyFatPercentage.formatted(.number.precision(.fractionLength(1))))% body fat; \(units.weight(body.fatMassKg)) fat and \(units.weight(body.fatFreeMassKg)) fat-free mass. Starting fat-loss share: \((body.fatFraction * 100).formatted(.number.precision(.fractionLength(0))))%. Based on \(baseline.fatReadingDays) body-fat and \(baseline.weightReadingDays) weight days near \(baseline.date.formatted(date: .abbreviated, time: .omitted)).")
             }
         }
         if let aceObesityBoundary {

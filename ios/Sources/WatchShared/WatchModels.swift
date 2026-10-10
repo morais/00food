@@ -81,6 +81,7 @@ struct WatchSnapshot: Codable, Equatable {
     var timeZone = TimeZone.current.identifier
     var updatedAt = Date.distantPast
     var budgetKcal: Int? = nil
+    var measurementSystem: String? = nil
     var allowanceKcal: Int { budgetKcal ?? (targetKcal + activeKcal) }
     var targetKcal = 0
     var activeKcal = 0

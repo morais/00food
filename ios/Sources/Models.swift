@@ -310,6 +310,7 @@ struct DailyFeedbackUpload: Codable {
     var timeZone: String
     var healthDays: [DailyHealthDay]
     var replacesRequestId: String? = nil
+    var displayUnits: String? = MeasurementPreference.current().rawValue
 }
 
 enum FoodDates {

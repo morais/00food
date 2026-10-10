@@ -202,6 +202,7 @@ private struct WaterGlassIcon: View {
 }
 
 struct HomeView: View {
+    @Environment(\.foodUnits) private var units
     @Environment(FoodStore.self) private var store
     @ScaledMetric(relativeTo: .largeTitle) private var balanceSize: CGFloat = 48
     @Environment(HealthEnergy.self) private var health
@@ -526,7 +527,7 @@ struct HomeView: View {
             HStack {
                 Text("Water").font(.headline)
                 Spacer()
-                Text("\(health.waterMlToday.formatted()) mL today")
+                Text("\(units.water(Double(health.waterMlToday))) today")
                     .font(.subheadline).foregroundStyle(.secondary)
             }
             HStack(spacing: 4) {
@@ -542,15 +543,15 @@ struct HomeView: View {
             // Eight identical glasses read as one control that reports progress.
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Water")
-            .accessibilityValue("\(min(8, health.waterMlToday / 250)) of 8 glasses, \(health.waterMlToday.formatted()) milliliters")
-            .accessibilityHint("Adds 250 milliliters in Apple Health")
+            .accessibilityValue("\(min(8, health.waterMlToday / 250)) of 8 glasses, \(units.spokenWater(Double(health.waterMlToday)))")
+            .accessibilityHint("Adds \(units.spokenWater(250)) in Apple Health")
             .accessibilityAddTraits(.isButton)
             .accessibilityAction {
                 guard !health.waterSaving else { return }
                 Task { await health.logWaterCup() }
             }
-            Text(health.waterRequested ? "Tap a glass to add 250 mL in Apple Health." :
-                 "Tap a glass to connect Water in Apple Health and add 250 mL.")
+            Text(health.waterRequested ? "Tap a glass to add \(units.water(250)) in Apple Health." :
+                 "Tap a glass to connect Water in Apple Health and add \(units.water(250)).")
                 .font(.caption).foregroundStyle(.secondary)
             DelayedNotice(message: health.waterErrorMessage, isRefreshing: health.isRefreshing || health.isRefreshingWater) { error in
                 Text(error).font(.caption).foregroundStyle(.red)

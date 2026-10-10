@@ -566,7 +566,7 @@ struct RestingEnergySummary {
     func logWeight(_ kg: Double) async throws {
         guard available else { throw FoodServiceError(message: "Apple Health is not available on this device") }
         guard kg.isFinite && (25...400).contains(kg) else {
-            throw FoodServiceError(message: "Enter a weight between 25 and 400 kg")
+            throw FoodServiceError(message: "Enter a weight between \(MeasurementPreference.current().weightRange(25...400))")
         }
         try await store.requestAuthorization(toShare: [bodyMass], read: [bodyMass])
         guard store.authorizationStatus(for: bodyMass) == .sharingAuthorized else {

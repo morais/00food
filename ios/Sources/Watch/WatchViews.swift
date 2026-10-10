@@ -181,7 +181,7 @@ private struct WatchWaterView: View {
             ScrollView {
                 VStack(spacing: 10) {
                     WatchDrinkingGlass().frame(width: 30, height: 40).foregroundStyle(.blue)
-                    Text("\(ml.formatted()) mL").font(.title2.bold())
+                    Text(store.units.water(Double(ml))).font(.title2.bold())
                     HStack(spacing: 5) {
                         ForEach(0..<8) { index in
                             Capsule().fill(index < min(8, ml / 250) ? Color.blue : Color.gray.opacity(0.3))
@@ -189,7 +189,7 @@ private struct WatchWaterView: View {
                         }
                     }
                     .accessibilityLabel("\(min(8, ml / 250)) of 8 glasses")
-                    Button { store.addWater() } label: { Label("250 mL", systemImage: "plus") }
+                    Button { store.addWater() } label: { Label(store.units.water(250), systemImage: "plus") }
                         .buttonStyle(.borderedProminent).controlSize(.large)
                     Text("Saved to Apple Health through your iPhone.").font(.caption2).foregroundStyle(.secondary)
                 }.padding(.horizontal, 4)
@@ -262,7 +262,7 @@ private struct WatchConfirmationView: View {
             if let command = store.confirmation {
                 HStack(spacing: 6) {
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                    Text(command.kind == .water ? "+250 mL" : command.kind == .food ? "Logged" : command.kind == .undo ? "Undone" : "Request saved")
+                    Text(command.kind == .water ? "+\(store.units.water(250))" : command.kind == .food ? "Logged" : command.kind == .undo ? "Undone" : "Request saved")
                         .font(.caption).lineLimit(1)
                     if command.kind != .undo { Button("Undo") { store.undo() }.font(.caption).buttonStyle(.bordered) }
                 }

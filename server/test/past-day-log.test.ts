@@ -45,6 +45,7 @@ describe("late food logs and renewed daily reviews", () => {
       expect((await review()).status).toBe(201);
       await saveDailyFeedback(env, "tenant", reviewId, "Original review");
       const replacement = { id: newReviewId, replacesRequestId: reviewId,
+        displayUnits: "us",
         healthDays: [{ localDate: yesterday, waterMl: 2750 }] };
       expect((await review(replacement)).status).toBe(409);
       // A food for today must not unlock yesterday's new-review action.
@@ -72,6 +73,7 @@ describe("late food logs and renewed daily reviews", () => {
       expect(await saveDailyFeedback(env, "tenant", reviewId, "Stale reply")).toBeNull();
       const row = db.prepare("SELECT * FROM daily_feedback_requests").get() as DailyFeedbackRow;
       const context = await dailyFeedbackContext(env, row);
+      expect(context.preferredDisplayUnits).toBe("us");
       expect(context.days.find(day => day.localDate === yesterday)).toMatchObject({ foodKcal: 300,
         health: { waterMl: 2750 } });
       await saveDailyFeedback(env, "tenant", newReviewId, "Updated review");

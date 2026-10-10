@@ -131,12 +131,12 @@ private struct OnboardingDetailsView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Height in cm", text: $draft.height).keyboardType(.decimalPad)
+                    HeightInput(centimeters: canonicalHeight)
                 } header: { Text("Height") } footer: {
                     Text("Used for your BMI progress range and the fallback resting estimate. You can edit any Health prefill.")
                 }
                 Section {
-                    TextField("Weight in kg", text: $draft.weight).keyboardType(.decimalPad)
+                    WeightInput(kilograms: canonicalWeight)
                 } header: { Text("Weight") } footer: {
                     Text("Used for progress and the fallback estimate. This value is saved to your account; you can connect a scale or log weight manually later.")
                 }
@@ -164,5 +164,14 @@ private struct OnboardingDetailsView: View {
                 }
             }
         }
+    }
+
+    private var canonicalHeight: Binding<Double?> {
+        Binding(get: { Double(draft.height.replacingOccurrences(of: ",", with: ".")) },
+                set: { draft.height = $0.map { String($0) } ?? "" })
+    }
+    private var canonicalWeight: Binding<Double?> {
+        Binding(get: { Double(draft.weight.replacingOccurrences(of: ",", with: ".")) },
+                set: { draft.weight = $0.map { String($0) } ?? "" })
     }
 }

@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { dailyFeedbackContext, type DailyFeedbackRow } from "../src/dailyFeedback";
+import { dailyFeedbackContext, dailyFeedbackInput, type DailyFeedbackRow } from "../src/dailyFeedback";
 import type { Env } from "../src/api";
 import { migratedD1 } from "./d1";
 
 describe("daily review intake context", () => {
+  it("defaults older requests to metric and validates preferred display units", () => {
+    const request = { id: crypto.randomUUID(), localDate: "2026-10-09", timeZone: "UTC", healthDays: [] };
+    expect(dailyFeedbackInput.parse(request).displayUnits).toBe("metric");
+    expect(dailyFeedbackInput.parse({ ...request, displayUnits: "uk" }).displayUnits).toBe("uk");
+    expect(dailyFeedbackInput.safeParse({ ...request, displayUnits: "invalid" }).success).toBe(false);
+  });
   it("distinguishes goal completion from exact intake, preserves water above 2 L and missing data", async () => {
     const { db, d1 } = migratedD1();
     try {

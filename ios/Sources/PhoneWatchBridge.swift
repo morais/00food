@@ -52,6 +52,7 @@ import WatchConnectivity
         }
         value.receipts = Array(inbox.receipts.suffix(200))
         let defaults = UserDefaults.standard
+        value.measurementSystem = MeasurementPreference.current(defaults: defaults).rawValue
         value.startMinutes = defaults.object(forKey: "activeDayStartMinutes") as? Int ?? 7 * 60
         value.endMinutes = defaults.object(forKey: "activeDayEndMinutes") as? Int ?? 23 * 60
         return value

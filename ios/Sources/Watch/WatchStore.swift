@@ -5,6 +5,9 @@ import WatchKit
 import WidgetKit
 
 @MainActor @Observable final class WatchStore: NSObject, WCSessionDelegate {
+    var units: FoodUnitSystem {
+        state.snapshot?.measurementSystem.flatMap(FoodUnitSystem.init(rawValue:)) ?? MeasurementPreference.current()
+    }
     private(set) var state = WatchTransferState()
     var errorMessage: String?
     var confirmation: WatchCommand?
