@@ -5,10 +5,9 @@ struct SettingsView: View {
     @Environment(FoodStore.self) private var store
     @Environment(HealthEnergy.self) private var health
     @Environment(\.dismiss) private var dismiss
+    @State private var showingAccount = false
     @State private var showingProfile = false
     @State private var showingDeveloper = false
-    @State private var showingDelete = false
-    @State private var confirmingDelete = false
     @State private var errorText: String?
     @State private var showingAgentSetup = false
     @State private var connectionError: String?
@@ -17,15 +16,8 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section("Account") {
-                    if let email = store.accountEmail { Text(email).foregroundStyle(.secondary) }
+                    Button("Your account") { showingAccount = true }
                     Button("Your details") { showingProfile = true }
-                    Button("Sign out") {
-                        Task {
-                            do { try await store.signOut(); dismiss() }
-                            catch { errorText = error.localizedDescription }
-                        }
-                    }
-                    Button("Delete account and food data", role: .destructive) { confirmingDelete = true }
                 }
                 Section("Your AI agent") {
                     Text("Bring your own agent to estimate foods and help you review your day. ChatGPT Work is recommended for automatic responses through MCP Events.")
@@ -69,12 +61,9 @@ struct SettingsView: View {
             .navigationTitle("Settings")
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
             .sheet(isPresented: $showingAgentSetup) { AgentSetupView() }
+            .sheet(isPresented: $showingAccount) { AccountView(onSignedOut: { dismiss() }) }
             .sheet(isPresented: $showingProfile) { ProfileView() }
             .sheet(isPresented: $showingDeveloper) { DeveloperView() }
-            .sheet(isPresented: $showingDelete) { DeleteAccountView() }
-            .confirmationDialog("Delete your account and all food data?", isPresented: $confirmingDelete) {
-                Button("Continue to Apple verification", role: .destructive) { showingDelete = true }
-            } message: { Text("This removes your profile, foods, logs, estimates, photos, and agent connections.") }
             .task {
                 health.configureDietaryExport(accountId: store.accountId)
                 do { try await store.refreshConnections(force: true); connectionError = nil }
@@ -90,6 +79,43 @@ struct SettingsView: View {
         Task {
             do { try await store.revokeConnection(connection) }
             catch { errorText = error.localizedDescription }
+        }
+    }
+}
+
+private struct AccountView: View {
+    @Environment(FoodStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    @State private var showingDelete = false
+    @State private var confirmingDelete = false
+    @State private var errorText: String?
+    let onSignedOut: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if let email = store.accountEmail {
+                    Section("Email") { Text(email).foregroundStyle(.secondary) }
+                }
+                Section {
+                    Button("Sign out") {
+                        Task {
+                            do { try await store.signOut(); onSignedOut() }
+                            catch { errorText = error.localizedDescription }
+                        }
+                    }
+                    Button("Delete account and food data", role: .destructive) { confirmingDelete = true }
+                }
+            }
+            .navigationTitle("Your account")
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
+            .sheet(isPresented: $showingDelete) { DeleteAccountView() }
+            .confirmationDialog("Delete your account and all food data?", isPresented: $confirmingDelete) {
+                Button("Continue to Apple verification", role: .destructive) { showingDelete = true }
+            } message: { Text("This removes your profile, foods, logs, estimates, photos, and agent connections.") }
+            .alert("Could not update account", isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: { Text(errorText ?? "") }
         }
     }
 }
