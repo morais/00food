@@ -18,7 +18,7 @@ struct SettingsView: View {
             Form {
                 Section("Account") {
                     if let email = store.accountEmail { Text(email).foregroundStyle(.secondary) }
-                    Button("Your details & Health") { showingProfile = true }
+                    Button("Your details") { showingProfile = true }
                     Button("Sign out") {
                         Task {
                             do { try await store.signOut(); dismiss() }

@@ -19,13 +19,15 @@ struct OnboardingView: View {
             if let profile = draft.profile {
                 PaceSelectionView(profile: profile, deficitPercent: $draft.deficitPercent,
                                   firstDay: store.accountStartedAt ?? Calendar.current.startOfDay(for: Date()),
-                                  saveTitle: "Start logging",
+                                  saveTitle: "Continue",
                                   onBack: { step = skippedEssentials ? .welcome : .essentials },
                                   onCancel: store.profile == nil ? nil : onCompleted) { updated in
                     try await store.saveProfile(updated)
-                    onCompleted()
+                    step = .agent
                 }
             }
+        case .agent:
+            AgentSetupView(onCompleted: onCompleted)
         case .welcome:
             NavigationStack {
                 ScrollView {
@@ -40,16 +42,18 @@ struct OnboardingView: View {
                                 detail: "Uses recent completed days to estimate your baseline calorie budget.")
                             permission("Height", icon: "ruler",
                                 detail: "Prefills your details and sets the healthy BMI range shown in your weight chart.")
-                            permission("Biological sex", icon: "person.fill",
-                                detail: "Prefills the optional setting for the fallback calorie estimate and ACE body-fat reference lines. Adult BMI ranges are the same for all sexes. You can change the setting or use Neutral.")
                             permission("Weight", icon: "scalemass",
-                                detail: "Uses your latest reading for progress and a fallback estimate when resting energy isn't available.")
+                                detail: "Uses your latest reading for progress and a fallback estimate when resting energy isn't available. You can also log your weight manually.")
                             permission("Body fat", icon: "chart.xyaxis.line",
                                 detail: "Adds body-fat readings to your progress chart. This is optional.")
+                            permission("Biological sex", icon: "person.fill",
+                                detail: "Prefills the optional setting for the fallback calorie estimate and ACE body-fat reference lines.")
+                            permission("Food calories", icon: "fork.knife",
+                                detail: "Optional export writes new food logs as Dietary Energy so Apple Health can show your food calorie totals. Permission is requested when you enable export.")
                             permission("Water", icon: "drop.fill",
                                 detail: "Shows your recorded water intake and progress toward your daily goal.")
                         }
-                        Text("The next sheet asks to read these values. Writing water is requested when you log a glass; writing weight when you log it to Health. Writing food calories is an optional setting.")
+                        Text("The next sheet asks for read access. Write access is requested separately: water when you log a glass, weight when you log it manually, and food calories when you enable export.")
                             .font(.footnote).foregroundStyle(.secondary)
                         Text("Your details and latest weight are saved to your account. Other Health history stays on this device unless you request a daily review.")
                             .font(.footnote).foregroundStyle(.secondary)
@@ -134,7 +138,7 @@ private struct OnboardingDetailsView: View {
                 Section {
                     TextField("Weight in kg", text: $draft.weight).keyboardType(.decimalPad)
                 } header: { Text("Weight") } footer: {
-                    Text("Used for progress and the fallback estimate. This value is saved to your account; you can connect a scale or log a Health weight later.")
+                    Text("Used for progress and the fallback estimate. This value is saved to your account; you can connect a scale or log weight manually later.")
                 }
                 Section {
                     Picker("Estimate setting", selection: $draft.estimateProfile) {
@@ -143,7 +147,7 @@ private struct OnboardingDetailsView: View {
                         Text("Male").tag("male")
                     }
                 } header: { Text("Optional") } footer: {
-                    Text("Adjusts the fallback estimate and ACE body-fat reference lines. Adult BMI ranges do not depend on sex. You can keep Neutral or change this later.")
+                    Text("Adjusts the fallback estimate and ACE body-fat reference lines.")
                 }
                 Section {
                     Button("Continue") { onContinue() }

@@ -16,6 +16,7 @@ enum AgentSetupCopy {
 }
 
 struct AgentSetupView: View {
+    var onCompleted: (() -> Void)? = nil
     @Environment(FoodStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
@@ -31,6 +32,10 @@ struct AgentSetupView: View {
                     Text("Your food log. Your AI agent.").font(.headline)
                     Text("00Food has no built-in food catalogue or bundled AI agent. Connect your favourite compatible agent to estimate new foods and help you review your day. You approve the estimates and build your own reusable library.")
                     Text("Manual logging is always available.").font(.footnote).foregroundStyle(.secondary)
+                    if onCompleted != nil {
+                        Text("You can connect now or start logging and return here from Settings.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
                 }
                 Section("1. Connect your agent") {
                     Text("ChatGPT Work is the recommended setup for automatic responses. In ChatGPT Plugins, choose Add custom MCP server, paste this address, and sign in with the same Apple account you use in 00Food.")
@@ -85,7 +90,14 @@ struct AgentSetupView: View {
             }
             .navigationTitle("Connect your agent")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(onCompleted == nil ? "Done" : "Start logging") {
+                        if let onCompleted { onCompleted() }
+                        else { dismiss() }
+                    }
+                }
+            }
             .task { await refresh() }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active { Task { await refresh() } }

@@ -2,6 +2,17 @@ import XCTest
 @testable import ZeroZeroFood
 
 final class OnboardingTests: XCTestCase {
+    func testSavingPaceKeepsOnboardingVisibleUntilAgentSetupFinishes() {
+        var session = OnboardingSession()
+        XCTAssertTrue(session.isPresented(hasProfile: false, replay: false))
+        session.start()
+        // The profile is now created, but Connect your agent is still a setup step.
+        XCTAssertTrue(session.isPresented(hasProfile: true, replay: false))
+        session.finish()
+        XCTAssertFalse(session.isPresented(hasProfile: true, replay: false))
+        XCTAssertTrue(session.isPresented(hasProfile: true, replay: true))
+    }
+
     func testReplayIsConsumedOnlyOnceAtLaunch() {
         let suite = "OnboardingTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

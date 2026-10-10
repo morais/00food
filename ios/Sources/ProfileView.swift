@@ -9,7 +9,8 @@ struct ProfileView: View {
     @State private var heightCm = 170.0
     @State private var savedWeightKg: Double?
     @State private var estimateProfile = "neutral"
-    @State private var deficitPercent = 10
+    @State private var showingPacePicker = false
+    @State private var selectedDeficitPercent = DeficitLevel.gentle.rawValue
     @State private var busy = false
     @State private var errorText: String?
     @State private var showingManualWeight = false
@@ -47,8 +48,23 @@ struct ProfileView: View {
                             .foregroundStyle(.secondary)
                         InfoDisclosure(title: "Resting estimate from your details", message: restingExplanation)
                     }
-                } header: { Text("Your details") } footer: {
-                    Text("The fallback resting estimate uses a reference age of 35.")
+                } header: { Text("Your details") }
+                Section {
+                    Button {
+                        selectedDeficitPercent = currentDeficitPercent
+                        showingPacePicker = true
+                    } label: {
+                        HStack {
+                            Text("Plan")
+                            Spacer()
+                            Text("\(DeficitLevel(rawValue: currentDeficitPercent)?.title ?? "Custom") · \(currentDeficitPercent)%")
+                                .foregroundStyle(.secondary)
+                            Image(systemName: "chevron.right")
+                                .font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+                        }
+                        .foregroundStyle(.primary)
+                    }
+                    .buttonStyle(.plain).disabled(busy || !valid)
                 }
                 Section {
                     HStack {
@@ -111,12 +127,22 @@ struct ProfileView: View {
                     heightCm = profile.heightCm
                     savedWeightKg = profile.weightKg
                     estimateProfile = profile.estimateProfile
-                    deficitPercent = profile.deficitPercent
                 }
             }
             .task {
                 health.setHistoryStart(store.accountStartedAt)
                 await health.refresh()
+            }
+            .sheet(isPresented: $showingPacePicker) {
+                PaceSelectionView(profile: preview, deficitPercent: $selectedDeficitPercent,
+                                  firstDay: store.accountStartedAt ?? Calendar.current.startOfDay(for: Date()),
+                                  saveTitle: "Save plan", onCancel: { showingPacePicker = false }) { updated in
+                    // Save only the plan here; other form edits wait for Done.
+                    var saved = store.profile ?? updated
+                    saved.deficitPercent = updated.deficitPercent
+                    try await store.saveProfile(saved)
+                    showingPacePicker = false
+                }
             }
             .sheet(isPresented: $showingManualWeight) {
                 ManualWeightView { savedWeightKg = $0 }
@@ -130,9 +156,10 @@ struct ProfileView: View {
     private var valid: Bool {
         (100...250).contains(heightCm) && recordedWeightKg != nil
     }
+    private var currentDeficitPercent: Int { store.profile?.deficitPercent ?? DeficitLevel.gentle.rawValue }
     private var preview: FoodProfile {
         FoodProfile(heightCm: heightCm, weightKg: recordedWeightKg ?? 70,
-                    estimateProfile: estimateProfile, deficitPercent: deficitPercent)
+                    estimateProfile: estimateProfile, deficitPercent: currentDeficitPercent)
     }
 
     private var recordedWeightKg: Double? { health.usableLatestWeightKg ?? savedWeightKg }

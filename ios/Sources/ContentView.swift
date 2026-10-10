@@ -12,6 +12,7 @@ struct RootView: View {
     private var pendingWidgetLaunch = ""
     @State private var errorText: String?
     @State private var feedbackSyncing = false
+    @State private var onboardingSession = OnboardingSession()
 
     init(replayOnboarding: Binding<Bool> = .constant(false)) {
         _replayOnboarding = replayOnboarding
@@ -41,8 +42,12 @@ struct RootView: View {
         Group {
             if !store.signedIn { SignInView() }
             else if !store.hasLoadedSnapshot { accountLoadView }
-            else if store.profile == nil || replayOnboarding {
-                OnboardingView(onCompleted: { replayOnboarding = false })
+            else if onboardingSession.isPresented(hasProfile: store.profile != nil, replay: replayOnboarding) {
+                OnboardingView(onCompleted: {
+                    replayOnboarding = false
+                    onboardingSession.finish()
+                })
+                .onAppear { onboardingSession.start() }
             }
             else { HomeView() }
         }
@@ -96,6 +101,9 @@ struct RootView: View {
                 await health.refresh()
                 await queueDailyFeedback()
             }
+        }
+        .onChange(of: store.signedIn) { _, signedIn in
+            if !signedIn { onboardingSession.finish() }
         }
         .onChange(of: store.dailyFeedbackEnabled) { _, enabled in
             if enabled { Task { await queueDailyFeedback() } }

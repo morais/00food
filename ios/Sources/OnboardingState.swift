@@ -12,8 +12,17 @@ enum OnboardingReplay {
     }
 }
 
+// Creating the profile at the pace step must not dismiss the final agent setup
+// screen. The root keeps this session alive until the user finishes or cancels.
+struct OnboardingSession {
+    private(set) var active = false
+    mutating func start() { active = true }
+    mutating func finish() { active = false }
+    func isPresented(hasProfile: Bool, replay: Bool) -> Bool { active || !hasProfile || replay }
+}
+
 enum OnboardingStep: Equatable {
-    case welcome, essentials, pace
+    case welcome, essentials, pace, agent
 
     static func afterHealth(heightCm: Double?, weightKg: Double?) -> OnboardingStep {
         // Biological sex and body fat are optional. Saved/manual details cannot
