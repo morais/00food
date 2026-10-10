@@ -41,7 +41,7 @@ enum WatchScreenshotFixtures {
         snapshot.fruitVegPortions = 4
         snapshot.allowanceReady = true
         snapshot.foods = foods
-        snapshot.estimates = [
+        snapshot.estimates = scenario == "overview" ? [] : [
             WatchEstimate(id: "00000000-0000-4000-8000-000000000004", name: "Yogurt & berries", state: "proposed"),
             WatchEstimate(id: "00000000-0000-4000-8000-000000000005", name: "Lunch bowl", state: "pending"),
         ]

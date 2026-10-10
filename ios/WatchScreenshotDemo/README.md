@@ -10,6 +10,8 @@ The copied UI is adapted only to select a route, open the existing portion
 sheet, seed text/quantity, and fix its clock at October 7, 2026, 18:41 UTC.
 The fixtures contain fictional foods, balance/water values, and estimate states.
 They are marketing examples, not actual agent responses or review evidence.
+The balance scene has no estimate requests, so the production home view omits
+its Food estimates button. The estimates scene retains the two sample requests.
 
 Scenes: `overview`, `library`, `portion`, `water`, `estimates`, and optionally
 `describe`. Pass `--scene <name>` when launching the simulator app.
