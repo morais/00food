@@ -9,6 +9,7 @@ struct QuickAddView: View {
     }
 
     var openCameraOnAppear = false
+    var logDate: Date? = nil
     @Environment(FoodStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
@@ -48,7 +49,7 @@ struct QuickAddView: View {
                 .padding(.bottom, 4)
                 foodList
             }
-            .navigationTitle("Log food")
+            .navigationTitle(logDate.map { "Log food · \($0.formatted(.dateTime.month(.abbreviated).day()))" } ?? "Log food")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
             .sheet(isPresented: $showingCamera) { CameraPicker { image in setPhoto(image) } }
@@ -60,7 +61,7 @@ struct QuickAddView: View {
                 if !Task.isCancelled { showingCamera = true }
             }
             .sheet(isPresented: $showingManual) {
-                ManualFoodView(initialName: descriptionText.isEmpty ? query : descriptionText) { dismiss() }
+                ManualFoodView(initialName: descriptionText.isEmpty ? query : descriptionText, logDate: logDate) { dismiss() }
             }
             .sheet(item: $editingPortions) { FruitVegPortionsView(food: $0) }
             .onChange(of: selectedTab) { _, tab in
@@ -237,7 +238,12 @@ struct QuickAddView: View {
         busy = true
         Task {
             defer { busy = false }
-            do { try await store.log(food, quantity: quantity); dismiss() }
+            do {
+                try await store.log(food, quantity: quantity,
+                                    loggedAt: FoodDates.logTimestamp(on: logDate),
+                                    localDate: logDate.map(FoodDates.localDate))
+                dismiss()
+            }
             catch { errorText = error.localizedDescription }
         }
     }
@@ -248,7 +254,7 @@ struct QuickAddView: View {
             defer { busy = false }
             do {
                 try await store.requestEstimate(description: descriptionText.trimmingCharacters(in: .whitespacesAndNewlines),
-                                                photo: photoData)
+                                                photo: photoData, localDate: logDate.map(FoodDates.localDate))
                 dismiss()
             } catch { errorText = error.localizedDescription }
         }
@@ -287,10 +293,12 @@ struct ManualFoodView: View {
     @State private var busy = false
     @State private var errorText: String?
     var onSaved: () -> Void
+    var logDate: Date?
 
-    init(initialName: String, onSaved: @escaping () -> Void = {}) {
+    init(initialName: String, logDate: Date? = nil, onSaved: @escaping () -> Void = {}) {
         _name = State(initialValue: initialName)
         self.onSaved = onSaved
+        self.logDate = logDate
     }
 
     var body: some View {
@@ -328,7 +336,8 @@ struct ManualFoodView: View {
             do {
                 let food = try await store.createFood(name: name, serving: serving, kcal: value,
                                                       fruitVegPortions: fruitVegPortions)
-                try await store.log(food)
+                try await store.log(food, loggedAt: FoodDates.logTimestamp(on: logDate),
+                                    localDate: logDate.map(FoodDates.localDate))
                 dismiss()
                 onSaved()
             } catch { errorText = error.localizedDescription }

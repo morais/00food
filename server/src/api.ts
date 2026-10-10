@@ -63,6 +63,7 @@ const foodInput = z.strictObject({
 const logInput = z.strictObject({
   id: id.optional(), foodId: id, quantity: z.number().min(0.1).max(20).default(1),
   localDate: day, loggedAt: z.iso.datetime({ offset: true }).optional(),
+  createdAt: z.iso.datetime({ offset: true }).optional(),
 });
 const estimationInput = z.strictObject({
   id: id.optional(), description: z.string().trim().max(500), localDate: day,
@@ -86,6 +87,7 @@ type FoodRow = {
 type LogRow = {
   id: string; food_id: string; food_name: string; serving: string;
   quantity: number; kcal: number; fruit_veg_portions: number; local_date: string; logged_at: string;
+  created_at?: string | null;
 };
 type ProfileRow = { height_cm: number; weight_kg: number; estimate_profile: string; deficit_kcal: number; deficit_percent: number; birth_year: number | null; updated_at: string };
 type EstimationRow = {
@@ -105,7 +107,7 @@ export const foodView = (r: FoodRow) => ({
 export const logView = (r: LogRow) => ({
   id: r.id, foodId: r.food_id, foodName: r.food_name, serving: r.serving,
   quantity: r.quantity, kcal: r.kcal, fruitVegPortions: r.fruit_veg_portions,
-  localDate: r.local_date, loggedAt: r.logged_at,
+  localDate: r.local_date, loggedAt: r.logged_at, createdAt: r.created_at ?? r.logged_at,
 });
 export const estimationView = (r: EstimationRow) => ({
   id: r.id, description: r.description, hasPhoto: !!r.photo_key, state: r.state,
@@ -130,10 +132,11 @@ function validateJpeg(bytes: Uint8Array): void {
   }
 }
 
-async function body(req: Request, limit = 16000): Promise<unknown> {
+async function body(req: Request, limit = 16000, allowEmpty = false): Promise<unknown> {
   if (Number(req.headers.get("content-length") || 0) > limit) fail(413, "Request too large");
   const raw = await req.text();
   if (raw.length > limit) fail(413, "Request too large");
+  if (allowEmpty && !raw.trim()) return {};
   try { return JSON.parse(raw); } catch { return fail(400, "Expected JSON"); }
 }
 
@@ -256,9 +259,26 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     }
     const existing = await env.DB.prepare("SELECT * FROM daily_feedback_requests WHERE tenant_id = ? AND local_date = ?")
       .bind(tenantId, input.localDate).first<DailyFeedbackRow>();
-    if (existing) return json({ request: dailyFeedbackView(existing) }, 201);
+    if (existing && (existing.id === input.id || !input.replacesRequestId)) {
+      return json({ request: dailyFeedbackView(existing) }, 201);
+    }
+    if (input.replacesRequestId && (!existing || existing.id !== input.replacesRequestId || !existing.needs_refresh)) {
+      // Another request may already have replaced this review. A retry must not
+      // clear that newer response or generate another agent event.
+      if (existing && existing.id !== input.replacesRequestId) {
+        return json({ request: dailyFeedbackView(existing) }, 201);
+      }
+      throw new APIError(409, "Add a food to this day before requesting a new review");
+    }
+    const occupied = await env.DB.prepare("SELECT id FROM daily_feedback_requests WHERE id = ?")
+      .bind(input.id).first<{ id: string }>();
+    if (occupied) throw new APIError(409, "Feedback request ID is already in use");
     const now = new Date().toISOString();
-    const [, dailyDeliveries] = await env.DB.batch([
+    const changes = await env.DB.batch([
+      ...(input.replacesRequestId ? [env.DB.prepare(`DELETE FROM daily_feedback_requests
+        WHERE id = ? AND tenant_id = ? AND local_date = ? AND needs_refresh = 1
+          AND NOT EXISTS (SELECT 1 FROM daily_feedback_requests WHERE id = ?)`)
+        .bind(input.replacesRequestId, tenantId, input.localDate, input.id)] : []),
       env.DB.prepare(`INSERT OR IGNORE INTO daily_feedback_requests
         (id, tenant_id, local_date, time_zone, health_json, state, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`).bind(input.id, tenantId, input.localDate,
@@ -268,7 +288,7 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     const row = await env.DB.prepare("SELECT * FROM daily_feedback_requests WHERE tenant_id = ? AND local_date = ?")
       .bind(tenantId, input.localDate).first<DailyFeedbackRow>();
     if (!row) throw new APIError(409, "Feedback request ID is already in use");
-    if (row.id === input.id) await notifyDailyFeedbackEvent(env, tenantId, dailyDeliveries.meta.changes > 0);
+    if (row.id === input.id) await notifyDailyFeedbackEvent(env, tenantId, changes[changes.length - 1].meta.changes > 0);
     return json({ request: dailyFeedbackView(row) }, 201);
   }
   if (path === "/v1/profile" && method === "PUT") {
@@ -346,9 +366,9 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     const portions = Math.min(5, Math.round(food.fruit_veg_portions * input.quantity));
     const loggedAt = input.loggedAt || now;
     const row = await env.DB.prepare(`INSERT OR IGNORE INTO food_logs
-      (id, tenant_id, food_id, food_name, serving, quantity, kcal, fruit_veg_portions, local_date, logged_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`).bind(logId, tenantId, food.id, food.name,
-        food.serving, input.quantity, calories, portions, input.localDate, loggedAt).first<LogRow>();
+      (id, tenant_id, food_id, food_name, serving, quantity, kcal, fruit_veg_portions, local_date, logged_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`).bind(logId, tenantId, food.id, food.name,
+        food.serving, input.quantity, calories, portions, input.localDate, loggedAt, input.createdAt ?? now).first<LogRow>();
     // Nothing returned means the ID belongs to another account's log.
     if (!row) throw new APIError(409, "Log ID is already in use");
     await env.DB.prepare(`UPDATE foods SET use_count = use_count + 1,
@@ -454,6 +474,10 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
   }
   const acceptMatch = /^\/v1\/estimations\/([a-f0-9-]{36})\/accept$/.exec(path);
   if (acceptMatch && method === "POST") {
+    // Older app builds send no body; newer ones preserve the meal's local day
+    // in Health as well as in the food log when accepting a late estimate.
+    const input = z.strictObject({ loggedAt: z.iso.datetime({ offset: true }).optional() })
+      .parse(await body(req, 16000, true));
     const row = await findEstimation(env, tenantId, acceptMatch[1]);
     if (!row || row.state !== "proposed" || !row.proposed_name || !row.proposed_serving || !row.proposed_kcal) {
       throw new APIError(409, "No estimate is ready for review");
@@ -461,22 +485,23 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     const foodId = crypto.randomUUID();
     const logId = crypto.randomUUID();
     const now = new Date().toISOString();
+    const loggedAt = input.loggedAt ?? now;
     const portions = row.proposed_fruit_veg_portions ?? 0;
     const accepted = await env.DB.batch([
       env.DB.prepare(`INSERT INTO foods
         (id, tenant_id, name, serving, kcal, fruit_veg_portions, source, use_count, last_used_at, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, 'agent', 1, ?, ?, ?)`).bind(foodId, tenantId, row.proposed_name,
-          row.proposed_serving, row.proposed_kcal, portions, now, now, now),
+          row.proposed_serving, row.proposed_kcal, portions, loggedAt, now, now),
       env.DB.prepare(`INSERT INTO food_logs
-        (id, tenant_id, food_id, food_name, serving, quantity, kcal, fruit_veg_portions, local_date, logged_at)
-        VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`).bind(logId, tenantId, foodId,
-          row.proposed_name, row.proposed_serving, row.proposed_kcal, portions, row.local_date, now),
+        (id, tenant_id, food_id, food_name, serving, quantity, kcal, fruit_veg_portions, local_date, logged_at, created_at)
+        VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`).bind(logId, tenantId, foodId,
+          row.proposed_name, row.proposed_serving, row.proposed_kcal, portions, row.local_date, loggedAt, now),
       env.DB.prepare("DELETE FROM pending_estimations WHERE id = ? AND tenant_id = ?").bind(row.id, tenantId),
       env.DB.prepare(`INSERT INTO food_events (tenant_id, event_key, kind, subject_id, payload_json, created_at)
         VALUES (?, ?, 'food_logged', ?, ?, ?)`).bind(tenantId, `log:${logId}`, logId,
           JSON.stringify({ id: logId, foodId, foodName: row.proposed_name, serving: row.proposed_serving,
             quantity: 1, kcal: row.proposed_kcal, fruitVegPortions: portions,
-            localDate: row.local_date, loggedAt: now }), now),
+            localDate: row.local_date, loggedAt }), now),
       webhookDeliveryInsert(env, tenantId, `log:${logId}`),
     ]);
     await notifyFoodEvent(env, tenantId, accepted[accepted.length - 1].meta.changes > 0);

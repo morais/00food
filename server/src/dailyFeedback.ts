@@ -15,12 +15,14 @@ const healthDay = z.strictObject({
 export const dailyFeedbackInput = z.strictObject({
   id: z.uuid(), localDate: z.iso.date(), timeZone: z.string().min(1).max(100),
   healthDays: z.array(healthDay).max(7),
+  replacesRequestId: z.uuid().optional(),
 });
 
 export type DailyFeedbackRow = {
   id: string; tenant_id: string; local_date: string; time_zone: string;
   health_json: string; state: "pending" | "ready"; feedback_text: string | null;
   created_at: string; updated_at: string;
+  needs_refresh?: number;
 };
 
 type LogRow = { id: string; food_name: string; serving: string; quantity: number;
@@ -41,6 +43,7 @@ export const dailyReviewGuidance = [
 export const dailyFeedbackView = (row: DailyFeedbackRow) => ({
   id: row.id, localDate: row.local_date, state: row.state, feedback: row.feedback_text,
   createdAt: row.created_at, updatedAt: row.updated_at,
+  needsRefresh: row.needs_refresh === 1,
 });
 
 export function dateBefore(localDate: string, days: number): string {

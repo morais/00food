@@ -126,12 +126,16 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     }
 
     func requestDailyFeedback(_ upload: DailyFeedbackUpload) throws {
-        guard !dailyFeedback.contains(where: { $0.localDate == upload.localDate }) else { return }
+        if let existing = dailyFeedback.first(where: { $0.localDate == upload.localDate }) {
+            guard upload.replacesRequestId == existing.id,
+                  existing.canRequestNewReview(enabled: dailyFeedbackEnabled) else { return }
+        } else if upload.replacesRequestId != nil { return }
         let now = Self.now()
         let request = DailyFeedbackRequest(id: upload.id, localDate: upload.localDate,
                                            state: "pending", feedback: nil,
                                            createdAt: now, updatedAt: now)
         try stage(.requestDailyFeedback(upload)) {
+            dailyFeedback.removeAll { $0.localDate == upload.localDate }
             dailyFeedback.append(request)
             dailyFeedback.sort { $0.localDate > $1.localDate }
         }
@@ -171,18 +175,29 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         }
     }
 
+    func canRequestUpdatedDailyFeedback(on date: Date) -> Bool {
+        signedIn && dailyFeedback.first { $0.localDate == FoodDates.localDate(for: date) }?
+            .canRequestNewReview(enabled: dailyFeedbackEnabled) == true
+    }
+
     @discardableResult
-    func requestDailyFeedback(on date: Date, using health: HealthEnergy) async throws -> Bool {
-        guard canRequestDailyFeedback(on: date) else { return false }
+    func requestDailyFeedback(on date: Date, using health: HealthEnergy, replaceExisting: Bool = false) async throws -> Bool {
+        let eligible = replaceExisting ? canRequestUpdatedDailyFeedback(on: date) : canRequestDailyFeedback(on: date)
+        guard eligible else { return false }
+        let accountToken = token
         let calendar = Calendar.current
         let first = calendar.date(byAdding: .day, value: -6, to: date) ?? date
         let key = FoodDates.localDate(for: date)
+        let previousID = replaceExisting ? dailyFeedback.first { $0.localDate == key }?.id : nil
         let firstKey = FoodDates.localDate(for: first)
         let healthDays = try await health.dailyFeedbackHealth(from: first, through: date)
             .filter { $0.localDate >= firstKey && $0.localDate <= key }
-        guard canRequestDailyFeedback(on: date) else { return false }
+        guard token == accountToken,
+              replaceExisting ? canRequestUpdatedDailyFeedback(on: date) : canRequestDailyFeedback(on: date) else { return false }
+        if replaceExisting && dailyFeedback.first(where: { $0.localDate == key })?.id != previousID { return false }
         try requestDailyFeedback(DailyFeedbackUpload(id: UUID().uuidString.lowercased(),
-            localDate: key, timeZone: TimeZone.current.identifier, healthDays: healthDays))
+            localDate: key, timeZone: TimeZone.current.identifier, healthDays: healthDays,
+            replacesRequestId: previousID))
         return true
     }
 
@@ -332,9 +347,13 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
                           kcal: max(1, Int((Double(food.kcal) * quantity).rounded())),
                           localDate: localDate ?? FoodDates.localDate(for: loggedAt),
                           loggedAt: ISO8601DateFormatter().string(from: loggedAt),
-                          fruitVegPortions: min(5, Int((Double(food.countedFruitVegPortions) * quantity).rounded())))
+                          fruitVegPortions: min(5, Int((Double(food.countedFruitVegPortions) * quantity).rounded())),
+                          createdAt: Self.now())
         try stage(.log(log)) {
             logs.insert(log, at: 0)
+            for index in dailyFeedback.indices where dailyFeedback[index].localDate == log.localDate {
+                dailyFeedback[index].needsRefresh = true
+            }
             if let index = foods.firstIndex(where: { $0.id == food.id }) {
                 foods[index].useCount += 1
                 foods[index].lastUsedAt = log.loggedAt
@@ -407,7 +426,10 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     }
 
     func accept(_ estimation: PendingEstimation) async throws {
-        let _: AcceptedResponse = try await call("/v1/estimations/\(estimation.id)/accept", method: "POST")
+        let loggedAt = FoodDates.logTimestamp(on: FoodDates.parseLocalDate(estimation.localDate))
+        let _: AcceptedResponse = try await call("/v1/estimations/\(estimation.id)/accept", method: "POST", body: [
+            "loggedAt": ISO8601DateFormatter().string(from: loggedAt),
+        ])
         try await refresh(force: true)
     }
 
@@ -571,6 +593,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
             let _: LogResponse = try await call("/v1/logs", method: "POST", body: [
                 "id": log.id, "foodId": log.foodId, "quantity": log.quantity,
                 "localDate": log.localDate, "loggedAt": log.loggedAt,
+                "createdAt": log.createdAt ?? log.loggedAt,
             ])
         case .dismissFood(let id):
             let _: FoodResponse = try await call("/v1/foods/\(id)/dismiss", method: "POST")
@@ -602,10 +625,12 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
                  "weightKg": day.weightKg as Any? ?? NSNull(),
                  "bodyFatPercent": day.bodyFatPercent as Any? ?? NSNull()]
             }
-            let _: DailyFeedbackResponse = try await call("/v1/daily-feedback", method: "POST", body: [
+            var body: [String: Any] = [
                 "id": upload.id, "localDate": upload.localDate,
                 "timeZone": upload.timeZone, "healthDays": healthDays,
-            ])
+            ]
+            if let previousID = upload.replacesRequestId { body["replacesRequestId"] = previousID }
+            let _: DailyFeedbackResponse = try await call("/v1/daily-feedback", method: "POST", body: body)
         }
     }
 

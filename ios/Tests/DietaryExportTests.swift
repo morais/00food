@@ -24,6 +24,15 @@ final class DietaryExportTests: XCTestCase {
         XCTAssertFalse(restored.shouldExport(food), "Reauthorization must not duplicate an exported log")
     }
 
+    func testNewBackdatedMealIsExportedUsingItsCreationTime() {
+        let now = Date(timeIntervalSince1970: 1_790_000_000)
+        let state = DietaryExportState(enabledAt: now.addingTimeInterval(-60))
+        var meal = log(at: now.addingTimeInterval(-86400))
+        XCTAssertFalse(state.shouldExport(meal))
+        meal.createdAt = ISO8601DateFormatter().string(from: now)
+        XCTAssertTrue(state.shouldExport(meal), "A new entry for yesterday is not an old log to skip")
+    }
+
     private func log(at date: Date) -> FoodLog {
         FoodLog(id: "food-log", foodId: "food", foodName: "Yogurt", serving: "1 bowl", quantity: 1,
                 kcal: 200, localDate: FoodDates.localDate(for: date),

@@ -12,7 +12,7 @@ struct DietaryExportState: Codable {
     }
 
     func shouldExport(_ log: FoodLog) -> Bool {
-        guard let date = FoodDates.parseTimestamp(log.loggedAt) else { return false }
+        guard let date = FoodDates.parseTimestamp(log.createdAt ?? log.loggedAt) else { return false }
         return date >= enabledAt && log.kcal > 0 && exported[log.id] == nil
     }
 }

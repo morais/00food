@@ -247,6 +247,7 @@ struct FoodLog: Codable, Identifiable, Equatable {
     var localDate: String
     var loggedAt: String
     var fruitVegPortions: Int? = nil
+    var createdAt: String? = nil
     var countedFruitVegPortions: Int { min(5, max(0, fruitVegPortions ?? 0)) }
 }
 
@@ -293,6 +294,11 @@ struct DailyFeedbackRequest: Codable, Identifiable, Equatable {
     var feedback: String?
     var createdAt: String
     var updatedAt: String
+    var needsRefresh: Bool? = nil
+
+    func canRequestNewReview(enabled: Bool, today: String = FoodDates.today()) -> Bool {
+        enabled && needsRefresh == true && localDate < today
+    }
 }
 
 struct DailyFeedbackUpload: Codable {
@@ -300,9 +306,19 @@ struct DailyFeedbackUpload: Codable {
     var localDate: String
     var timeZone: String
     var healthDays: [DailyHealthDay]
+    var replacesRequestId: String? = nil
 }
 
 enum FoodDates {
+    // Use the current local time on the chosen meal day. Calendar arithmetic
+    // preserves the day across daylight-saving changes and different offsets.
+    static func logTimestamp(on day: Date?, now: Date = Date(), calendar: Calendar = .current) -> Date {
+        guard let day else { return now }
+        let time = calendar.dateComponents([.hour, .minute, .second], from: now)
+        return calendar.date(bySettingHour: time.hour ?? 12, minute: time.minute ?? 0,
+                             second: time.second ?? 0, of: day) ?? calendar.startOfDay(for: day)
+    }
+
     static func today() -> String {
         localDate(for: Date())
     }

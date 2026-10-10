@@ -207,6 +207,7 @@ struct HomeView: View {
     @Environment(HealthEnergy.self) private var health
     @State private var shortcuts = FoodQuickActions.shared
     @State private var addLaunch: FoodQuickLaunch?
+    @State private var backdatedLogDate: Date?
     @State private var showingSettings = false
     @State private var showingAgentSetup = false
     @State private var showingProgress = false
@@ -237,6 +238,10 @@ struct HomeView: View {
         guard let selectedWaterMl else { return "—" }
         return (Double(selectedWaterMl) / 250).formatted(.number.precision(.fractionLength(0...1)))
     }
+    private var selectedWaterAccessibilityLabel: String {
+        guard let selectedWaterMl else { return "Water unavailable" }
+        return selectedWaterMl >= 2000 ? "Water goal met: at least 8 glasses" : "\(selectedWaterGlasses) glasses of water"
+    }
     private var readyEstimateCount: Int { store.estimations.filter { $0.state == "proposed" }.count }
     private var offlineEstimateCount: Int { store.estimations.filter { $0.state == "uploading" }.count }
     private var waitingEstimateCount: Int { store.estimations.count - readyEstimateCount - offlineEstimateCount }
@@ -266,7 +271,7 @@ struct HomeView: View {
                             .padding().background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16))
                         }
                         balanceCard
-                        Button { addLaunch = .log } label: {
+                        Button { backdatedLogDate = nil; addLaunch = .log } label: {
                             Label("Log food", systemImage: "plus.circle.fill")
                                 .font(.headline).frame(maxWidth: .infinity).frame(height: 48)
                         }
@@ -295,7 +300,7 @@ struct HomeView: View {
                 }
             }
             .sheet(item: $addLaunch) { launch in
-                QuickAddView(openCameraOnAppear: launch == .camera)
+                QuickAddView(openCameraOnAppear: launch == .camera, logDate: backdatedLogDate)
             }
             .sheet(isPresented: $showingSettings) { SettingsView() }
             .sheet(isPresented: $showingAgentSetup) { AgentSetupView() }
@@ -331,6 +336,7 @@ struct HomeView: View {
     private func openPendingShortcut() {
         guard let launch = shortcuts.pendingLaunch else { return }
         shortcuts.pendingLaunch = nil
+        backdatedLogDate = nil
         let hasPresentedSheet = addLaunch != nil || showingSettings || showingAgentSetup || showingProgress || reviewing != nil
         if hasPresentedSheet {
             addLaunch = nil
@@ -657,6 +663,29 @@ struct HomeView: View {
                         .disabled(deletingLogID != nil)
                 }
             }
+            if !selectedDayIsToday {
+                Button {
+                    backdatedLogDate = selectedLogDate
+                    addLaunch = .log
+                } label: {
+                    Label("Add missing food", systemImage: "plus.circle.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .accessibilityLabel("Add food for \(selectedLogDate.formatted(date: .abbreviated, time: .omitted))")
+                if store.canRequestUpdatedDailyFeedback(on: selectedLogDate) {
+                    Button { requestSelectedReview(replaceExisting: true) } label: {
+                        HStack {
+                            if requestingSelectedFeedback { ProgressView() }
+                            else { Image(systemName: "arrow.clockwise") }
+                            Text("Request new review")
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(requestingSelectedFeedback)
+                }
+            }
         }
     }
 
@@ -676,11 +705,14 @@ struct HomeView: View {
                 WaterGlassIcon(filled: true)
                     .scaleEffect(0.58)
                     .frame(width: 17, height: 20)
-                Text(selectedWaterGlasses)
+                if let selectedWaterMl, selectedWaterMl >= 2000 {
+                    Image(systemName: "checkmark")
+                } else {
+                    Text(selectedWaterGlasses)
+                }
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(selectedWaterMl == nil ? "Water unavailable" :
-                "\(selectedWaterGlasses) glasses of water")
+            .accessibilityLabel(selectedWaterAccessibilityLabel)
             HStack(spacing: 4) {
                 Image(systemName: "leaf.fill").foregroundStyle(.green)
                 if selectedFruitVegPortions >= 5 {
@@ -712,12 +744,7 @@ struct HomeView: View {
             .accessibilityLabel(feedback.state == "ready" ? "Read daily review" : "Daily review pending")
         } else if store.canRequestDailyFeedback(on: selectedLogDate) {
             Button {
-                requestingSelectedFeedback = true
-                Task {
-                    defer { requestingSelectedFeedback = false }
-                    do { _ = try await store.requestDailyFeedback(on: selectedLogDate, using: health) }
-                    catch { errorText = error.localizedDescription }
-                }
+                requestSelectedReview()
             } label: {
                 if requestingSelectedFeedback { ProgressView() }
                 else { Label("Request review", systemImage: "text.bubble") }
@@ -726,6 +753,16 @@ struct HomeView: View {
             .fixedSize(horizontal: true, vertical: false)
             .disabled(requestingSelectedFeedback)
             .accessibilityLabel("Request a daily review for this day")
+        }
+    }
+
+    private func requestSelectedReview(replaceExisting: Bool = false) {
+        let date = selectedLogDate
+        requestingSelectedFeedback = true
+        Task {
+            defer { requestingSelectedFeedback = false }
+            do { _ = try await store.requestDailyFeedback(on: date, using: health, replaceExisting: replaceExisting) }
+            catch { errorText = error.localizedDescription }
         }
     }
 
