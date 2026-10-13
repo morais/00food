@@ -50,6 +50,12 @@ describe("daily review intake context", () => {
       // agent still has an older copy of the tool descriptions.
       expect(context.reviewGuidance.join(" ")).toContain("protein sources");
       expect(context.reviewGuidance.join(" ")).toContain("Do not invent nutrient quantities");
+      expect(context.reviewGuidance.join(" ")).toContain("clickable Markdown citations");
+      expect(context.referenceSources).toEqual([
+        { title: "WHO — Healthy diet", url: "https://www.who.int/news-room/fact-sheets/detail/healthy-diet" },
+        { title: "NHS — 5 A Day portion sizes", url: "https://www.nhs.uk/live-well/eat-well/5-a-day/portion-sizes/" },
+        { title: "EFSA — Dietary Reference Values for Water (2010)", url: "https://www.efsa.europa.eu/en/efsajournal/pub/1459" },
+      ]);
       expect(day("2026-10-08").foods[0].name).toBe("Lentils and vegetables");
     } finally { db.close(); }
   });

@@ -40,7 +40,14 @@ export const dailyReviewGuidance = [
   "No protein grams or other nutrient totals are supplied. Do not invent nutrient quantities, claim adequacy or deficiency, or infer an entire diet from incomplete logs. Note unclear meals and offer one practical food-based suggestion when useful.",
   "The current plan is a percentage deficit applied to total daily energy expenditure (TDEE = resting + active energy), including exercise. Use the supplied calorieBudget; never subtract a fixed gap from resting energy and then credit all exercise. Earlier days may have used a different plan. Missing Health energy does not mean zero expenditure.",
   "Use directional language, note missing or pending data, and avoid diagnoses or prescriptive calorie advice.",
+  "Include clickable Markdown citations next to any general health or nutrition recommendation. Use the supplied referenceSources for fruit/vegetable portions, water and diet balance; additional claims need a directly supporting authoritative source. Do not invent citations or present the app's chosen deficit percentages as medically recommended. Observations about the person's logged foods do not need a medical citation.",
   "Follow preferredDisplayUnits for body weights and water in the written review: metric uses kg and mL/L, us uses lb and US fl oz (29.5735295625 mL each), uk uses lb and imperial fl oz (28.4130625 mL each). Context numbers always stay in kg and mL; convert only the written values. Calories, body-fat percentages, food servings and produce portions stay unchanged. The water goal remains 2000 mL in every system.",
+];
+
+export const dailyReviewSources = [
+  { title: "WHO — Healthy diet", url: "https://www.who.int/news-room/fact-sheets/detail/healthy-diet" },
+  { title: "NHS — 5 A Day portion sizes", url: "https://www.nhs.uk/live-well/eat-well/5-a-day/portion-sizes/" },
+  { title: "EFSA — Dietary Reference Values for Water (2010)", url: "https://www.efsa.europa.eu/en/efsajournal/pub/1459" },
 ];
 
 export const dailyFeedbackView = (row: DailyFeedbackRow) => ({
@@ -110,6 +117,7 @@ export async function dailyFeedbackContext(env: Env, row: DailyFeedbackRow) {
     preferredDisplayUnits: row.display_units ?? "metric",
     currentPlanDeficitPercent: profile?.deficit_percent ?? null,
     reviewGuidance: dailyReviewGuidance,
+    referenceSources: dailyReviewSources,
     days, note: "Health values are daily aggregates when available. Missing values are null. Food totals omit pending estimates. The current plan may differ from the plan on earlier days." };
 }
 

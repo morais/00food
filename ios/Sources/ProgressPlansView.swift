@@ -96,7 +96,7 @@ struct ProgressPlansView: View {
             HStack {
                 Text("Calories over time").font(.title3.bold())
                 Spacer()
-                InfoDisclosure(title: "Calories over time", message: "Orange shows logged food within the allowance. Green fills the remaining allowance; red shows food above it. Each bar reaches the allowance or the food total, whichever is higher.\n\nAllowance is (resting + active energy) × (1 − your current plan’s deficit percentage). Completed days use their recorded Health resting and active energy; missing resting energy falls back to the recent resting average or your details estimate, and missing active energy counts as zero. Today uses the resting estimate plus active energy so far. Earlier plan changes are not tracked. Food totals include only food logged in 00Food.")
+                InfoDisclosure(title: "Calories over time", message: "Orange shows logged food within the allowance. Green fills the remaining allowance; red shows food above it. Each bar reaches the allowance or the food total, whichever is higher.\n\nAllowance is (resting + active energy) × (1 − your current plan’s deficit percentage). Completed days use their recorded Health resting and active energy; missing resting energy falls back to the recent resting average or your details estimate, and missing active energy counts as zero. Today uses the resting estimate plus active energy so far. Earlier plan changes are not tracked. Food totals include only food logged in 00Food.", sources: HealthSource.energy)
             }
             Picker("Period", selection: $calorieHistoryDays) {
                 Text("30 days").tag(30)
@@ -142,6 +142,7 @@ struct ProgressPlansView: View {
             } else {
                 Text("No calorie history yet.").foregroundStyle(.secondary)
             }
+            HealthSourcesButton(sources: HealthSource.energy)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -186,8 +187,7 @@ struct ProgressPlansView: View {
                 Text("Body fat over time").font(.title3.bold())
                 Spacer()
                 InfoDisclosure(title: "Body fat over time", message: bodyFatExplanation,
-                    linkTitle: aceObesityBoundary == nil ? nil : "ACE body-fat category chart",
-                    linkURL: aceObesityBoundary == nil ? nil : URL(string: "https://www.acefitness.org/fitness-certifications/ace-answers/exam-preparation-blog/3815/anthropometric-measurements-when-to-use-this-assessment/"))
+                    sources: HealthSource.bodyFat)
             }
             Chart {
                 ForEach(visibleACEBoundaries) { boundary in
@@ -265,6 +265,7 @@ struct ProgressPlansView: View {
                 }
                 .accessibilityElement(children: .combine)
             }
+            HealthSourcesButton(sources: HealthSource.bodyFat)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)

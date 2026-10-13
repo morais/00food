@@ -41,7 +41,7 @@ struct PlanProjectionCard: View {
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(title).font(.title3.bold())
-                InfoDisclosure(title: "About these charts", message: "Dotted lines are illustrations, not predictions.\n\nBMI is an adult screening measure, not a personal diagnosis or target. Your daily allowance is TDEE × (1 − your deficit percentage), including exercise. Today uses the seven-day resting estimate plus active energy so far. For the illustration we hold recent completed-day TDEE constant; expenditure and the calorie gap will change as your activity and body change. Your body adapts, and daily weight and body-fat measurements vary. Use the charts to compare directions, then adjust from your recorded trend.\n\nThe weight starting point uses a seven-day median when available. Weight change still uses \(units.weightEnergyExplanation). If body-fat data is available, the fat and fat-free mass split uses the Forbes model: FM / (FM + \(units.forbesConstant)), recalculated as fat mass decreases. Body fat uses the median of available daily readings from the seven-day window ending at its latest reading. New Health readings recalibrate that starting percentage. Only projected sustained loss is split; daily scale changes are not interpreted as fat loss, and water or glycogen changes cannot be identified separately.\n\n" + expenditureExplanation)
+                InfoDisclosure(title: "About these charts", message: "Dotted lines are illustrations, not predictions.\n\nBMI is an adult screening measure, not a personal diagnosis or target. Your daily allowance is TDEE × (1 − your deficit percentage), including exercise. Today uses the seven-day resting estimate plus active energy so far. For the illustration we hold recent completed-day TDEE constant; expenditure and the calorie gap will change as your activity and body change. Your body adapts, and daily weight and body-fat measurements vary. Use the charts to compare directions, then adjust from your recorded trend.\n\nThe weight starting point uses a seven-day median when available. Weight change still uses \(units.weightEnergyExplanation). If body-fat data is available, the fat and fat-free mass split uses the Forbes model: FM / (FM + \(units.forbesConstant)), recalculated as fat mass decreases. Body fat uses the median of available daily readings from the seven-day window ending at its latest reading. New Health readings recalibrate that starting percentage. Only projected sustained loss is split; daily scale changes are not interpreted as fat loss, and water or glycogen changes cannot be identified separately.\n\n" + expenditureExplanation, sources: HealthSource.projections)
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("\(deficit)% deficit").font(.subheadline.bold())
@@ -129,6 +129,7 @@ struct PlanProjectionCard: View {
                 Text("Estimated entry into the BMI range: \(bmiEntryDate.formatted(date: .abbreviated, time: .omitted))")
                     .font(.subheadline.weight(.medium))
             }
+            HealthSourcesButton(sources: HealthSource.projections)
             if let onChangePlan {
                 Button("Change plan", action: onChangePlan)
                     .buttonStyle(.bordered)

@@ -397,6 +397,7 @@ struct HomeView: View {
                 let budget = health.dailyBudget(for: profile)
                 Text("TDEE (\(budget.tdeeKcal) kcal) = resting estimate (\(resting)) + active energy (\(health.activeKcal)). Allowance (\(budget.allowanceKcal) kcal) = TDEE − \(profile.deficitPercent)% gap (\(budget.gapKcal) kcal). Calories left = allowance − food.")
                     .font(.caption).foregroundStyle(.secondary)
+                HealthSourcesButton(title: "Calculation sources", sources: HealthSource.energy)
             }
             HStack(spacing: 16) {
                 Label("\(store.consumedToday) eaten", systemImage: "fork.knife")
@@ -463,6 +464,7 @@ struct HomeView: View {
             }
             if request.state == "ready", let feedback = request.feedback {
                 DailyReviewText(markdown: feedback)
+                HealthSourcesButton(title: "Nutrition sources", sources: HealthSource.nutrition)
             } else {
                 Label("Waiting for your agent", systemImage: "clock")
                     .font(.subheadline).foregroundStyle(.secondary)
@@ -529,8 +531,7 @@ struct HomeView: View {
                 InfoDisclosure(
                     title: "8 glasses a day",
                     message: hydrationGuidance,
-                    linkTitle: "Source: EFSA, Dietary Reference Values for Water (2010)",
-                    linkURL: URL(string: "https://www.efsa.europa.eu/en/efsajournal/pub/1459")
+                    sources: [.water]
                 )
                 Spacer()
                 Text("\(units.water(Double(health.waterMlToday))) today")
@@ -588,8 +589,7 @@ struct HomeView: View {
                 InfoDisclosure(
                     title: "5 a day",
                     message: fruitVegGuidance,
-                    linkTitle: "Source: WHO, Healthy diet",
-                    linkURL: URL(string: "https://www.who.int/news-room/fact-sheets/detail/healthy-diet")
+                    sources: [.diet, .portions]
                 )
                 Spacer()
                 Text("\(store.fruitVegToday) of 5")

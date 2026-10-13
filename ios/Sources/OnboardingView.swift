@@ -57,6 +57,7 @@ struct OnboardingView: View {
                             .font(.footnote).foregroundStyle(.secondary)
                         Text("Your details and latest weight are saved to your account. Other Health history stays on this device unless you request a daily review.")
                             .font(.footnote).foregroundStyle(.secondary)
+                        HealthSourcesButton(title: "Health sources")
                         if let error = health.errorMessage {
                             Text(error).font(.footnote).foregroundStyle(.orange)
                         }
@@ -148,6 +149,10 @@ private struct OnboardingDetailsView: View {
                     }
                 } header: { Text("Optional") } footer: {
                     Text("Adjusts the fallback estimate and ACE body-fat reference lines.")
+                }
+                Section {
+                    HealthSourcesButton(title: "Calculation & reference sources",
+                                        sources: [.restingEstimate, .bmi, .ace])
                 }
                 Section {
                     Button("Continue") { onContinue() }

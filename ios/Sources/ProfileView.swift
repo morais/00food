@@ -46,7 +46,8 @@ struct ProfileView: View {
                         Spacer()
                         Text(recordedWeightKg == nil ? "Add weight first" : "\(preview.restingKcal) kcal/day")
                             .foregroundStyle(.secondary)
-                        InfoDisclosure(title: "Resting estimate from your details", message: restingExplanation)
+                        InfoDisclosure(title: "Resting estimate from your details", message: restingExplanation,
+                                       sources: HealthSource.energy)
                     }
                 } header: { Text("Your details") }
                 Section {
@@ -72,7 +73,8 @@ struct ProfileView: View {
                         Spacer()
                         Text(health.restingAverageKcal.map { "\($0) kcal/day" } ?? "Not enough data")
                             .foregroundStyle(.secondary)
-                        InfoDisclosure(title: "Resting energy", message: restingExplanation)
+                        InfoDisclosure(title: "Resting energy", message: restingExplanation,
+                                       sources: HealthSource.energy)
                     }
                     HStack {
                         Text("Active energy today")
@@ -181,7 +183,7 @@ struct ProfileView: View {
     private var recordedWeightKg: Double? { health.usableLatestWeightKg ?? savedWeightKg }
 
     private var restingExplanation: String {
-        let introduction = "Your allowance is (resting + active energy) × (1 − your plan’s deficit percentage). When available, the full-day resting estimate uses recent Apple Health resting energy. Active energy so far is included before the percentage is applied. Otherwise it uses a directional estimate from your details and latest recorded weight, using a reference age of 35. It does not account for health conditions or body composition."
+        let introduction = "Your allowance is (resting + active energy) × (1 − your plan’s deficit percentage). When available, the full-day resting estimate uses recent Apple Health resting energy. Active energy so far is included before the percentage is applied. Otherwise it uses the Mifflin–St Jeor equation with your details and latest recorded weight, substituting age 35. Neutral uses the midpoint of the Male and Female offsets; these substitutions are app assumptions. It does not account for health conditions or body composition."
         if let average = health.restingAverageKcal, recordedWeightKg != nil {
             let difference = average - preview.restingKcal
             return introduction + "\n\nThe Health average is \(difference >= 0 ? "+" : "")\(difference) kcal/day compared with your details estimate, based on \(health.restingDaysUsed) of the last 7 completed days."

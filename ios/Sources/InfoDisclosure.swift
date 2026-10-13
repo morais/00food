@@ -5,6 +5,7 @@ struct InfoDisclosure: View {
     let message: String
     var linkTitle: String? = nil
     var linkURL: URL? = nil
+    var sources: [HealthSource] = []
     @State private var showingInfo = false
 
     var body: some View {
@@ -23,6 +24,7 @@ struct InfoDisclosure: View {
                     if let linkTitle, let linkURL {
                         Link(linkTitle, destination: linkURL).font(.subheadline).foregroundStyle(.tint)
                     }
+                    if !sources.isEmpty { HealthSourceLinks(sources: sources) }
                 }
                 .textCase(nil)
                 .foregroundStyle(.primary)
