@@ -203,6 +203,7 @@ private struct WaterGlassIcon: View {
 
 struct HomeView: View {
     @Environment(\.foodUnits) private var units
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(FoodStore.self) private var store
     @ScaledMetric(relativeTo: .largeTitle) private var balanceSize: CGFloat = 48
     @Environment(HealthEnergy.self) private var health
@@ -230,6 +231,14 @@ struct HomeView: View {
     private var selectedLogs: [FoodLog] { store.logs(on: selectedLogDate) }
     private var selectedFeedback: DailyFeedbackRequest? {
         store.dailyFeedback.first { $0.localDate == FoodDates.localDate(for: selectedLogDate) }
+    }
+    private var yesterdayFeedback: DailyFeedbackRequest? {
+        guard let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date()) else { return nil }
+        return store.dailyFeedback.first { $0.localDate == FoodDates.localDate(for: yesterday) }
+    }
+    private var showsDailyFeedbackCard: Bool {
+        guard store.dailyFeedbackEnabled || !store.dailyFeedback.isEmpty else { return false }
+        return yesterdayFeedback.map { !store.dailyFeedbackCardIsDismissed($0) } ?? true
     }
     private var selectedDayIsToday: Bool { Calendar.current.isDateInToday(selectedLogDate) }
     private var selectedFruitVegPortions: Int {
@@ -280,8 +289,9 @@ struct HomeView: View {
                         if !store.estimations.isEmpty { estimatesSection }
                         hydrationCard
                         fiveADayCard
-                        if store.dailyFeedbackEnabled || !store.dailyFeedback.isEmpty {
+                        if showsDailyFeedbackCard {
                             dailyFeedbackCard
+                                .transition(.opacity)
                         }
 
                         foodLogSection
@@ -441,11 +451,35 @@ struct HomeView: View {
     private var dailyFeedbackCard: some View {
         let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date())
         return VStack(alignment: .leading, spacing: 12) {
-            Text(yesterday.map { "Yesterday, \($0.formatted(.dateTime.month(.abbreviated).day()))" } ?? "Yesterday")
-                .font(.title3.bold())
-            if let yesterday,
-               let request = store.dailyFeedback.first(where: { $0.localDate == FoodDates.localDate(for: yesterday) }) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(yesterday.map { "Yesterday, \($0.formatted(.dateTime.month(.abbreviated).day()))" } ?? "Yesterday")
+                    .font(.title3.bold())
+                Spacer(minLength: 8)
+                if let request = yesterdayFeedback, request.state == "ready", request.feedback != nil {
+                    Button {
+                        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                            store.dismissDailyFeedbackCard(request)
+                        }
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 28, height: 28)
+                            .background(.quaternary, in: Circle())
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Dismiss daily review")
+                    .accessibilityHint("The review stays available in previous days in the food log below")
+                }
+            }
+            if let request = yesterdayFeedback {
                 feedbackRow(request, showsDate: false)
+                if request.state == "ready", request.feedback != nil {
+                    Text("This review stays available in previous days in the food log below.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             } else {
                 Text("No review for yesterday yet.").font(.subheadline).foregroundStyle(.secondary)
             }

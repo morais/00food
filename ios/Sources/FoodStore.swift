@@ -43,6 +43,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     var estimations: [PendingEstimation] = []
     var dailyFeedback: [DailyFeedbackRequest] = []
     var dailyFeedbackEnabled = false
+    private(set) var dismissedDailyFeedbackCard: String?
     var connections: [MCPConnection] = []
     var hasLoadedConnections = false
     var accountEmail: String?
@@ -114,6 +115,18 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     var dailyFeedbackEnabledAt: String? {
         guard let accountId else { return nil }
         return UserDefaults.standard.string(forKey: "dailyFeedback.enabledAt.\(accountId)")
+    }
+
+    func dailyFeedbackCardIsDismissed(_ request: DailyFeedbackRequest) -> Bool {
+        request.state == "ready" && request.feedback != nil &&
+            dismissedDailyFeedbackCard == "\(request.id)|\(request.updatedAt)"
+    }
+
+    func dismissDailyFeedbackCard(_ request: DailyFeedbackRequest) {
+        guard let accountId, request.state == "ready", request.feedback != nil else { return }
+        // Only hide this received version; a new or revised review appears again.
+        dismissedDailyFeedbackCard = "\(request.id)|\(request.updatedAt)"
+        UserDefaults.standard.set(dismissedDailyFeedbackCard, forKey: "dailyFeedback.dismissedCard.\(accountId)")
     }
 
     func setDailyFeedbackEnabled(_ enabled: Bool) {
@@ -477,6 +490,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         logs = []
         estimations = []
         dailyFeedback = []
+        dismissedDailyFeedbackCard = nil
         connections = []
         hasLoadedConnections = false
         syncError = nil
@@ -505,6 +519,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         logs = []
         estimations = []
         dailyFeedback = []
+        dismissedDailyFeedbackCard = nil
         connections = []
         hasLoadedConnections = false
         operations = []
@@ -517,7 +532,8 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     /// Settings and Health export bookkeeping are stored per account in
     /// UserDefaults, which is backed up; none of it should outlive the session.
     private static func forgetAccountDefaults(_ accountId: String) {
-        for key in ["dailyFeedback.enabled.\(accountId)", "dailyFeedback.enabledAt.\(accountId)"] {
+        for key in ["dailyFeedback.enabled.\(accountId)", "dailyFeedback.enabledAt.\(accountId)",
+                    "dailyFeedback.dismissedCard.\(accountId)"] {
             UserDefaults.standard.removeObject(forKey: key)
         }
         HealthEnergy.forgetDietaryExport(for: accountId)
@@ -546,6 +562,9 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         estimations = snapshot.estimations
         dailyFeedback = snapshot.dailyFeedback ?? []
         dailyFeedbackEnabled = accountId.map { UserDefaults.standard.bool(forKey: "dailyFeedback.enabled.\($0)") } ?? false
+        dismissedDailyFeedbackCard = accountId.flatMap {
+            UserDefaults.standard.string(forKey: "dailyFeedback.dismissedCard.\($0)")
+        }
     }
 
     private func persist() throws {
