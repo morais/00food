@@ -129,11 +129,13 @@ struct PlanProjectionCard: View {
                 Text("Estimated entry into the BMI range: \(bmiEntryDate.formatted(date: .abbreviated, time: .omitted))")
                     .font(.subheadline.weight(.medium))
             }
-            HealthSourcesButton(sources: HealthSource.projections)
-            if let onChangePlan {
-                Button("Change plan", action: onChangePlan)
-                    .buttonStyle(.bordered)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+            HStack(spacing: 12) {
+                HealthSourcesButton(sources: HealthSource.projections)
+                Spacer(minLength: 8)
+                if let onChangePlan {
+                    Button("Change plan", action: onChangePlan)
+                        .buttonStyle(.bordered)
+                }
             }
         }
         .padding(16)

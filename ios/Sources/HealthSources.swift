@@ -73,6 +73,9 @@ struct HealthSourceLinks: View {
             Text("Sources").font(.subheadline.weight(.semibold))
             ForEach(sources) { source in
                 Link(source.title, destination: source.url).font(.subheadline)
+                    .foregroundStyle(.blue)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
@@ -90,6 +93,7 @@ struct HealthSourcesView: View {
                 Section {
                     Text(source.explanation).font(.subheadline)
                     Link("Read source ↗", destination: source.url)
+                        .foregroundStyle(.blue)
                         .accessibilityLabel("Read \(source.title)")
                 } header: { Text(source.title).textCase(nil) }
             }
@@ -108,6 +112,7 @@ struct HealthSourcesButton: View {
             Label(title, systemImage: "book")
         }
         .font(.footnote)
+        .foregroundStyle(.blue)
         .buttonStyle(.borderless)
         .accessibilityLabel("\(title), health information references")
         .sheet(isPresented: $showingSources) {

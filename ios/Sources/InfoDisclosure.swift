@@ -22,7 +22,7 @@ struct InfoDisclosure: View {
                     Text(title).font(.headline)
                     Text(message).font(.subheadline)
                     if let linkTitle, let linkURL {
-                        Link(linkTitle, destination: linkURL).font(.subheadline).foregroundStyle(.tint)
+                        Link(linkTitle, destination: linkURL).font(.subheadline).foregroundStyle(.blue)
                     }
                     if !sources.isEmpty { HealthSourceLinks(sources: sources) }
                 }
