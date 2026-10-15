@@ -311,6 +311,27 @@ struct DailyFeedbackUpload: Codable {
     var healthDays: [DailyHealthDay]
     var replacesRequestId: String? = nil
     var displayUnits: String? = MeasurementPreference.current().rawValue
+    // Optional so requests queued by older builds remain readable offline.
+    var userInstructions: String? = nil
+}
+
+enum DailyReviewInstructions {
+    // The API's string limit counts UTF-16 units. Keep complete characters
+    // when clipping so emoji and composed characters survive editing.
+    static let maximumLength = 2_000
+
+    static func limited(_ text: String) -> String {
+        guard text.utf16.count > maximumLength else { return text }
+        var result = ""
+        var length = 0
+        for character in text {
+            let size = String(character).utf16.count
+            guard length + size <= maximumLength else { break }
+            result.append(character)
+            length += size
+        }
+        return result
+    }
 }
 
 enum FoodDates {

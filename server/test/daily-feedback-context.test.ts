@@ -9,6 +9,9 @@ describe("daily review intake context", () => {
     expect(dailyFeedbackInput.parse(request).displayUnits).toBe("metric");
     expect(dailyFeedbackInput.parse({ ...request, displayUnits: "uk" }).displayUnits).toBe("uk");
     expect(dailyFeedbackInput.safeParse({ ...request, displayUnits: "invalid" }).success).toBe(false);
+    expect(dailyFeedbackInput.parse(request).userInstructions).toBe("");
+    expect(dailyFeedbackInput.parse({ ...request, userInstructions: "  Keep it brief.\n " }).userInstructions).toBe("Keep it brief.");
+    expect(dailyFeedbackInput.safeParse({ ...request, userInstructions: "x".repeat(2001) }).success).toBe(false);
   });
   it("distinguishes goal completion from exact intake, preserves water above 2 L and missing data", async () => {
     const { db, d1 } = migratedD1();
@@ -33,6 +36,7 @@ describe("daily review intake context", () => {
           { localDate: "2026-10-08", waterMl: 2750 },
         ]), state: "pending", feedback_text: null, created_at: now, updated_at: now };
       const context = await dailyFeedbackContext({ DB: d1 } as Env, row);
+      expect(context.userInstructions).toBe("");
       const day = (date: string) => context.days.find(day => day.localDate === date)!;
       expect(day("2026-10-06")).toMatchObject({ fruitVegPortions: 4,
         fruitVegPortionsQualifier: "logged_estimate", fruitVegGoalMet: false,

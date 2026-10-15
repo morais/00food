@@ -281,9 +281,9 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
           AND NOT EXISTS (SELECT 1 FROM daily_feedback_requests WHERE id = ?)`)
         .bind(input.replacesRequestId, tenantId, input.localDate, input.id)] : []),
       env.DB.prepare(`INSERT OR IGNORE INTO daily_feedback_requests
-        (id, tenant_id, local_date, time_zone, health_json, state, created_at, updated_at, display_units)
-        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)`).bind(input.id, tenantId, input.localDate,
-          input.timeZone, JSON.stringify(input.healthDays), now, now, input.displayUnits),
+        (id, tenant_id, local_date, time_zone, health_json, state, created_at, updated_at, display_units, user_instructions)
+        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`).bind(input.id, tenantId, input.localDate,
+          input.timeZone, JSON.stringify(input.healthDays), now, now, input.displayUnits, input.userInstructions),
       dailyFeedbackDeliveryInsert(env, tenantId, input.id),
     ]);
     const row = await env.DB.prepare("SELECT * FROM daily_feedback_requests WHERE tenant_id = ? AND local_date = ?")

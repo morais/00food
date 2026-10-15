@@ -39,6 +39,26 @@ function setup() {
 }
 
 describe("late food logs and renewed daily reviews", () => {
+  it("freezes instructions across retries and uses new instructions only for a new review request", async () => {
+    const { db, env, wakes, review, log } = setup();
+    const context = async () => dailyFeedbackContext(env,
+      db.prepare("SELECT * FROM daily_feedback_requests WHERE tenant_id = 'tenant'").get() as DailyFeedbackRow);
+    try {
+      expect((await review({ userInstructions: "  Focus on protein.  " })).status).toBe(201);
+      expect((await context()).userInstructions).toBe("Focus on protein.");
+      // Replaying the same request must not replace its preferences or wake the agent twice.
+      await review({ userInstructions: "Focus on variety instead." });
+      expect((await context()).userInstructions).toBe("Focus on protein.");
+      expect(wakes).toHaveLength(1);
+      await saveDailyFeedback(env, "tenant", reviewId, "Original review");
+      await log();
+      await review({ id: newReviewId, replacesRequestId: reviewId, userInstructions: "Focus on variety instead." });
+      expect((await context()).userInstructions).toBe("Focus on variety instead.");
+      expect((await context()).reviewGuidance.join(" ")).toContain("do not override citation requirements");
+      expect(wakes).toHaveLength(2);
+    } finally { db.close(); }
+  });
+
   it("requires a food addition, sends a fresh event once, and rejects the old agent response", async () => {
     const { db, env, yesterday, wakes, review, log } = setup();
     try {

@@ -33,7 +33,8 @@ final class PastDayLogTests: XCTestCase {
                           kcal: 300, localDate: "2026-10-09", loggedAt: "2026-10-09T18:00:00Z",
                           createdAt: "2026-10-10T18:00:00Z")
         let upload = DailyFeedbackUpload(id: "new-review", localDate: log.localDate,
-                                         timeZone: "Europe/Lisbon", healthDays: [], replacesRequestId: "old-review")
+                                         timeZone: "Europe/Lisbon", healthDays: [], replacesRequestId: "old-review",
+                                         userInstructions: "Focus on protein and keep it brief.")
         let state = OfflineFoodState(snapshot: FoodSnapshot(startedAt: nil, profile: nil, foods: [],
                                                            logs: [log], estimations: []),
                                      operations: [.log(log), .requestDailyFeedback(upload)])
@@ -46,5 +47,6 @@ final class PastDayLogTests: XCTestCase {
         XCTAssertEqual(restoredLog, log)
         XCTAssertEqual(restoredReview.replacesRequestId, "old-review")
         XCTAssertEqual(restoredReview.localDate, log.localDate)
+        XCTAssertEqual(restoredReview.userInstructions, "Focus on protein and keep it brief.")
     }
 }

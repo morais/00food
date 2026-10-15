@@ -43,6 +43,24 @@ struct SettingsView: View {
                         get: { store.dailyFeedbackEnabled },
                         set: { store.setDailyFeedbackEnabled($0) }
                     ))
+                    if store.dailyFeedbackEnabled {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Review instructions").font(.subheadline.weight(.semibold))
+                            TextField("Focus on protein and meal variety. Keep suggestions brief.", text: Binding(
+                                get: { store.dailyReviewInstructions },
+                                set: { store.setDailyReviewInstructions($0) }
+                            ), axis: .vertical)
+                                .lineLimit(3...8)
+                                .textInputAutocapitalization(.sentences)
+                                .accessibilityLabel("Review instructions")
+                            Text("\(store.dailyReviewInstructions.utf16.count.formatted()) / 2,000")
+                                .font(.caption2).monospacedDigit().foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                                .accessibilityLabel("\(store.dailyReviewInstructions.utf16.count) of 2,000 characters")
+                        }
+                        Text("Optional. Saved automatically on this iPhone and sent to your agent with each new review request, including requests for past days. Turning reviews off keeps your instructions for later.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
                     Text("When this is on, 00Food requests a background refresh after 12:15 a.m. to send the completed day and up to six earlier days to your private 00Food account. iOS decides when it runs. If the refresh is delayed, Health data is locked, or your phone is offline, it retries later or catches up when you open the app. This includes logged foods and calories, plus available Health totals for water, active and resting energy, weight, and body fat. Your connected agent can read these summaries and write feedback. Turning this off stops automatic requests; you can still request past days from the food log.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }

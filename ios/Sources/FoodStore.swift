@@ -43,6 +43,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     var estimations: [PendingEstimation] = []
     var dailyFeedback: [DailyFeedbackRequest] = []
     var dailyFeedbackEnabled = false
+    private(set) var dailyReviewInstructions = ""
     private(set) var dismissedDailyFeedbackCard: String?
     var connections: [MCPConnection] = []
     var hasLoadedConnections = false
@@ -138,11 +139,19 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         }
     }
 
+    func setDailyReviewInstructions(_ text: String) {
+        guard let accountId else { return }
+        dailyReviewInstructions = DailyReviewInstructions.limited(text)
+        UserDefaults.standard.set(dailyReviewInstructions, forKey: "dailyFeedback.instructions.\(accountId)")
+    }
+
     func requestDailyFeedback(_ upload: DailyFeedbackUpload) throws {
         if let existing = dailyFeedback.first(where: { $0.localDate == upload.localDate }) {
             guard upload.replacesRequestId == existing.id,
                   existing.canRequestNewReview(enabled: dailyFeedbackEnabled) else { return }
         } else if upload.replacesRequestId != nil { return }
+        var upload = upload
+        upload.userInstructions = dailyReviewInstructions.trimmingCharacters(in: .whitespacesAndNewlines)
         let now = Self.now()
         let request = DailyFeedbackRequest(id: upload.id, localDate: upload.localDate,
                                            state: "pending", feedback: nil,
@@ -490,6 +499,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         logs = []
         estimations = []
         dailyFeedback = []
+        dailyReviewInstructions = ""
         dismissedDailyFeedbackCard = nil
         connections = []
         hasLoadedConnections = false
@@ -519,6 +529,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         logs = []
         estimations = []
         dailyFeedback = []
+        dailyReviewInstructions = ""
         dismissedDailyFeedbackCard = nil
         connections = []
         hasLoadedConnections = false
@@ -533,7 +544,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     /// UserDefaults, which is backed up; none of it should outlive the session.
     private static func forgetAccountDefaults(_ accountId: String) {
         for key in ["dailyFeedback.enabled.\(accountId)", "dailyFeedback.enabledAt.\(accountId)",
-                    "dailyFeedback.dismissedCard.\(accountId)"] {
+                    "dailyFeedback.dismissedCard.\(accountId)", "dailyFeedback.instructions.\(accountId)"] {
             UserDefaults.standard.removeObject(forKey: key)
         }
         HealthEnergy.forgetDietaryExport(for: accountId)
@@ -562,6 +573,9 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         estimations = snapshot.estimations
         dailyFeedback = snapshot.dailyFeedback ?? []
         dailyFeedbackEnabled = accountId.map { UserDefaults.standard.bool(forKey: "dailyFeedback.enabled.\($0)") } ?? false
+        dailyReviewInstructions = DailyReviewInstructions.limited(accountId.flatMap {
+            UserDefaults.standard.string(forKey: "dailyFeedback.instructions.\($0)")
+        } ?? "")
         dismissedDailyFeedbackCard = accountId.flatMap {
             UserDefaults.standard.string(forKey: "dailyFeedback.dismissedCard.\($0)")
         }
@@ -650,6 +664,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
             ]
             if let previousID = upload.replacesRequestId { body["replacesRequestId"] = previousID }
             if let units = upload.displayUnits { body["displayUnits"] = units }
+            if let instructions = upload.userInstructions { body["userInstructions"] = instructions }
             let _: DailyFeedbackResponse = try await call("/v1/daily-feedback", method: "POST", body: body)
         }
     }
