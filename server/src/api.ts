@@ -251,7 +251,8 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     return json({ requests: rows.results.map(dailyFeedbackView) });
   }
   if (path === "/v1/daily-feedback" && method === "POST") {
-    const input = dailyFeedbackInput.parse(await body(req));
+    // Seven days can include up to 100 compact workout summaries per day.
+    const input = dailyFeedbackInput.parse(await body(req, 512_000));
     let today: string;
     try { today = localToday(input.timeZone); }
     catch { throw new APIError(400, "Invalid time zone"); }

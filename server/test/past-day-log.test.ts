@@ -39,6 +39,28 @@ function setup() {
 }
 
 describe("late food logs and renewed daily reviews", () => {
+  it("delivers opt-in workouts in the agent's context without changing the calorie allowance", async () => {
+    const { db, env, yesterday, review } = setup();
+    try {
+      db.prepare(`INSERT INTO profiles (tenant_id, height_cm, weight_kg, estimate_profile, deficit_kcal, deficit_percent, updated_at)
+        VALUES ('tenant', 175, 80, 'male', 600, 20, ?)`).run(new Date().toISOString());
+      const workout = { id: crypto.randomUUID(), activity: "Strength training",
+        startedAt: `${yesterday}T08:00:00Z`, endedAt: `${yesterday}T08:45:00Z`,
+        durationMinutes: 45, activeKcal: 300, distanceMeters: null };
+      const workouts = Array.from({ length: 100 }, () => ({ ...workout, id: crypto.randomUUID() }));
+      expect(JSON.stringify(workouts).length).toBeGreaterThan(16000);
+      const response = await review({ healthDays: [{ localDate: yesterday, restingKcal: 1800,
+        activeKcal: 700, workouts, workoutsTruncated: false }] });
+      expect(response.status).toBe(201);
+      const row = db.prepare("SELECT * FROM daily_feedback_requests").get() as DailyFeedbackRow;
+      const context = await dailyFeedbackContext(env, row);
+      const day = context.days.find(day => day.localDate === yesterday)!;
+      expect(day.health?.workouts).toEqual(workouts);
+      expect(day.calorieBudget).toMatchObject({ tdeeKcal: 2500, allowanceKcal: 2000 });
+      expect(context.reviewGuidance.join(" ")).toContain("never add them to the calorieBudget again");
+      expect(context.reviewGuidance.join(" ")).toContain("not proof the person did no exercise");
+    } finally { db.close(); }
+  });
   it("freezes instructions across retries and uses new instructions only for a new review request", async () => {
     const { db, env, wakes, review, log } = setup();
     const context = async () => dailyFeedbackContext(env,

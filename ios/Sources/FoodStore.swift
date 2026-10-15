@@ -44,6 +44,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     var dailyFeedback: [DailyFeedbackRequest] = []
     var dailyFeedbackEnabled = false
     private(set) var dailyReviewInstructions = ""
+    private(set) var shareWorkoutDetailsWithAgent = false
     private(set) var dismissedDailyFeedbackCard: String?
     var connections: [MCPConnection] = []
     var hasLoadedConnections = false
@@ -145,6 +146,12 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         UserDefaults.standard.set(dailyReviewInstructions, forKey: "dailyFeedback.instructions.\(accountId)")
     }
 
+    func setShareWorkoutDetailsWithAgent(_ enabled: Bool) {
+        guard let accountId else { return }
+        shareWorkoutDetailsWithAgent = enabled
+        UserDefaults.standard.set(enabled, forKey: "dailyFeedback.shareWorkouts.\(accountId)")
+    }
+
     func requestDailyFeedback(_ upload: DailyFeedbackUpload) throws {
         if let existing = dailyFeedback.first(where: { $0.localDate == upload.localDate }) {
             guard upload.replacesRequestId == existing.id,
@@ -152,6 +159,8 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         } else if upload.replacesRequestId != nil { return }
         var upload = upload
         upload.userInstructions = dailyReviewInstructions.trimmingCharacters(in: .whitespacesAndNewlines)
+        upload.healthDays = DailyWorkoutSharing.filter(upload.healthDays, reviewsEnabled: dailyFeedbackEnabled,
+                                                       sharingEnabled: shareWorkoutDetailsWithAgent)
         let now = Self.now()
         let request = DailyFeedbackRequest(id: upload.id, localDate: upload.localDate,
                                            state: "pending", feedback: nil,
@@ -171,6 +180,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         let healthStart = calendar.date(byAdding: .day, value: -6, to: first) ?? first
         let accountToken = token
         let healthHistory = try await health.dailyFeedbackHealth(from: healthStart, through: last,
+                                                                includeWorkouts: dailyFeedbackEnabled && shareWorkoutDetailsWithAgent,
                                                                 requireAccessibleData: requireAccessibleHealth)
         try Task.checkCancellation()
         guard token == accountToken, includeHistory || dailyFeedbackEnabled else { return 0 }
@@ -212,7 +222,8 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         let key = FoodDates.localDate(for: date)
         let previousID = replaceExisting ? dailyFeedback.first { $0.localDate == key }?.id : nil
         let firstKey = FoodDates.localDate(for: first)
-        let healthDays = try await health.dailyFeedbackHealth(from: first, through: date)
+        let healthDays = try await health.dailyFeedbackHealth(from: first, through: date,
+            includeWorkouts: dailyFeedbackEnabled && shareWorkoutDetailsWithAgent)
             .filter { $0.localDate >= firstKey && $0.localDate <= key }
         guard token == accountToken,
               replaceExisting ? canRequestUpdatedDailyFeedback(on: date) : canRequestDailyFeedback(on: date) else { return false }
@@ -500,6 +511,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         estimations = []
         dailyFeedback = []
         dailyReviewInstructions = ""
+        shareWorkoutDetailsWithAgent = false
         dismissedDailyFeedbackCard = nil
         connections = []
         hasLoadedConnections = false
@@ -530,6 +542,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         estimations = []
         dailyFeedback = []
         dailyReviewInstructions = ""
+        shareWorkoutDetailsWithAgent = false
         dismissedDailyFeedbackCard = nil
         connections = []
         hasLoadedConnections = false
@@ -544,7 +557,8 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     /// UserDefaults, which is backed up; none of it should outlive the session.
     private static func forgetAccountDefaults(_ accountId: String) {
         for key in ["dailyFeedback.enabled.\(accountId)", "dailyFeedback.enabledAt.\(accountId)",
-                    "dailyFeedback.dismissedCard.\(accountId)", "dailyFeedback.instructions.\(accountId)"] {
+                    "dailyFeedback.dismissedCard.\(accountId)", "dailyFeedback.instructions.\(accountId)",
+                    "dailyFeedback.shareWorkouts.\(accountId)"] {
             UserDefaults.standard.removeObject(forKey: key)
         }
         HealthEnergy.forgetDietaryExport(for: accountId)
@@ -573,6 +587,9 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         estimations = snapshot.estimations
         dailyFeedback = snapshot.dailyFeedback ?? []
         dailyFeedbackEnabled = accountId.map { UserDefaults.standard.bool(forKey: "dailyFeedback.enabled.\($0)") } ?? false
+        shareWorkoutDetailsWithAgent = accountId.map {
+            UserDefaults.standard.bool(forKey: "dailyFeedback.shareWorkouts.\($0)")
+        } ?? false
         dailyReviewInstructions = DailyReviewInstructions.limited(accountId.flatMap {
             UserDefaults.standard.string(forKey: "dailyFeedback.instructions.\($0)")
         } ?? "")
@@ -650,13 +667,28 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
             do { let _: OKResponse = try await call("/v1/estimations/\(id)", method: "DELETE") }
             catch let error as FoodServiceError where error.status == 404 { break }
         case .requestDailyFeedback(let upload):
-            let healthDays = upload.healthDays.map { day -> [String: Any] in
-                ["localDate": day.localDate,
+            // Recheck sharing at transmission time: opting out also covers
+            // reviews that were queued while offline before the setting changed.
+            let permittedDays = DailyWorkoutSharing.filter(upload.healthDays, reviewsEnabled: dailyFeedbackEnabled,
+                                                           sharingEnabled: shareWorkoutDetailsWithAgent)
+            let healthDays = permittedDays.map { day -> [String: Any] in
+                var fields: [String: Any] = ["localDate": day.localDate,
                  "activeKcal": day.activeKcal as Any? ?? NSNull(),
                  "restingKcal": day.restingKcal as Any? ?? NSNull(),
                  "waterMl": day.waterMl as Any? ?? NSNull(),
                  "weightKg": day.weightKg as Any? ?? NSNull(),
                  "bodyFatPercent": day.bodyFatPercent as Any? ?? NSNull()]
+                if let workouts = day.workouts {
+                    fields["workouts"] = workouts.map { workout -> [String: Any] in
+                        ["id": workout.id, "activity": workout.activity,
+                         "startedAt": workout.startedAt, "endedAt": workout.endedAt,
+                         "durationMinutes": workout.durationMinutes,
+                         "activeKcal": workout.activeKcal as Any? ?? NSNull(),
+                         "distanceMeters": workout.distanceMeters as Any? ?? NSNull()]
+                    }
+                    fields["workoutsTruncated"] = day.workoutsTruncated ?? false
+                }
+                return fields
             }
             var body: [String: Any] = [
                 "id": upload.id, "localDate": upload.localDate,

@@ -178,6 +178,12 @@ struct RestingEnergySummary {
     private var readTypes: Set<HKObjectType> { [energy, restingEnergy, bodyMass, bodyFat, water, height, biologicalSex] }
     private var writeTypes: Set<HKSampleType> { [dietaryEnergy, water, bodyMass] }
 
+    // Deliberately separate from onboarding and Request remaining permissions.
+    func requestWorkoutAccess() async throws {
+        guard available else { throw FoodServiceError(message: "Apple Health is not available on this device") }
+        try await store.requestAuthorization(toShare: [], read: [HKObjectType.workoutType()])
+    }
+
     private func requestReadAuthorization(includeDietaryWrite: Bool = false, includeAllWrites: Bool = false) async throws {
         let sharing: Set<HKSampleType> = includeAllWrites ? writeTypes : includeDietaryWrite ? [dietaryEnergy] : []
         try await store.requestAuthorization(toShare: sharing, read: readTypes)
@@ -488,6 +494,7 @@ struct RestingEnergySummary {
     }
 
     func dailyFeedbackHealth(from startDate: Date, through endDate: Date,
+                             includeWorkouts: Bool = false,
                              requireAccessibleData: Bool = false) async throws -> [DailyHealthDay] {
         guard available else { return [] }
         let calendar = Calendar.current
@@ -526,6 +533,16 @@ struct RestingEnergySummary {
         let fat = try await read(bodyFatRequested) {
             try await dailyLastReadings(of: bodyFat, from: start, to: end, unit: .percent(), scale: 100)
         }
+        var workoutsByDay: [String: [DailyWorkoutSummary]]?
+        if includeWorkouts {
+            do { workoutsByDay = try await dailyReviewWorkouts(from: start, to: end) }
+            catch {
+                try Task.checkCancellation()
+                if requireAccessibleData && HealthQueryResult.isTemporarilyUnavailable(error) { throw error }
+                // Optional or unreadable workout data must not prevent the review.
+                workoutsByDay = Self.isNoData(error) ? [:] : nil
+            }
+        }
         try Task.checkCancellation()
         let dayCount = calendar.dateComponents([.day], from: start, to: end).day ?? 0
         return (0..<dayCount).compactMap { offset in
@@ -535,8 +552,39 @@ struct RestingEnergySummary {
                                   activeKcal: active[key].map { max(0, Int($0.rounded())) },
                                   restingKcal: resting[key].map { max(0, Int($0.rounded())) },
                                   waterMl: waterValues[key].map { max(0, Int($0.rounded())) },
-                                  weightKg: weights[key], bodyFatPercent: fat[key])
+                                  weightKg: weights[key], bodyFatPercent: fat[key],
+                                  workouts: workoutsByDay.map { Array(($0[key] ?? []).prefix(100)) },
+                                  workoutsTruncated: workoutsByDay.map { ($0[key]?.count ?? 0) > 100 })
         }
+    }
+
+    private func dailyReviewWorkouts(from start: Date, to end: Date) async throws -> [String: [DailyWorkoutSummary]] {
+        let workouts: [HKWorkout] = try await withCheckedThrowingContinuation { continuation in
+            let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: [.strictStartDate])
+            let query = HKSampleQuery(sampleType: HKObjectType.workoutType(), predicate: predicate,
+                                      limit: HKObjectQueryNoLimit,
+                                      sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)]) {
+                _, samples, error in
+                if let error { continuation.resume(throwing: error) }
+                else { continuation.resume(returning: samples as? [HKWorkout] ?? []) }
+            }
+            store.execute(query)
+        }
+        try Task.checkCancellation()
+        var days: [String: [DailyWorkoutSummary]] = [:]
+        let formatter = ISO8601DateFormatter()
+        for workout in workouts {
+            let kcal = workout.statistics(for: energy)?.sumQuantity()?.doubleValue(for: .kilocalorie())
+            let meters = workout.totalDistance?.doubleValue(for: .meter())
+            let summary = DailyWorkoutSummary(id: workout.uuid.uuidString.lowercased(),
+                activity: workout.workoutActivityType.dailyReviewName,
+                startedAt: formatter.string(from: workout.startDate), endedAt: formatter.string(from: workout.endDate),
+                durationMinutes: max(0, workout.duration / 60),
+                activeKcal: kcal.flatMap { $0.isFinite && $0 >= 0 ? Int($0.rounded()) : nil },
+                distanceMeters: meters.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil })
+            days[FoodDates.localDate(for: workout.startDate), default: []].append(summary)
+        }
+        return days
     }
 
     func logWaterCup() async {
@@ -795,6 +843,100 @@ struct RestingEnergySummary {
                 }
             }
             store.execute(query)
+        }
+    }
+}
+
+private extension HKWorkoutActivityType {
+    var dailyReviewName: String {
+        switch self {
+        case .americanFootball: "American football"
+        case .archery: "Archery"
+        case .australianFootball: "Australian football"
+        case .badminton: "Badminton"
+        case .baseball: "Baseball"
+        case .basketball: "Basketball"
+        case .bowling: "Bowling"
+        case .boxing: "Boxing"
+        case .climbing: "Climbing"
+        case .cricket: "Cricket"
+        case .crossTraining: "Cross training"
+        case .curling: "Curling"
+        case .cycling: "Cycling"
+        case .elliptical: "Elliptical"
+        case .equestrianSports: "Equestrian sports"
+        case .fencing: "Fencing"
+        case .fishing: "Fishing"
+        case .functionalStrengthTraining: "Functional strength training"
+        case .golf: "Golf"
+        case .gymnastics: "Gymnastics"
+        case .handball: "Handball"
+        case .hiking: "Hiking"
+        case .hockey: "Hockey"
+        case .hunting: "Hunting"
+        case .lacrosse: "Lacrosse"
+        case .martialArts: "Martial arts"
+        case .mindAndBody: "Mind and body"
+        case .paddleSports: "Paddle sports"
+        case .play: "Play"
+        case .preparationAndRecovery: "Preparation and recovery"
+        case .racquetball: "Racquetball"
+        case .rowing: "Rowing"
+        case .rugby: "Rugby"
+        case .running: "Running"
+        case .sailing: "Sailing"
+        case .skatingSports: "Skating sports"
+        case .snowSports: "Snow sports"
+        case .soccer: "Soccer"
+        case .softball: "Softball"
+        case .squash: "Squash"
+        case .stairClimbing: "Stair climbing"
+        case .surfingSports: "Surfing sports"
+        case .swimming: "Swimming"
+        case .tableTennis: "Table tennis"
+        case .tennis: "Tennis"
+        case .trackAndField: "Track and field"
+        case .traditionalStrengthTraining: "Traditional strength training"
+        case .volleyball: "Volleyball"
+        case .walking: "Walking"
+        case .waterFitness: "Water fitness"
+        case .waterPolo: "Water polo"
+        case .waterSports: "Water sports"
+        case .wrestling: "Wrestling"
+        case .yoga: "Yoga"
+        case .barre: "Barre"
+        case .coreTraining: "Core training"
+        case .crossCountrySkiing: "Cross country skiing"
+        case .downhillSkiing: "Downhill skiing"
+        case .flexibility: "Flexibility"
+        case .highIntensityIntervalTraining: "HIIT"
+        case .jumpRope: "Jump rope"
+        case .kickboxing: "Kickboxing"
+        case .pilates: "Pilates"
+        case .snowboarding: "Snowboarding"
+        case .stairs: "Stairs"
+        case .stepTraining: "Step training"
+        case .wheelchairWalkPace: "Wheelchair walk pace"
+        case .wheelchairRunPace: "Wheelchair run pace"
+        case .taiChi: "Tai chi"
+        case .mixedCardio: "Mixed cardio"
+        case .handCycling: "Hand cycling"
+        case .discSports: "Disc sports"
+        case .fitnessGaming: "Fitness gaming"
+        case .cardioDance: "Cardio dance"
+        case .socialDance: "Social dance"
+        case .pickleball: "Pickleball"
+        case .cooldown: "Cooldown"
+        case .swimBikeRun: "Triathlon"
+        case .transition: "Transition"
+        case .underwaterDiving: "Underwater diving"
+        case .other: "Other"
+        default:
+            switch rawValue {
+            case 14, 15: "Dance"
+            case 30: "Mixed cardio"
+            default: "Other workout"
+            }
         }
     }
 }

@@ -11,6 +11,7 @@ struct SettingsView: View {
     @State private var errorText: String?
     @State private var showingAgentSetup = false
     @State private var connectionError: String?
+    @State private var requestingWorkoutAccess = false
 
     var body: some View {
         NavigationStack {
@@ -44,6 +45,16 @@ struct SettingsView: View {
                         set: { store.setDailyFeedbackEnabled($0) }
                     ))
                     if store.dailyFeedbackEnabled {
+                        Toggle("Share workout details with agent", isOn: Binding(
+                            get: { store.shareWorkoutDetailsWithAgent },
+                            set: { setWorkoutSharing($0) }
+                        ))
+                        .disabled(requestingWorkoutAccess || !health.available)
+                        if requestingWorkoutAccess {
+                            ProgressView("Requesting workout access…").font(.footnote)
+                        }
+                        Text("Optional. Shares workout type, time, duration, recorded calories and distance with new daily review requests. Workout calories are already included in active energy. Switching this off stops future uploads of workout details; previously shared reviews remain available.")
+                            .font(.footnote).foregroundStyle(.secondary)
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Review instructions").font(.subheadline.weight(.semibold))
                             TextField("Focus on protein and meal variety. Keep suggestions brief.", text: Binding(
@@ -100,6 +111,21 @@ struct SettingsView: View {
         Task {
             do { try await store.revokeConnection(connection) }
             catch { errorText = error.localizedDescription }
+        }
+    }
+
+    private func setWorkoutSharing(_ enabled: Bool) {
+        guard enabled else { store.setShareWorkoutDetailsWithAgent(false); return }
+        guard !requestingWorkoutAccess, let accountId = store.accountId else { return }
+        requestingWorkoutAccess = true
+        Task {
+            defer { requestingWorkoutAccess = false }
+            do {
+                try await health.requestWorkoutAccess()
+                guard store.accountId == accountId, store.dailyFeedbackEnabled else { return }
+                // HealthKit doesn't disclose whether read access was declined.
+                store.setShareWorkoutDetailsWithAgent(true)
+            } catch { errorText = error.localizedDescription }
         }
     }
 }

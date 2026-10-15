@@ -48,7 +48,7 @@ targets:
           - remote-notification
         FoodServerBaseURL: https://api.example.com
         NSCameraUsageDescription: "00Food uses the camera to capture a meal for an estimate you review."
-        NSHealthShareUsageDescription: "00Food reads height, biological sex, resting and active energy, weight, body-fat percentage, and water to show your daily balance and progress. If you request Daily feedback, seven-day Health summaries are sent to your private account for your connected agent to review."
+        NSHealthShareUsageDescription: "00Food reads height, biological sex, resting and active energy, weight, body-fat percentage, and water to show your daily balance and progress. If you request Daily feedback, seven-day Health summaries are sent to your private account for your connected agent to review. Workouts are read and shared only if you separately enable workout sharing in Settings."
         NSHealthUpdateUsageDescription: "00Food writes new food calories as Dietary Energy when you allow access during setup. It writes water and manually logged weight when you log them. You can choose which Health permissions to grant."
         UIApplicationShortcutItems:
           - UIApplicationShortcutItemType: com.00food.quick-add.log

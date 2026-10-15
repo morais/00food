@@ -4,6 +4,16 @@ import type { Env } from "../src/api";
 import { migratedD1 } from "./d1";
 
 describe("daily review intake context", () => {
+  it("accepts optional workout summaries but rejects unrelated metrics and invalid intervals", () => {
+    const workout = { id: crypto.randomUUID(), activity: "Running", startedAt: "2026-10-08T07:00:00Z",
+      endedAt: "2026-10-08T07:30:00Z", durationMinutes: 30, activeKcal: 300, distanceMeters: 5000 };
+    const input = (extra = {}) => ({ id: crypto.randomUUID(), localDate: "2026-10-08", timeZone: "UTC",
+      healthDays: [{ localDate: "2026-10-08", workouts: [{ ...workout, ...extra }] }] });
+    expect(dailyFeedbackInput.parse(input()).healthDays[0].workouts).toEqual([workout]);
+    expect(dailyFeedbackInput.safeParse(input({ heartRate: 150 })).success).toBe(false);
+    expect(dailyFeedbackInput.safeParse(input({ endedAt: "2026-10-08T06:00:00Z" })).success).toBe(false);
+    expect(dailyFeedbackInput.safeParse(input({ durationMinutes: -1 })).success).toBe(false);
+  });
   it("defaults older requests to metric and validates preferred display units", () => {
     const request = { id: crypto.randomUUID(), localDate: "2026-10-09", timeZone: "UTC", healthDays: [] };
     expect(dailyFeedbackInput.parse(request).displayUnits).toBe("metric");

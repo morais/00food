@@ -382,7 +382,7 @@ export async function showConsent(req: Request, env: Env): Promise<Response> {
       ? `This client can read your saved foods, pending descriptions, and submitted food photos${flow.scopes.includes("food:write") ? ", and propose calorie estimates" : ""}. You review each food proposal before it is saved or logged.`
       : "This request does not grant access to saved foods or pending food photos."}</p>
     <p>${flow.scopes.includes("daily:read")
-      ? "If you enable automatic Daily feedback or request missing days manually in the app, this client can read seven-day summaries of your food logs and Apple Health water, active and resting calories, weight, and body fat. These summaries are saved to your 00Food account."
+      ? "If you enable automatic Daily feedback or request missing days manually in the app, this client can read seven-day summaries of your food logs and Apple Health water, active and resting calories, weight, and body fat. Workout summaries are included only if you separately enable sharing in the app. These summaries are saved to your 00Food account."
       : "Apple Health data is not shared with this client."}
       ${flow.scopes.includes("daily:write") ? "This client can also write daily feedback for you to read in 00Food." : ""}</p>
     <p class="detail"><span>Redirects to</span><code>${htmlEscape(flow.redirect_uri)}</code></p>

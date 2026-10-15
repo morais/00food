@@ -288,6 +288,30 @@ struct DailyHealthDay: Codable {
     var waterMl: Int?
     var weightKg: Double?
     var bodyFatPercent: Double?
+    var workouts: [DailyWorkoutSummary]? = nil
+    var workoutsTruncated: Bool? = nil
+}
+
+struct DailyWorkoutSummary: Codable, Equatable {
+    var id: String
+    var activity: String
+    var startedAt: String
+    var endedAt: String
+    var durationMinutes: Double
+    var activeKcal: Int?
+    var distanceMeters: Double?
+}
+
+enum DailyWorkoutSharing {
+    static func filter(_ days: [DailyHealthDay], reviewsEnabled: Bool, sharingEnabled: Bool) -> [DailyHealthDay] {
+        guard !reviewsEnabled || !sharingEnabled else { return days }
+        return days.map { day in
+            var day = day
+            day.workouts = nil
+            day.workoutsTruncated = nil
+            return day
+        }
+    }
 }
 
 struct DailyFeedbackRequest: Codable, Identifiable, Equatable {
