@@ -204,6 +204,7 @@ private struct WaterGlassIcon: View {
 struct HomeView: View {
     @Environment(\.foodUnits) private var units
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(FoodStore.self) private var store
     @ScaledMetric(relativeTo: .largeTitle) private var balanceSize: CGFloat = 48
     @Environment(HealthEnergy.self) private var health
@@ -223,6 +224,12 @@ struct HomeView: View {
     @State private var showingBalanceDetails = false
     @State private var showingSelectedFeedback = false
     @State private var requestingSelectedFeedback = false
+    @State private var showingSyncStatus = false
+
+    private var syncStatusRequested: Bool {
+        scenePhase == .active && (store.isOffline || store.pendingSyncCount > 0 ||
+            (!store.isSyncing && store.syncError != nil))
+    }
 
     private var remaining: Int {
         guard let profile = store.profile else { return 0 }
@@ -264,10 +271,8 @@ struct HomeView: View {
             GeometryReader { geometry in
                 ScrollView(.vertical) {
                     VStack(alignment: .leading, spacing: 24) {
-                        if store.isOffline || store.pendingSyncCount > 0 {
+                        if showingSyncStatus && syncStatusRequested {
                             syncStatus
-                        } else {
-                            DelayedNotice(message: store.syncError, isRefreshing: store.isSyncing) { _ in syncStatus }
                         }
                         if store.hasLoadedConnections && store.connections.isEmpty {
                             VStack(alignment: .leading, spacing: 10) {
@@ -333,6 +338,15 @@ struct HomeView: View {
                 health.setHistoryStart(store.accountStartedAt)
                 await health.refresh()
             }
+            .task(id: syncStatusRequested) {
+                showingSyncStatus = false
+                guard syncStatusRequested else { return }
+                do { try await Task.sleep(for: .seconds(2)) }
+                catch { return }
+                guard !Task.isCancelled else { return }
+                showingSyncStatus = true
+            }
+            .onDisappear { showingSyncStatus = false }
             .onAppear { openPendingShortcut() }
             .task(id: FoodDates.localDate(for: selectedLogDate)) {
                 await loadSelectedWater(on: selectedLogDate)
