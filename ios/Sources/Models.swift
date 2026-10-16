@@ -282,6 +282,27 @@ struct FoodSnapshot: Codable {
     var middayFeedback: [DailyFeedbackRequest]? = nil
 }
 
+struct DailyFeedbackHealthWindow {
+    let start: Date
+    let queryEnd: Date
+    let days: [Date]
+
+    init?(from startDate: Date, through endDate: Date, capturedAt: Date? = nil,
+          calendar: Calendar = .current) {
+        let start = calendar.startOfDay(for: startDate)
+        guard let end = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: endDate)),
+              start < end else { return nil }
+        let queryEnd = min(end, capturedAt ?? end)
+        guard start < queryEnd else { return nil }
+        self.start = start
+        self.queryEnd = queryEnd
+        // The sample cutoff can be midday, but its calendar day still needs a
+        // snapshot row. Counting full days to queryEnd would drop today's data.
+        let count = calendar.dateComponents([.day], from: start, to: end).day ?? 0
+        self.days = (0..<count).compactMap { calendar.date(byAdding: .day, value: $0, to: start) }
+    }
+}
+
 struct DailyHealthDay: Codable {
     var localDate: String
     var activeKcal: Int?

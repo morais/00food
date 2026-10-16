@@ -498,11 +498,10 @@ struct RestingEnergySummary {
                              throughTime: Date? = nil,
                              requireAccessibleData: Bool = false) async throws -> [DailyHealthDay] {
         guard available else { return [] }
-        let calendar = Calendar.current
-        let start = calendar.startOfDay(for: startDate)
-        guard let end = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: endDate)),
-              start < end else { return [] }
-        let queryEnd = min(end, throughTime ?? end)
+        guard let window = DailyFeedbackHealthWindow(from: startDate, through: endDate,
+                                                     capturedAt: throughTime) else { return [] }
+        let start = window.start
+        let queryEnd = window.queryEnd
         func values(_ points: [HealthMeasurePoint]) -> [String: Double] {
             Dictionary(points.map { (FoodDates.localDate(for: $0.date), $0.value) },
                        uniquingKeysWith: { _, latest in latest })
@@ -546,9 +545,7 @@ struct RestingEnergySummary {
             }
         }
         try Task.checkCancellation()
-        let dayCount = calendar.dateComponents([.day], from: start, to: queryEnd).day ?? 0
-        return (0..<dayCount).compactMap { offset in
-            guard let date = calendar.date(byAdding: .day, value: offset, to: start) else { return nil }
+        return window.days.map { date in
             let key = FoodDates.localDate(for: date)
             return DailyHealthDay(localDate: key,
                                   activeKcal: active[key].map { max(0, Int($0.rounded())) },
