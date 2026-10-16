@@ -49,7 +49,7 @@ const tools = [
   },
   {
     name: "list_pending_daily_feedback", title: "List Pending Daily Feedback",
-    description: "List completed days awaiting a short daily reflection. Call get_daily_feedback_request for the full seven-day food and Health context.",
+    description: "List completed-day reviews and midday check-ins awaiting feedback. Call get_daily_feedback_request for the full seven-day food and Health context.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false }, readOnly: true,
   },
   {
@@ -59,7 +59,7 @@ const tools = [
   },
   {
     name: "submit_daily_feedback", title: "Submit Daily Feedback",
-    description: "Write a reflection on the completed day after reading get_daily_feedback_request, replacing any previous reflection for this request. " + dailyReviewGuidance.join(" "),
+    description: "Write completed-day or midday feedback according to reviewKind after reading get_daily_feedback_request, replacing any previous reflection for this request. " + dailyReviewGuidance.join(" "),
     inputSchema: z.toJSONSchema(z.strictObject({ id: uuid, feedback: z.string().trim().min(1).max(4000) }),
       { io: "input" }), readOnly: false,
   },

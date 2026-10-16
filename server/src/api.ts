@@ -2,7 +2,7 @@ import { z } from "zod";
 import { deficitPercentages, legacyKcalFromPercent, percentFromLegacyKcal } from "./calorieBudget";
 import { tenantForPrincipal, type Principal } from "./auth";
 import { notifyDailyFeedbackEvent, notifyFoodEvent, recordFoodEvent } from "./foodEvents";
-import { dailyFeedbackInput, dailyFeedbackView, dateBefore, localToday, validHealthWindow,
+import { dailyFeedbackContext, dailyFeedbackInput, dailyFeedbackView, dateBefore, localToday, validHealthWindow,
   type DailyFeedbackRow } from "./dailyFeedback";
 import { dailyFeedbackDeliveryInsert, webhookDeliveryInsert } from "./mcpWebhookEvents";
 import { notifyAgentResponse } from "./agentResponsePush";
@@ -235,18 +235,19 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
       env.DB.prepare("SELECT * FROM foods WHERE tenant_id = ? ORDER BY use_count DESC, last_used_at DESC, created_at DESC LIMIT 1000").bind(tenantId).all<FoodRow>(),
       env.DB.prepare("SELECT * FROM food_logs WHERE tenant_id = ? AND local_date >= date('now','-90 days') ORDER BY logged_at DESC LIMIT 5000").bind(tenantId).all<LogRow>(),
       env.DB.prepare("SELECT * FROM pending_estimations WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 100").bind(tenantId).all<EstimationRow>(),
-      env.DB.prepare("SELECT * FROM daily_feedback_requests WHERE tenant_id = ? ORDER BY local_date DESC LIMIT 90")
+      env.DB.prepare("SELECT * FROM daily_feedback_requests WHERE tenant_id = ? ORDER BY local_date DESC LIMIT 180")
         .bind(tenantId).all<DailyFeedbackRow>(),
     ]);
     const response = json({ startedAt: tenant?.created_at ?? null, profile: profile ? profileView(profile) : null,
       foods: foods.results.map(foodView), logs: logs.results.map(logView),
       estimations: estimations.results.map(estimationView),
-      dailyFeedback: dailyFeedback.results.map(dailyFeedbackView), serverTime: new Date().toISOString() });
+      dailyFeedback: dailyFeedback.results.filter(row => row.review_kind !== "midday").map(dailyFeedbackView),
+      middayFeedback: dailyFeedback.results.filter(row => row.review_kind === "midday").map(dailyFeedbackView), serverTime: new Date().toISOString() });
     response.headers.set("ETag", etag);
     return response;
   }
   if (path === "/v1/daily-feedback" && method === "GET") {
-    const rows = await env.DB.prepare("SELECT * FROM daily_feedback_requests WHERE tenant_id = ? ORDER BY local_date DESC LIMIT 90")
+    const rows = await env.DB.prepare("SELECT * FROM daily_feedback_requests WHERE tenant_id = ? AND review_kind = 'daily' ORDER BY local_date DESC LIMIT 90")
       .bind(tenantId).all<DailyFeedbackRow>();
     return json({ requests: rows.results.map(dailyFeedbackView) });
   }
@@ -256,39 +257,53 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     let today: string;
     try { today = localToday(input.timeZone); }
     catch { throw new APIError(400, "Invalid time zone"); }
-    if (input.localDate >= today || input.localDate < dateBefore(today, 90) || !validHealthWindow(input)) {
-      throw new APIError(400, "Feedback must be for a completed day with at most seven matching Health days");
+    const midday = input.kind === "midday";
+    if (input.localDate > today || (!midday && input.localDate === today)
+        || input.localDate < dateBefore(today, 90) || !validHealthWindow(input)) {
+      throw new APIError(400, "Feedback needs a valid completed day, or a midday snapshot, with at most seven matching Health days");
     }
-    const existing = await env.DB.prepare("SELECT * FROM daily_feedback_requests WHERE tenant_id = ? AND local_date = ?")
-      .bind(tenantId, input.localDate).first<DailyFeedbackRow>();
+    if (midday && (localToday(input.timeZone, new Date(input.capturedAt!)) !== input.localDate
+        || Date.parse(input.capturedAt!) > Date.now() + 5 * 60_000)) {
+      throw new APIError(400, "Midday capture time must match its local day and cannot be in the future");
+    }
+    const existing = await env.DB.prepare("SELECT * FROM daily_feedback_requests WHERE tenant_id = ? AND local_date = ? AND review_kind = ?")
+      .bind(tenantId, input.localDate, input.kind).first<DailyFeedbackRow>();
     if (existing && (existing.id === input.id || !input.replacesRequestId)) {
       return json({ request: dailyFeedbackView(existing) }, 201);
     }
-    if (input.replacesRequestId && (!existing || existing.id !== input.replacesRequestId || !existing.needs_refresh)) {
-      // Another request may already have replaced this review. A retry must not
-      // clear that newer response or generate another agent event.
+    if (input.replacesRequestId && (!existing || existing.id !== input.replacesRequestId
+        || (midday ? existing.state !== "ready" : !existing.needs_refresh))) {
       if (existing && existing.id !== input.replacesRequestId) {
         return json({ request: dailyFeedbackView(existing) }, 201);
       }
-      throw new APIError(409, "Add a food to this day before requesting a new review");
+      throw new APIError(409, midday ? "Wait for the current midday feedback before requesting an update"
+        : "Add a food to this day before requesting a new review");
     }
     const occupied = await env.DB.prepare("SELECT id FROM daily_feedback_requests WHERE id = ?")
       .bind(input.id).first<{ id: string }>();
     if (occupied) throw new APIError(409, "Feedback request ID is already in use");
     const now = new Date().toISOString();
+    const snapshotRow: DailyFeedbackRow = { id: input.id, tenant_id: tenantId, local_date: input.localDate,
+      time_zone: input.timeZone, health_json: JSON.stringify(input.healthDays), state: "pending", feedback_text: null,
+      created_at: now, updated_at: now, display_units: input.displayUnits, user_instructions: input.userInstructions,
+      review_kind: input.kind, captured_at: input.capturedAt ?? null, resting_estimate_kcal: input.restingEstimateKcal ?? null };
+    const context = midday ? await dailyFeedbackContext(env, snapshotRow) : null;
+    const contextJSON = context ? JSON.stringify({ days: context.days, currentPlanDeficitPercent: context.currentPlanDeficitPercent }) : null;
     const changes = await env.DB.batch([
       ...(input.replacesRequestId ? [env.DB.prepare(`DELETE FROM daily_feedback_requests
-        WHERE id = ? AND tenant_id = ? AND local_date = ? AND needs_refresh = 1
+        WHERE id = ? AND tenant_id = ? AND local_date = ? AND review_kind = ?
+          AND ((review_kind = 'midday' AND state = 'ready') OR (review_kind = 'daily' AND needs_refresh = 1))
           AND NOT EXISTS (SELECT 1 FROM daily_feedback_requests WHERE id = ?)`)
-        .bind(input.replacesRequestId, tenantId, input.localDate, input.id)] : []),
+        .bind(input.replacesRequestId, tenantId, input.localDate, input.kind, input.id)] : []),
       env.DB.prepare(`INSERT OR IGNORE INTO daily_feedback_requests
-        (id, tenant_id, local_date, time_zone, health_json, state, created_at, updated_at, display_units, user_instructions)
-        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`).bind(input.id, tenantId, input.localDate,
-          input.timeZone, JSON.stringify(input.healthDays), now, now, input.displayUnits, input.userInstructions),
+        (id, tenant_id, local_date, time_zone, health_json, state, created_at, updated_at, display_units, user_instructions, review_kind, captured_at, resting_estimate_kcal, context_json)
+        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?)`).bind(input.id, tenantId, input.localDate,
+          input.timeZone, JSON.stringify(input.healthDays), now, now, input.displayUnits, input.userInstructions, input.kind,
+          input.capturedAt ?? null, input.restingEstimateKcal ?? null, contextJSON),
       dailyFeedbackDeliveryInsert(env, tenantId, input.id),
     ]);
-    const row = await env.DB.prepare("SELECT * FROM daily_feedback_requests WHERE tenant_id = ? AND local_date = ?")
-      .bind(tenantId, input.localDate).first<DailyFeedbackRow>();
+    const row = await env.DB.prepare("SELECT * FROM daily_feedback_requests WHERE tenant_id = ? AND local_date = ? AND review_kind = ?")
+      .bind(tenantId, input.localDate, input.kind).first<DailyFeedbackRow>();
     if (!row) throw new APIError(409, "Feedback request ID is already in use");
     if (row.id === input.id) await notifyDailyFeedbackEvent(env, tenantId, changes[changes.length - 1].meta.changes > 0);
     return json({ request: dailyFeedbackView(row) }, 201);

@@ -495,12 +495,14 @@ struct RestingEnergySummary {
 
     func dailyFeedbackHealth(from startDate: Date, through endDate: Date,
                              includeWorkouts: Bool = false,
+                             throughTime: Date? = nil,
                              requireAccessibleData: Bool = false) async throws -> [DailyHealthDay] {
         guard available else { return [] }
         let calendar = Calendar.current
         let start = calendar.startOfDay(for: startDate)
         guard let end = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: endDate)),
               start < end else { return [] }
+        let queryEnd = min(end, throughTime ?? end)
         func values(_ points: [HealthMeasurePoint]) -> [String: Double] {
             Dictionary(points.map { (FoodDates.localDate(for: $0.date), $0.value) },
                        uniquingKeysWith: { _, latest in latest })
@@ -519,23 +521,23 @@ struct RestingEnergySummary {
             }
         }
         let active = try await read(requested) {
-            try await dailyCumulativeEnergy(of: energy, from: start, to: end)
+            try await dailyCumulativeEnergy(of: energy, from: start, to: queryEnd)
         }
         let resting = try await read(restingRequested) {
-            try await dailyCumulativeEnergy(of: restingEnergy, from: start, to: end)
+            try await dailyCumulativeEnergy(of: restingEnergy, from: start, to: queryEnd)
         }
         let waterValues = try await read(waterRequested) {
-            try await dailyCumulative(of: water, from: start, to: end, unit: .literUnit(with: .milli))
+            try await dailyCumulative(of: water, from: start, to: queryEnd, unit: .literUnit(with: .milli))
         }
         let weights = try await read(weightRequested) {
-            try await dailyHistory(of: bodyMass, from: start, to: end, unit: .gramUnit(with: .kilo), scale: 1)
+            try await dailyHistory(of: bodyMass, from: start, to: queryEnd, unit: .gramUnit(with: .kilo), scale: 1)
         }
         let fat = try await read(bodyFatRequested) {
-            try await dailyLastReadings(of: bodyFat, from: start, to: end, unit: .percent(), scale: 100)
+            try await dailyLastReadings(of: bodyFat, from: start, to: queryEnd, unit: .percent(), scale: 100)
         }
         var workoutsByDay: [String: [DailyWorkoutSummary]]?
         if includeWorkouts {
-            do { workoutsByDay = try await dailyReviewWorkouts(from: start, to: end) }
+            do { workoutsByDay = try await dailyReviewWorkouts(from: start, to: queryEnd, completedBy: throughTime) }
             catch {
                 try Task.checkCancellation()
                 if requireAccessibleData && HealthQueryResult.isTemporarilyUnavailable(error) { throw error }
@@ -544,7 +546,7 @@ struct RestingEnergySummary {
             }
         }
         try Task.checkCancellation()
-        let dayCount = calendar.dateComponents([.day], from: start, to: end).day ?? 0
+        let dayCount = calendar.dateComponents([.day], from: start, to: queryEnd).day ?? 0
         return (0..<dayCount).compactMap { offset in
             guard let date = calendar.date(byAdding: .day, value: offset, to: start) else { return nil }
             let key = FoodDates.localDate(for: date)
@@ -558,7 +560,7 @@ struct RestingEnergySummary {
         }
     }
 
-    private func dailyReviewWorkouts(from start: Date, to end: Date) async throws -> [String: [DailyWorkoutSummary]] {
+    private func dailyReviewWorkouts(from start: Date, to end: Date, completedBy: Date? = nil) async throws -> [String: [DailyWorkoutSummary]] {
         let workouts: [HKWorkout] = try await withCheckedThrowingContinuation { continuation in
             let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: [.strictStartDate])
             let query = HKSampleQuery(sampleType: HKObjectType.workoutType(), predicate: predicate,
@@ -574,6 +576,7 @@ struct RestingEnergySummary {
         var days: [String: [DailyWorkoutSummary]] = [:]
         let formatter = ISO8601DateFormatter()
         for workout in workouts {
+            if let completedBy, workout.endDate > completedBy { continue }
             let kcal = workout.statistics(for: energy)?.sumQuantity()?.doubleValue(for: .kilocalorie())
             let meters = workout.totalDistance?.doubleValue(for: .meter())
             let summary = DailyWorkoutSummary(id: workout.uuid.uuidString.lowercased(),

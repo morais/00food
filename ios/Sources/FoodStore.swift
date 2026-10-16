@@ -153,9 +153,9 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     }
 
     func requestDailyFeedback(_ upload: DailyFeedbackUpload) throws {
-        if let existing = dailyFeedback.first(where: { $0.localDate == upload.localDate }) {
+        if let existing = dailyFeedback.first(where: { $0.localDate == upload.localDate && $0.isMidday == (upload.kind == "midday") }) {
             guard upload.replacesRequestId == existing.id,
-                  existing.canRequestNewReview(enabled: dailyFeedbackEnabled) else { return }
+                  (existing.isMidday ? existing.state == "ready" : existing.canRequestNewReview(enabled: dailyFeedbackEnabled)) else { return }
         } else if upload.replacesRequestId != nil { return }
         var upload = upload
         upload.userInstructions = dailyReviewInstructions.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -164,9 +164,9 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         let now = Self.now()
         let request = DailyFeedbackRequest(id: upload.id, localDate: upload.localDate,
                                            state: "pending", feedback: nil,
-                                           createdAt: now, updatedAt: now)
+                                           createdAt: now, updatedAt: now, kind: upload.kind, capturedAt: upload.capturedAt)
         try stage(.requestDailyFeedback(upload)) {
-            dailyFeedback.removeAll { $0.localDate == upload.localDate }
+            dailyFeedback.removeAll { $0.localDate == upload.localDate && $0.isMidday == (upload.kind == "midday") }
             dailyFeedback.append(request)
             dailyFeedback.sort { $0.localDate > $1.localDate }
         }
@@ -193,7 +193,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
             let healthDays = healthHistory.filter { $0.localDate >= firstHealthDate && $0.localDate <= key }
             let upload = DailyFeedbackUpload(id: UUID().uuidString.lowercased(), localDate: key,
                                              timeZone: timeZone, healthDays: healthDays)
-            guard !dailyFeedback.contains(where: { $0.localDate == key }) else { continue }
+            guard !dailyFeedback.contains(where: { !$0.isMidday && $0.localDate == key }) else { continue }
             try requestDailyFeedback(upload)
             queued += 1
         }
@@ -208,7 +208,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     }
 
     func canRequestUpdatedDailyFeedback(on date: Date) -> Bool {
-        signedIn && dailyFeedback.first { $0.localDate == FoodDates.localDate(for: date) }?
+        signedIn && dailyFeedback.first { !$0.isMidday && $0.localDate == FoodDates.localDate(for: date) }?
             .canRequestNewReview(enabled: dailyFeedbackEnabled) == true
     }
 
@@ -220,18 +220,40 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         let calendar = Calendar.current
         let first = calendar.date(byAdding: .day, value: -6, to: date) ?? date
         let key = FoodDates.localDate(for: date)
-        let previousID = replaceExisting ? dailyFeedback.first { $0.localDate == key }?.id : nil
+        let previousID = replaceExisting ? dailyFeedback.first { !$0.isMidday && $0.localDate == key }?.id : nil
         let firstKey = FoodDates.localDate(for: first)
         let healthDays = try await health.dailyFeedbackHealth(from: first, through: date,
             includeWorkouts: dailyFeedbackEnabled && shareWorkoutDetailsWithAgent)
             .filter { $0.localDate >= firstKey && $0.localDate <= key }
         guard token == accountToken,
               replaceExisting ? canRequestUpdatedDailyFeedback(on: date) : canRequestDailyFeedback(on: date) else { return false }
-        if replaceExisting && dailyFeedback.first(where: { $0.localDate == key })?.id != previousID { return false }
+        if replaceExisting && dailyFeedback.first(where: { !$0.isMidday && $0.localDate == key })?.id != previousID { return false }
         try requestDailyFeedback(DailyFeedbackUpload(id: UUID().uuidString.lowercased(),
             localDate: key, timeZone: TimeZone.current.identifier, healthDays: healthDays,
             replacesRequestId: previousID))
         return true
+    }
+
+    func requestMiddayFeedback(using health: HealthEnergy) async throws {
+        guard let profile, signedIn else { return }
+        let accountToken = token
+        let previous = dailyFeedback.first { $0.isMidday && $0.localDate == FoodDates.today() }
+        guard previous?.state != "pending" else { return }
+        await health.refresh()
+        let capturedAt = Date()
+        let first = Calendar.current.date(byAdding: .day, value: -6, to: capturedAt) ?? capturedAt
+        let days = try await health.dailyFeedbackHealth(from: first, through: capturedAt,
+            includeWorkouts: dailyFeedbackEnabled && shareWorkoutDetailsWithAgent, throughTime: capturedAt)
+        guard token == accountToken else { return }
+        let current = dailyFeedback.first { $0.isMidday && $0.localDate == FoodDates.localDate(for: capturedAt) }
+        guard current?.id == previous?.id, current?.state != "pending" else { return }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        try requestDailyFeedback(DailyFeedbackUpload(id: UUID().uuidString.lowercased(),
+            localDate: FoodDates.localDate(for: capturedAt), timeZone: TimeZone.current.identifier,
+            healthDays: days, replacesRequestId: previous?.id, kind: "midday",
+            capturedAt: formatter.string(from: capturedAt),
+            restingEstimateKcal: health.effectiveRestingKcal(for: profile)))
     }
 
     private func missingDailyFeedbackDates(includeHistory: Bool) -> [Date] {
@@ -253,7 +275,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         }
         guard earliest <= firstCompleted else { return [] }
         let count = (calendar.dateComponents([.day], from: earliest, to: firstCompleted).day ?? 0) + 1
-        let existing = Set(dailyFeedback.map(\.localDate))
+        let existing = Set(dailyFeedback.filter { !$0.isMidday }.map(\.localDate))
         return (0..<count).compactMap { offset in
             guard let day = calendar.date(byAdding: .day, value: offset, to: earliest),
                   !existing.contains(FoodDates.localDate(for: day)) else { return nil }
@@ -575,7 +597,8 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     private func snapshot() -> FoodSnapshot {
         FoodSnapshot(accountId: accountId, startedAt: startedAt, profile: profile,
                      foods: foods, logs: logs, estimations: estimations,
-                     dailyFeedback: dailyFeedback)
+                     dailyFeedback: dailyFeedback.filter { !$0.isMidday },
+                     middayFeedback: dailyFeedback.filter(\.isMidday))
     }
 
     private func apply(_ snapshot: FoodSnapshot) {
@@ -585,7 +608,7 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         foods = snapshot.foods
         logs = snapshot.logs
         estimations = snapshot.estimations
-        dailyFeedback = snapshot.dailyFeedback ?? []
+        dailyFeedback = (snapshot.dailyFeedback ?? []) + (snapshot.middayFeedback ?? [])
         dailyFeedbackEnabled = accountId.map { UserDefaults.standard.bool(forKey: "dailyFeedback.enabled.\($0)") } ?? false
         shareWorkoutDetailsWithAgent = accountId.map {
             UserDefaults.standard.bool(forKey: "dailyFeedback.shareWorkouts.\($0)")
@@ -697,6 +720,9 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
             if let previousID = upload.replacesRequestId { body["replacesRequestId"] = previousID }
             if let units = upload.displayUnits { body["displayUnits"] = units }
             if let instructions = upload.userInstructions { body["userInstructions"] = instructions }
+            if let kind = upload.kind { body["kind"] = kind }
+            if let capturedAt = upload.capturedAt { body["capturedAt"] = capturedAt }
+            if let resting = upload.restingEstimateKcal { body["restingEstimateKcal"] = resting }
             let _: DailyFeedbackResponse = try await call("/v1/daily-feedback", method: "POST", body: body)
         }
     }

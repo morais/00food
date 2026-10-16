@@ -225,6 +225,8 @@ struct HomeView: View {
     @State private var showingSelectedFeedback = false
     @State private var requestingSelectedFeedback = false
     @State private var showingSyncStatus = false
+    @State private var requestingMiddayFeedback = false
+    @State private var showingMiddayFeedback = false
 
     private var syncStatusRequested: Bool {
         scenePhase == .active && (store.isOffline || store.pendingSyncCount > 0 ||
@@ -237,14 +239,20 @@ struct HomeView: View {
     }
     private var selectedLogs: [FoodLog] { store.logs(on: selectedLogDate) }
     private var selectedFeedback: DailyFeedbackRequest? {
-        store.dailyFeedback.first { $0.localDate == FoodDates.localDate(for: selectedLogDate) }
+        store.dailyFeedback.first { !$0.isMidday && $0.localDate == FoodDates.localDate(for: selectedLogDate) }
+    }
+    private var selectedMiddayFeedback: DailyFeedbackRequest? {
+        store.dailyFeedback.first { $0.isMidday && $0.localDate == FoodDates.localDate(for: selectedLogDate) }
     }
     private var yesterdayFeedback: DailyFeedbackRequest? {
         guard let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date()) else { return nil }
-        return store.dailyFeedback.first { $0.localDate == FoodDates.localDate(for: yesterday) }
+        return store.dailyFeedback.first { !$0.isMidday && $0.localDate == FoodDates.localDate(for: yesterday) }
+    }
+    private var middayFeedback: DailyFeedbackRequest? {
+        store.dailyFeedback.first { $0.isMidday && $0.localDate == FoodDates.today() }
     }
     private var showsDailyFeedbackCard: Bool {
-        guard store.dailyFeedbackEnabled || !store.dailyFeedback.isEmpty else { return false }
+        guard store.dailyFeedbackEnabled || store.dailyFeedback.contains(where: { !$0.isMidday }) else { return false }
         return yesterdayFeedback.map { !store.dailyFeedbackCardIsDismissed($0) } ?? true
     }
     private var selectedDayIsToday: Bool { Calendar.current.isDateInToday(selectedLogDate) }
@@ -294,6 +302,7 @@ struct HomeView: View {
                         if !store.estimations.isEmpty { estimatesSection }
                         hydrationCard
                         fiveADayCard
+                        middayFeedbackCard
                         if showsDailyFeedbackCard {
                             dailyFeedbackCard
                                 .transition(.opacity)
@@ -323,6 +332,7 @@ struct HomeView: View {
             .sheet(isPresented: $showingProgress) { ProgressPlansView() }
             .sheet(item: $reviewing) { ReviewEstimationView(estimation: $0) }
             .sheet(isPresented: $showingSelectedFeedback) { selectedFeedbackSheet }
+            .sheet(isPresented: $showingMiddayFeedback) { middayFeedbackSheet }
             .alert("Something went wrong", isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: { Text(errorText ?? "") }
@@ -503,6 +513,73 @@ struct HomeView: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
     }
 
+    private var middayFeedbackCard: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Label("Midday feedback", systemImage: "sun.max").font(.headline)
+                Text(middayFeedback?.state == "pending" ? "Waiting for your agent" :
+                     middayFeedback?.state == "ready" ? "Feedback on your day so far is ready" :
+                     "Review today so far and plan the rest of your day.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 4)
+            if middayFeedback != nil {
+                Button("View") { showingMiddayFeedback = true }.buttonStyle(.bordered)
+            } else {
+                Button { requestMiddayFeedback() } label: {
+                    if requestingMiddayFeedback { ProgressView() }
+                    else { Text("Ask agent") }
+                }
+                .buttonStyle(.bordered).disabled(requestingMiddayFeedback)
+            }
+        }
+        .padding(16)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+    }
+
+    private var middayFeedbackSheet: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    if let request = middayFeedback {
+                        if let date = request.capturedAt.flatMap(FoodDates.parseTimestamp) {
+                            Text("Today, as of \(date.formatted(date: .omitted, time: .shortened))")
+                                .font(.subheadline).foregroundStyle(.secondary)
+                        }
+                        feedbackRow(request, showsDate: false)
+                        if request.state == "ready" {
+                            Button { requestMiddayFeedback() } label: {
+                                HStack {
+                                    if requestingMiddayFeedback { ProgressView() }
+                                    Text("Update feedback")
+                                }
+                            }
+                            .buttonStyle(.borderedProminent).disabled(requestingMiddayFeedback)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading).padding(20)
+            }
+            .navigationTitle("Midday feedback")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) {
+                Button("Done") { showingMiddayFeedback = false }
+            } }
+        }
+    }
+
+    private func requestMiddayFeedback() {
+        guard !requestingMiddayFeedback else { return }
+        requestingMiddayFeedback = true
+        Task {
+            defer { requestingMiddayFeedback = false }
+            do {
+                try await store.requestMiddayFeedback(using: health)
+                showingMiddayFeedback = true
+            } catch { errorText = error.localizedDescription }
+        }
+    }
+
     private func feedbackRow(_ request: DailyFeedbackRequest, showsDate: Bool = true) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             if showsDate {
@@ -523,11 +600,23 @@ struct HomeView: View {
     private var selectedFeedbackSheet: some View {
         NavigationStack {
             ScrollView {
-                if let selectedFeedback {
-                    feedbackRow(selectedFeedback)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(20)
+                VStack(alignment: .leading, spacing: 20) {
+                    if let selectedFeedback { feedbackRow(selectedFeedback) }
+                    if let selectedMiddayFeedback {
+                        if selectedFeedback != nil { Divider() }
+                        Text("Midday feedback").font(.headline)
+                        if let date = selectedMiddayFeedback.capturedAt.flatMap(FoodDates.parseTimestamp) {
+                            Text("As of \(date.formatted(date: .omitted, time: .shortened))")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        feedbackRow(selectedMiddayFeedback, showsDate: false)
+                    }
+                    if selectedFeedback == nil && store.canRequestDailyFeedback(on: selectedLogDate) {
+                        Button("Request daily review") { requestSelectedReview() }
+                            .buttonStyle(.borderedProminent).disabled(requestingSelectedFeedback)
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading).padding(20)
             }
             .navigationTitle("Daily review")
             .navigationBarTitleDisplayMode(.inline)
@@ -807,7 +896,7 @@ struct HomeView: View {
 
     @ViewBuilder
     private var selectedDayFeedbackAction: some View {
-        if let feedback = selectedFeedback {
+        if let feedback = selectedFeedback ?? selectedMiddayFeedback {
             Button {
                 showingSelectedFeedback = true
             } label: {

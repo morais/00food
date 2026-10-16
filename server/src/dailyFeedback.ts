@@ -28,7 +28,11 @@ export const dailyFeedbackInput = z.strictObject({
   replacesRequestId: z.uuid().optional(),
   displayUnits: z.enum(["metric", "us", "uk"]).default("metric"),
   userInstructions: z.string().trim().max(2000).default(""),
-});
+  kind: z.enum(["daily", "midday"]).default("daily"),
+  capturedAt: z.iso.datetime().optional(),
+  restingEstimateKcal: z.number().int().min(1).max(10000).optional(),
+}).refine(input => input.kind !== "midday" || (input.capturedAt != null && input.restingEstimateKcal != null),
+  "Midday feedback requires a capture time and full-day resting estimate");
 
 export type DailyFeedbackRow = {
   id: string; tenant_id: string; local_date: string; time_zone: string;
@@ -37,6 +41,10 @@ export type DailyFeedbackRow = {
   needs_refresh?: number;
   display_units?: "metric" | "us" | "uk";
   user_instructions?: string;
+  review_kind?: "daily" | "midday";
+  captured_at?: string | null;
+  resting_estimate_kcal?: number | null;
+  context_json?: string | null;
 };
 
 type LogRow = { id: string; food_name: string; serving: string; quantity: number;
@@ -69,6 +77,7 @@ export const dailyFeedbackView = (row: DailyFeedbackRow) => ({
   id: row.id, localDate: row.local_date, state: row.state, feedback: row.feedback_text,
   createdAt: row.created_at, updatedAt: row.updated_at,
   needsRefresh: row.needs_refresh === 1,
+  kind: row.review_kind ?? "daily", capturedAt: row.captured_at ?? null,
 });
 
 export function dateBefore(localDate: string, days: number): string {
@@ -95,14 +104,19 @@ export async function findDailyFeedback(env: Env, tenantId: string, id: string):
 }
 
 export async function dailyFeedbackContext(env: Env, row: DailyFeedbackRow) {
+  const midday = row.review_kind === "midday";
+  const cutoff = midday ? row.captured_at ?? row.created_at : null;
   const first = dateBefore(row.local_date, 6);
   const [logs, estimates, profile] = await Promise.all([
     env.DB.prepare(`SELECT id, food_name, serving, quantity, kcal, fruit_veg_portions, local_date, logged_at
       FROM food_logs WHERE tenant_id = ? AND local_date BETWEEN ? AND ?
-      ORDER BY local_date, logged_at LIMIT 5000`).bind(row.tenant_id, first, row.local_date).all<LogRow>(),
+      AND (? IS NULL OR (julianday(COALESCE(created_at, logged_at)) <= julianday(?)
+        AND julianday(logged_at) <= julianday(?)))
+      ORDER BY local_date, logged_at LIMIT 5000`).bind(row.tenant_id, first, row.local_date, cutoff, cutoff, cutoff).all<LogRow>(),
     env.DB.prepare(`SELECT description, local_date FROM pending_estimations
-      WHERE tenant_id = ? AND local_date BETWEEN ? AND ? LIMIT 100`)
-      .bind(row.tenant_id, first, row.local_date).all<EstimateRow>(),
+      WHERE tenant_id = ? AND local_date BETWEEN ? AND ?
+      AND (? IS NULL OR julianday(created_at) <= julianday(?)) LIMIT 100`)
+      .bind(row.tenant_id, first, row.local_date, cutoff, cutoff).all<EstimateRow>(),
     env.DB.prepare("SELECT deficit_percent FROM profiles WHERE tenant_id = ?")
       .bind(row.tenant_id).first<ProfileRow>(),
   ]);
@@ -118,23 +132,32 @@ export async function dailyFeedbackContext(env: Env, row: DailyFeedbackRow) {
     const fruitVegTotal = foods.reduce((total, item) => total + item.fruitVegPortions, 0);
     const healthDay = healthByDate.get(localDate) ?? null;
     const waterMl = healthDay?.waterMl;
+    const restingForBudget = midday && localDate === row.local_date ? row.resting_estimate_kcal : healthDay?.restingKcal;
     return { localDate, foods, foodKcal: foods.reduce((total, item) => total + item.kcal, 0),
       fruitVegPortions: Math.min(5, fruitVegTotal),
       fruitVegPortionsQualifier: fruitVegTotal >= 5 ? "at_least" : "logged_estimate",
       fruitVegGoalMet: fruitVegTotal >= 5,
       waterIntakeAtLeastMl: waterMl ?? null,
       waterGoalMet: waterMl == null ? null : waterMl >= 2000,
-      calorieBudget: profile && healthDay?.restingKcal != null && healthDay.restingKcal > 0 && healthDay.activeKcal != null
-        ? calorieBudget(healthDay.restingKcal, healthDay.activeKcal, profile.deficit_percent) : null,
+      calorieBudget: profile && restingForBudget != null && restingForBudget > 0 && healthDay?.activeKcal != null
+        ? calorieBudget(restingForBudget, healthDay.activeKcal, profile.deficit_percent) : null,
       pendingFoods, health: healthDay };
   });
+  const frozen = row.context_json ? JSON.parse(row.context_json) as {
+    days: typeof days; currentPlanDeficitPercent: number | null;
+  } : null;
   return { requestId: row.id, feedbackDay: row.local_date, timeZone: row.time_zone,
+    reviewKind: row.review_kind ?? "daily", capturedAt: row.captured_at ?? null,
+    fullDayRestingEstimateKcal: row.resting_estimate_kcal ?? null,
     preferredDisplayUnits: row.display_units ?? "metric",
     userInstructions: row.user_instructions ?? "",
-    currentPlanDeficitPercent: profile?.deficit_percent ?? null,
-    reviewGuidance: dailyReviewGuidance,
+    currentPlanDeficitPercent: frozen ? frozen.currentPlanDeficitPercent : profile?.deficit_percent ?? null,
+    reviewGuidance: midday ? [...dailyReviewGuidance,
+      "This is MIDDAY FEEDBACK: a snapshot of a day still in progress as of capturedAt, not a completed-day assessment. Briefly reflect on food, water, produce and shared workouts so far, then suggest practical food choices for the remainder of the day. Honour userInstructions and cite general nutrition recommendations. Do not judge partial-day totals against completed-day goals, infer missing meals were skipped, or recommend compensating for food with exercise or skipping meals. Today's calorieBudget uses the full-day resting estimate plus active energy recorded so far, so the allowance may grow with later activity. Never project unrecorded workouts or calories as facts."] : dailyReviewGuidance,
     referenceSources: dailyReviewSources,
-    days, note: "Health values are daily aggregates when available. Missing values are null. Food totals omit pending estimates. The current plan may differ from the plan on earlier days." };
+    days: frozen?.days ?? days, note: midday
+      ? "Snapshot as of capturedAt. Today's Health totals are partial; fullDayRestingEstimateKcal is an estimate for the full day. Missing values are unknown. Pending foods are excluded from calorie totals."
+      : "Health values are daily aggregates when available. Missing values are null. Food totals omit pending estimates. The current plan may differ from the plan on earlier days." };
 }
 
 export async function saveDailyFeedback(env: Env, tenantId: string, id: string, feedback: string): Promise<DailyFeedbackRow | null> {

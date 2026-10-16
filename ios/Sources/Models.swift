@@ -279,6 +279,7 @@ struct FoodSnapshot: Codable {
     var logs: [FoodLog]
     var estimations: [PendingEstimation]
     var dailyFeedback: [DailyFeedbackRequest]? = nil
+    var middayFeedback: [DailyFeedbackRequest]? = nil
 }
 
 struct DailyHealthDay: Codable {
@@ -322,9 +323,12 @@ struct DailyFeedbackRequest: Codable, Identifiable, Equatable {
     var createdAt: String
     var updatedAt: String
     var needsRefresh: Bool? = nil
+    var kind: String? = nil
+    var capturedAt: String? = nil
+    var isMidday: Bool { kind == "midday" }
 
     func canRequestNewReview(enabled: Bool, today: String = FoodDates.today()) -> Bool {
-        enabled && needsRefresh == true && localDate < today
+        !isMidday && enabled && needsRefresh == true && localDate < today
     }
 }
 
@@ -337,6 +341,9 @@ struct DailyFeedbackUpload: Codable {
     var displayUnits: String? = MeasurementPreference.current().rawValue
     // Optional so requests queued by older builds remain readable offline.
     var userInstructions: String? = nil
+    var kind: String? = nil
+    var capturedAt: String? = nil
+    var restingEstimateKcal: Int? = nil
 }
 
 enum DailyReviewInstructions {
