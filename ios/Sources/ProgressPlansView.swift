@@ -89,7 +89,7 @@ struct ProgressPlansView: View {
             HStack {
                 Text("Calories over time").font(.title3.bold())
                 Spacer()
-                InfoDisclosure(title: "Calories over time", message: "Orange shows logged food within the allowance. Green fills the remaining allowance; red shows food above it. Each bar reaches the allowance or the food total, whichever is higher.\n\nThe average covers the last seven completed calendar days, excluding today, or fewer days if you joined more recently. Remaining and over-allowance days offset each other. The percentage compares their combined remaining or excess calories with their combined allowance. Unlogged food is not included.\n\nAllowance is (resting + active energy) × (1 − your current plan’s deficit percentage). Completed days use their recorded Health resting and active energy; missing resting energy falls back to the recent resting average or your details estimate, and missing active energy counts as zero. Today uses the resting estimate plus active energy so far. Earlier plan changes are not tracked. Food totals include only food logged in 00Food.", sources: HealthSource.energy)
+                InfoDisclosure(title: "Calories over time", message: "Orange shows logged food within the allowance. Green fills the remaining allowance; red shows food above it. Each bar reaches the allowance or the food total, whichever is higher.\n\nThe average covers the last seven completed calendar days, excluding today, or fewer days if you joined more recently. Remaining and over-allowance days offset each other. The percentage compares their combined remaining or excess calories with their combined allowance. The estimated deficit vs TDEE compares those days’ total logged food with their total resting + active energy, before the plan’s deficit is applied. Intake above TDEE is shown as a surplus. Unlogged food is not included.\n\nAllowance is (resting + active energy) × (1 − your current plan’s deficit percentage). Completed days use their recorded Health resting and active energy; missing resting energy falls back to the recent resting average or your details estimate, and missing active energy counts as zero. Today uses the resting estimate plus active energy so far. Earlier plan changes are not tracked. Food totals include only food logged in 00Food.", sources: HealthSource.energy)
             }
             Picker("Period", selection: $calorieHistoryDays) {
                 Text("30 days").tag(30)
@@ -135,6 +135,8 @@ struct ProgressPlansView: View {
                 if let average = CalorieBalanceAverage.lastSevenCompletedDays(in: points) {
                     Text(average.label)
                         .font(.subheadline.weight(.medium))
+                    Text(average.tdeeLabel)
+                        .font(.subheadline.weight(.medium))
                 }
             } else {
                 Text("No calorie history yet.").foregroundStyle(.secondary)
@@ -167,8 +169,9 @@ struct ProgressPlansView: View {
         var date = first
         while date <= today {
             let key = FoodDates.localDate(for: date)
+            let budget = health.budget(for: profile, on: date)
             days.append(DailyCalorieBalance(date: date, eaten: foodByDay[key] ?? 0,
-                                            allowance: health.budget(for: profile, on: date).allowanceKcal))
+                                            allowance: budget.allowanceKcal, tdeeKcal: budget.tdeeKcal))
             guard let next = calendar.date(byAdding: .day, value: 1, to: date) else { break }
             date = next
         }

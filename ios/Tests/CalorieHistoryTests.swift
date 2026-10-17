@@ -14,7 +14,7 @@ final class CalorieHistoryTests: XCTestCase {
 
     func testAverageUsesLastSevenCompletedCalendarDays() throws {
         let points = (1...17).map { day in
-            DailyCalorieBalance(date: date(day), eaten: day == 17 ? 0 : day * 100, allowance: 2000)
+            DailyCalorieBalance(date: date(day), eaten: day == 17 ? 0 : day * 100, allowance: 2000, tdeeKcal: 2500)
         }
         let average = try XCTUnwrap(CalorieBalanceAverage.lastSevenCompletedDays(in: points,
             now: date(17), calendar: calendar))
@@ -24,8 +24,8 @@ final class CalorieHistoryTests: XCTestCase {
     }
 
     func testMixedBalancesUseCombinedAllowanceForPercentage() throws {
-        let points = [DailyCalorieBalance(date: date(15), eaten: 1800, allowance: 2000),
-                      DailyCalorieBalance(date: date(16), eaten: 2000, allowance: 1000)]
+        let points = [DailyCalorieBalance(date: date(15), eaten: 1800, allowance: 2000, tdeeKcal: 2500),
+                      DailyCalorieBalance(date: date(16), eaten: 2000, allowance: 1000, tdeeKcal: 1250)]
         let average = try XCTUnwrap(CalorieBalanceAverage.lastSevenCompletedDays(in: points,
             now: date(17), calendar: calendar))
         XCTAssertEqual(average.dayCount, 2)
@@ -36,18 +36,47 @@ final class CalorieHistoryTests: XCTestCase {
     }
 
     func testBalancedDaysOffsetToZero() throws {
-        let points = [DailyCalorieBalance(date: date(15), eaten: 1800, allowance: 2000),
-                      DailyCalorieBalance(date: date(16), eaten: 2200, allowance: 2000)]
+        let points = [DailyCalorieBalance(date: date(15), eaten: 1800, allowance: 2000, tdeeKcal: 2500),
+                      DailyCalorieBalance(date: date(16), eaten: 2200, allowance: 2000, tdeeKcal: 2500)]
         let average = try XCTUnwrap(CalorieBalanceAverage.lastSevenCompletedDays(in: points,
             now: date(17), calendar: calendar))
         XCTAssertEqual(average.remainingKcalPerDay, 0)
         XCTAssertEqual(average.remainingPercent, 0)
+        XCTAssertEqual(average.tdeeDeficitPercent, 20, accuracy: 0.001)
         XCTAssertTrue(average.label.contains("on allowance"))
     }
 
+    func testTDEEDeficitIsSeparateFromGoalAndUsesCombinedExpenditure() throws {
+        let points = [DailyCalorieBalance(date: date(15), eaten: 1800, allowance: 2000, tdeeKcal: 2500),
+                      DailyCalorieBalance(date: date(16), eaten: 900, allowance: 1000, tdeeKcal: 1500)]
+        let average = try XCTUnwrap(CalorieBalanceAverage.lastSevenCompletedDays(in: points,
+            now: date(17), calendar: calendar))
+        XCTAssertEqual(average.remainingPercent, 10, accuracy: 0.001)
+        XCTAssertEqual(average.tdeeDeficitPercent, 32.5, accuracy: 0.001)
+        XCTAssertTrue(average.tdeeLabel.contains("deficit vs TDEE"))
+    }
+
+    func testOverGoalCanStillBeBelowTDEE() throws {
+        let points = [DailyCalorieBalance(date: date(16), eaten: 2300, allowance: 2000, tdeeKcal: 2500)]
+        let average = try XCTUnwrap(CalorieBalanceAverage.lastSevenCompletedDays(in: points,
+            now: date(17), calendar: calendar))
+        XCTAssertEqual(average.remainingPercent, -15, accuracy: 0.001)
+        XCTAssertEqual(average.tdeeDeficitPercent, 8, accuracy: 0.001)
+        XCTAssertTrue(average.label.contains("over allowance"))
+        XCTAssertTrue(average.tdeeLabel.contains("deficit vs TDEE"))
+    }
+
+    func testEatingAboveTDEEReportsSurplus() throws {
+        let points = [DailyCalorieBalance(date: date(16), eaten: 2700, allowance: 2000, tdeeKcal: 2500)]
+        let average = try XCTUnwrap(CalorieBalanceAverage.lastSevenCompletedDays(in: points,
+            now: date(17), calendar: calendar))
+        XCTAssertEqual(average.tdeeDeficitPercent, -8, accuracy: 0.001)
+        XCTAssertTrue(average.tdeeLabel.contains("surplus vs TDEE"))
+    }
+
     func testNoCompletedDaysOrValidAllowanceHasNoAverage() {
-        let points = [DailyCalorieBalance(date: date(16), eaten: 100, allowance: 0),
-                      DailyCalorieBalance(date: date(17), eaten: 100, allowance: 2000)]
+        let points = [DailyCalorieBalance(date: date(16), eaten: 100, allowance: 0, tdeeKcal: 0),
+                      DailyCalorieBalance(date: date(17), eaten: 100, allowance: 2000, tdeeKcal: 2500)]
         XCTAssertNil(CalorieBalanceAverage.lastSevenCompletedDays(in: points, now: date(17), calendar: calendar))
         XCTAssertNil(CalorieBalanceAverage.lastSevenCompletedDays(in: [], now: date(17), calendar: calendar))
     }
