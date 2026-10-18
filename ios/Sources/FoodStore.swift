@@ -447,13 +447,15 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     }
 
     func requestEstimate(description: String, photo: Data?, id: String = UUID().uuidString.lowercased(),
-                         localDate: String? = nil) async throws {
+                         localDate: String? = nil, loggedAt: Date = Date()) async throws {
         guard !estimations.contains(where: { $0.id == id }) else { return }
         let now = Self.now()
         let estimation = PendingEstimation(id: id, description: description,
                                            hasPhoto: photo != nil, state: "uploading", proposedName: nil,
                                            proposedServing: nil, proposedKcal: nil, agentNote: nil,
-                                           localDate: localDate ?? FoodDates.today(), createdAt: now, updatedAt: now)
+                                           localDate: localDate ?? FoodDates.localDate(for: loggedAt),
+                                           createdAt: now, updatedAt: now,
+                                           loggedAt: ISO8601DateFormatter().string(from: loggedAt))
         try stage(.estimate(estimation, photo)) { estimations.insert(estimation, at: 0) }
     }
 
@@ -481,7 +483,9 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
     }
 
     func accept(_ estimation: PendingEstimation) async throws {
-        let loggedAt = FoodDates.logTimestamp(on: FoodDates.parseLocalDate(estimation.localDate))
+        guard let loggedAt = estimation.mealTimestamp else {
+            throw FoodServiceError(message: "The original meal time could not be read")
+        }
         let _: AcceptedResponse = try await call("/v1/estimations/\(estimation.id)/accept", method: "POST", body: [
             "loggedAt": ISO8601DateFormatter().string(from: loggedAt),
         ])
@@ -677,10 +681,14 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
             do { let _: OKResponse = try await call("/v1/logs/\(id)", method: "DELETE") }
             catch let error as FoodServiceError where error.status == 404 { break }
         case .estimate(let estimation, let photo):
+            guard let loggedAt = estimation.mealTimestamp else {
+                throw FoodServiceError(message: "The original meal time could not be read")
+            }
             // Multipart keeps the description and photo in one request without
             // base64 inflation, so the agent sees both together.
             let form = Self.multipartForm(fields: ["id": estimation.id, "description": estimation.description,
-                                                   "localDate": estimation.localDate],
+                                                   "localDate": estimation.localDate,
+                                                   "loggedAt": ISO8601DateFormatter().string(from: loggedAt)],
                                           jpeg: photo)
             let _: EstimationResponse = try await call("/v1/estimations", method: "POST", raw: form)
         case .clarifyEstimate(let estimationId, let clarificationId, let text):

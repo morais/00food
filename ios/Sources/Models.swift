@@ -269,6 +269,14 @@ struct PendingEstimation: Codable, Identifiable, Equatable {
     var reasoning: String? = nil
     var clarification: String? = nil
     var proposedFruitVegPortions: Int? = nil
+    var loggedAt: String? = nil
+
+    var mealTimestamp: Date? {
+        if let timestamp = FoodDates.parseTimestamp(loggedAt) { return timestamp }
+        // Older queued requests have only their creation time and chosen day.
+        guard let requestedAt = FoodDates.parseTimestamp(createdAt) else { return nil }
+        return FoodDates.logTimestamp(on: FoodDates.parseLocalDate(localDate), now: requestedAt)
+    }
 }
 
 struct FoodSnapshot: Codable {

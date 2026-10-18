@@ -249,12 +249,14 @@ struct QuickAddView: View {
     }
 
     private func requestEstimate() {
+        let loggedAt = FoodDates.logTimestamp(on: logDate)
         busy = true
         Task {
             defer { busy = false }
             do {
                 try await store.requestEstimate(description: descriptionText.trimmingCharacters(in: .whitespacesAndNewlines),
-                                                photo: photoData, localDate: logDate.map(FoodDates.localDate))
+                                                photo: photoData, localDate: logDate.map(FoodDates.localDate),
+                                                loggedAt: loggedAt)
                 dismiss()
             } catch { errorText = error.localizedDescription }
         }

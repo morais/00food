@@ -160,7 +160,7 @@ import WatchConnectivity
                                 loggedAt: command.createdAt, localDate: command.localDate)
         case .estimate:
             try await store.requestEstimate(description: command.description ?? "", photo: nil,
-                                            id: command.id, localDate: command.localDate)
+                                            id: command.id, localDate: command.localDate, loggedAt: command.createdAt)
         case .water:
             try await health.applyWatchWater(id: command.id, accountId: command.accountId, at: command.createdAt)
         case .undo:

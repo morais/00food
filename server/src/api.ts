@@ -68,6 +68,7 @@ const logInput = z.strictObject({
 });
 const estimationInput = z.strictObject({
   id: id.optional(), description: z.string().trim().max(500), localDate: day,
+  loggedAt: z.iso.datetime({ offset: true }).optional(),
   photoBase64: z.string().min(1).max(2_666_668).optional(),
 });
 export const proposalInput = z.strictObject({
@@ -97,6 +98,7 @@ type EstimationRow = {
   agent_note: string | null; local_date: string; created_at: string; updated_at: string;
   agent_reasoning: string | null; user_clarification: string | null; clarification_id: string | null;
   proposed_fruit_veg_portions: number | null;
+  logged_at: string | null;
 };
 
 export const foodView = (r: FoodRow) => ({
@@ -116,6 +118,7 @@ export const estimationView = (r: EstimationRow) => ({
   proposedFruitVegPortions: r.proposed_fruit_veg_portions,
   agentNote: r.agent_note, localDate: r.local_date, createdAt: r.created_at, updatedAt: r.updated_at,
   reasoning: r.agent_reasoning, clarification: r.user_clarification,
+  loggedAt: r.logged_at,
 });
 const profileView = (r: ProfileRow) => ({
   heightCm: r.height_cm, weightKg: r.weight_kg, estimateProfile: r.estimate_profile,
@@ -158,7 +161,8 @@ async function estimationRequest(req: Request): Promise<{ input: z.infer<typeof 
   let form: FormData;
   try { form = await req.formData(); } catch { return fail(400, "Expected multipart form data"); }
   const field = (name: string) => { const value = form.get(name); return typeof value === "string" ? value : undefined; };
-  const input = estimationInput.parse({ id: field("id"), description: field("description") ?? "", localDate: field("localDate") });
+  const input = estimationInput.parse({ id: field("id"), description: field("description") ?? "",
+    localDate: field("localDate"), loggedAt: field("loggedAt") });
   const part = form.get("photo");
   if (part === null) return { input };
   if (typeof part === "string") return fail(415, "Invalid JPEG photo");
@@ -429,9 +433,9 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     let row: EstimationRow | null;
     try {
       row = await env.DB.prepare(`INSERT OR IGNORE INTO pending_estimations
-        (id, tenant_id, description, photo_key, state, local_date, created_at, updated_at)
-        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?) RETURNING *`).bind(estimationId, tenantId, input.description,
-          photoKey, input.localDate, now, now).first<EstimationRow>();
+        (id, tenant_id, description, photo_key, state, local_date, created_at, updated_at, logged_at)
+        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?) RETURNING *`).bind(estimationId, tenantId, input.description,
+          photoKey, input.localDate, now, now, input.loggedAt ?? null).first<EstimationRow>();
       if (!row) throw new APIError(409, "Estimation ID is already in use");
     } catch (error) {
       if (photoKey) await env.PHOTOS?.delete(photoKey);
@@ -491,8 +495,8 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
   }
   const acceptMatch = /^\/v1\/estimations\/([a-f0-9-]{36})\/accept$/.exec(path);
   if (acceptMatch && method === "POST") {
-    // Older app builds send no body; newer ones preserve the meal's local day
-    // in Health as well as in the food log when accepting a late estimate.
+    // New requests save their meal time before upload. Acceptance must not
+    // replace it. Older pending requests can supply their original time here.
     const input = z.strictObject({ loggedAt: z.iso.datetime({ offset: true }).optional() })
       .parse(await body(req, 16000, true));
     const row = await findEstimation(env, tenantId, acceptMatch[1]);
@@ -502,7 +506,7 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
     const foodId = crypto.randomUUID();
     const logId = crypto.randomUUID();
     const now = new Date().toISOString();
-    const loggedAt = input.loggedAt ?? now;
+    const loggedAt = row.logged_at ?? input.loggedAt ?? row.created_at;
     const portions = row.proposed_fruit_veg_portions ?? 0;
     const accepted = await env.DB.batch([
       env.DB.prepare(`INSERT INTO foods
