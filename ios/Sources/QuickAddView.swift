@@ -26,6 +26,7 @@ struct QuickAddView: View {
     @State private var busy = false
     @State private var errorText: String?
     @State private var searchVisible = false
+    @State private var showingDiscardConfirmation = false
     @FocusState private var searchFocused: Bool
 
     private var matches: [FoodItem] {
@@ -51,7 +52,13 @@ struct QuickAddView: View {
             }
             .navigationTitle(logDate.map { "Log food · \($0.formatted(.dateTime.month(.abbreviated).day()))" } ?? "Log food")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .topBarLeading) {
+                Button("Cancel") {
+                    if hasDraft { showingDiscardConfirmation = true }
+                    else { dismiss() }
+                }
+                .disabled(busy)
+            } }
             .sheet(isPresented: $showingCamera) { CameraPicker { image in setPhoto(image) } }
             .task {
                 guard openCameraOnAppear && !didOpenCamera else { return }
@@ -90,7 +97,15 @@ struct QuickAddView: View {
             .alert("Could not log food", isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: { Text(errorText ?? "") }
+            .confirmationDialog("Discard this food draft?", isPresented: $showingDiscardConfirmation,
+                                titleVisibility: .visible) {
+                Button("Discard draft", role: .destructive) { dismiss() }
+                Button("Keep editing", role: .cancel) {}
+            } message: {
+                Text("Your description and photo haven’t been sent or logged.")
+            }
         }
+        .interactiveDismissDisabled(hasDraft || busy)
     }
 
     private var foodList: some View {
@@ -214,6 +229,11 @@ struct QuickAddView: View {
     private var canRequestEstimate: Bool {
         !busy && !loadingPhoto &&
             (!descriptionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || photoData != nil)
+    }
+
+    private var hasDraft: Bool {
+        !descriptionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            photoData != nil || loadingPhoto
     }
 
     private func foodRow(_ food: FoodItem) -> some View {

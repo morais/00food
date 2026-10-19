@@ -523,9 +523,9 @@ struct HomeView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength: 4)
-            if middayFeedback != nil {
+            if middayFeedback?.state == "ready" {
                 Button("View") { showingMiddayFeedback = true }.buttonStyle(.bordered)
-            } else {
+            } else if middayFeedback == nil {
                 Button { requestMiddayFeedback() } label: {
                     if requestingMiddayFeedback { ProgressView() }
                     else { Text("Ask agent") }
@@ -575,7 +575,7 @@ struct HomeView: View {
             defer { requestingMiddayFeedback = false }
             do {
                 try await store.requestMiddayFeedback(using: health)
-                showingMiddayFeedback = true
+                showingMiddayFeedback = false
             } catch { errorText = error.localizedDescription }
         }
     }
