@@ -10,6 +10,10 @@ updates:
     open-pull-requests-limit: 5
     assignees:
       - morais
+    groups:
+      npm-minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
     commit-message:
       prefix: deps
 
@@ -23,6 +27,13 @@ updates:
     open-pull-requests-limit: 5
     assignees:
       - morais
+    groups:
+      # init and analyze must share a version; split PRs fail CodeQL.
+      codeql-action:
+        patterns: ["github/codeql-action*"]
+      github-actions-minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
     commit-message:
       prefix: deps
 
@@ -36,5 +47,9 @@ updates:
     open-pull-requests-limit: 5
     assignees:
       - morais
+    groups:
+      pip-minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
     commit-message:
       prefix: deps
