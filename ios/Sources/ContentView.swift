@@ -554,7 +554,9 @@ struct HomeView: View {
                                     Text("Update feedback")
                                 }
                             }
-                            .buttonStyle(.borderedProminent).disabled(requestingMiddayFeedback)
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.large)
+                            .disabled(requestingMiddayFeedback)
                         }
                     }
                 }
@@ -836,6 +838,7 @@ struct HomeView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
+                .controlSize(.large)
                 .accessibilityLabel("Add food for \(selectedLogDate.formatted(date: .abbreviated, time: .omitted))")
                 if store.canRequestUpdatedDailyFeedback(on: selectedLogDate) {
                     Button { requestSelectedReview(replaceExisting: true) } label: {
