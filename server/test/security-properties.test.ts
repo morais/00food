@@ -66,6 +66,12 @@ describe("2. Credential opacity", () => {
     try {
       const app = await issueCredential(env, "alice", "app", "iOS app");
       const mcp = await issueCredential(env, "alice", "mcp", "MCP · Test", ["food:read"]);
+      const lifetimes = db.prepare("SELECT kind, created_at, expires_at FROM credentials").all() as
+        { kind: string; created_at: string; expires_at: string }[];
+      for (const credential of lifetimes) {
+        expect(Date.parse(credential.expires_at) - Date.parse(credential.created_at))
+          .toBe((credential.kind === "mcp" ? 365 : 90) * 86400000);
+      }
       const stored = db.prepare("SELECT token_hash FROM credentials").all() as { token_hash: string }[];
       expect(stored.map(row => row.token_hash).sort()).toEqual([await sha256Hex(app.token), await sha256Hex(mcp.token)].sort());
       expect(JSON.stringify(db.prepare("SELECT * FROM credentials").all())).not.toContain(app.token.slice(7));
@@ -167,7 +173,10 @@ describe("5. OAuth for MCP", () => {
       expect((await exchange({ client_id: `${clientId.slice(0, -2)}xx` })).status).toBe(401);
       const issued = await exchange({});
       expect(issued.status).toBe(200);
-      expect(await issued.json()).toMatchObject({ token_type: "Bearer", scope: "food:read" });
+      const tokenResponse = await issued.json() as { token_type: string; scope: string; expires_in: number };
+      expect(tokenResponse).toMatchObject({ token_type: "Bearer", scope: "food:read" });
+      expect(tokenResponse.expires_in).toBeGreaterThanOrEqual(365 * 86400 - 5);
+      expect(tokenResponse.expires_in).toBeLessThanOrEqual(365 * 86400);
       expect((await exchange({})).status).toBe(400);
     } finally { db.close(); }
   });

@@ -93,6 +93,8 @@ Migration `0014_percentage_deficits.sql` preserves existing pace selection (0/30
 
 ## App API
 
+MCP access tokens last 365 days from issuance; app sessions last 90 days. OAuth returns the MCP lifetime in `expires_in`; this server does not issue refresh tokens. Migration `0020_mcp_token_lifetime.sql` extends existing, unexpired and unrevoked MCP credentials to 365 days from issuance. Clients that cached the original 30-day expiry may still require a one-time reconnect to receive the updated lifetime.
+
 Daily-review context preserves the capped fruit/veg count and uncapped Health water totals, adds explicit minimum-intake and goal-completion fields, and includes `reviewGuidance` in every response. Completed produce progress means at least five portions; recorded water may omit unlogged drinks. Agents are asked to discuss protein sources and diet balance qualitatively from food descriptions, without inventing nutrient totals. This guidance also reaches existing clients with cached tool descriptions. Previously saved reviews remain unchanged.
 
 App routes use `Authorization: Bearer <app token>`:
