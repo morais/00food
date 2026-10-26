@@ -65,7 +65,8 @@ requires no Apple account, mailbox, phone, or iPhone. The rate-limited callback
 requires a valid pending OAuth flow and same-origin form submission; grants still
 require explicit consent and PKCE. Keep the code out of Git, ZIPs, and chat.
 
-Expand **Reviewer access** at `/dashboard/login` and enter the same code to open
+Open `/dashboard/login?review=1` (reviewer form already expanded) and enter the
+password from the secure reviewer credentials in **Review access code** to open
 a read-only `/dashboard` showing
 only the demo account's saved foods, logs, proposals, and daily reflections.
 Sessions are signed, expire in a day, and recheck code expiry, revocation, and
@@ -73,7 +74,13 @@ the tenant allowlist on every read. The dashboard cannot approve or log foods.
 
 Run `node scripts/smoke-review.mjs` after deployment to verify the OAuth flow and
 all five review workflows, reset the synthetic fixtures, and revoke its temporary
-grant. `node scripts/provision-review.mjs --reset` restores only the saved fixture
+grant. Use `node scripts/smoke-review.mjs --auth-only` to check the existing code,
+OAuth/PKCE, token exchange, tool discovery, dashboard session, and sign-out without
+resetting or changing food fixtures; it still revokes its temporary MCP grant.
+Reviewer sign-in needs no username, Apple account, inbox, phone, or setup. The
+OAuth page displays its reviewer form immediately; surrounding whitespace copied
+with the password is ignored, while the code itself is still checked exactly.
+`node scripts/provision-review.mjs --reset` restores only the saved fixture
 IDs for another run; dates remain fixed to the original fixture day.
 Remove the allowlisted UUID or revoke `review_credentials.revoked_at` to disable
 sign-in and dashboard access. Separately revoke issued MCP credentials and their

@@ -250,8 +250,8 @@ export async function beginAuthorization(req: Request, env: Env): Promise<Respon
         <input type="hidden" name="flow" value="${htmlEscape(flowId)}">
         <button class="apple-button">Sign in with Apple</button>
       </form>
-      <details><summary>Reviewer access</summary>
-        <p>For the dedicated review account only. Enter the access code supplied in the secure reviewer instructions.</p>
+      <details open><summary>Reviewer access</summary>
+        <p>For the dedicated demo account, enter the password supplied in the secure reviewer credentials. No username, Apple account, email code, or additional setup is required.</p>
         <form method="post" action="/auth/review/callback">
           <input type="hidden" name="flow" value="${htmlEscape(flowId)}">
           <label for="access-code">Review access code</label><br>
@@ -290,7 +290,7 @@ export async function reviewCallback(req: Request, env: Env): Promise<Response> 
   catch { return html(env, "<h1>Invalid review sign-in</h1>", 400); }
   const flowId = form.get("flow") ?? "";
   const flow = await loadFlow(env, flowId);
-  const accessCode = form.get("accessCode") ?? "";
+  const accessCode = (form.get("accessCode") ?? "").trim();
   if (!flow || flow.tenant_id || !/^fd_review_[A-Za-z0-9_-]{43}$/.test(accessCode)) {
     return html(env, "<h1>Invalid or expired review access</h1>", 401);
   }

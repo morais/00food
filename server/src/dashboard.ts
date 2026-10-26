@@ -113,9 +113,10 @@ async function currentSession(req: Request, env: Env): Promise<Session | null> {
 export async function dashboardLogin(req: Request, env: Env): Promise<Response> {
   if (await currentSession(req, env)) return redirect(env, "/dashboard");
   if (!appleConfigured(env) && !reviewConfigured(env)) return page(env, "<h1>Sign-in is not configured</h1>", 503);
+  const reviewerEntry = new URL(req.url).searchParams.get("review") === "1";
   return page(env, `<h1>Sign in</h1><p>Use your ${escapeHtml(appName(env))} account to view your foods, food logs, estimate requests, and daily reflections.</p>
     ${appleConfigured(env) ? '<a class="apple-button" href="/dashboard/login/apple">Sign in with Apple</a>' : ""}
-    ${reviewConfigured(env) ? `<details><summary>Reviewer access</summary><p>Use the access code supplied in the secure reviewer instructions.</p>
+    ${reviewConfigured(env) ? `<details${reviewerEntry ? " open" : ""}><summary>Reviewer access</summary><p>Enter the password supplied in the secure reviewer credentials below. No username, Apple account, email code, or additional setup is required.</p>
       <form method="post" action="/dashboard/login/review"><label for="access-code">Review access code</label>
       <input id="access-code" name="accessCode" type="password" autocomplete="off" required maxlength="128">
       <button>Sign in as reviewer</button></form></details>` : ""}`);
@@ -175,7 +176,7 @@ export async function dashboardReviewLogin(req: Request, env: Env): Promise<Resp
   if (Number(req.headers.get("content-length") ?? 0) > 1024) return page(env, "<h1>Invalid request</h1>", 400);
   const raw = await req.text();
   if (raw.length > 1024) return page(env, "<h1>Invalid request</h1>", 400);
-  const code = new URLSearchParams(raw).get("accessCode") ?? "";
+  const code = (new URLSearchParams(raw).get("accessCode") ?? "").trim();
   const tenantId = await reviewTenantForAccessCode(env, code);
   if (!tenantId) return page(env, '<h1>Invalid or expired reviewer code</h1><p><a href="/dashboard/login">Try again</a>.</p>', 401);
   const session: Session = {

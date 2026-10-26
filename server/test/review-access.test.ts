@@ -56,13 +56,14 @@ describe("dedicated reviewer access", () => {
         resource: origin + "/mcp", scope: "food:read food:write daily:read daily:write", state }).toString();
       const login = await beginAuthorization(new Request(url), env);
       const loginPage = await login.text();
-      expect(loginPage).toContain("Reviewer access");
+      expect(loginPage).toContain("<details open><summary>Reviewer access</summary>");
+      expect(loginPage).toContain("password supplied in the secure reviewer credentials");
       expect(loginPage).toContain("Sign in with Apple");
       const flow = loginPage.match(/name="flow" value="([^"]+)"/)![1];
       const signIn = (accessCode = code, headers = {}) => reviewCallback(post("/auth/review/callback", { flow, accessCode }, headers), env);
       expect((await signIn(code, { origin: "https://evil.example" })).status).toBe(403);
       expect((await signIn("fd_review_" + "B".repeat(43))).status).toBe(401);
-      const signedIn = await signIn();
+      const signedIn = await signIn(` \n${code}\t `);
       expect(signedIn.status).toBe(303);
       expect((await signIn()).status).toBe(401);
       const cookie = signedIn.headers.get("set-cookie")!.split(";")[0];
@@ -120,6 +121,19 @@ describe("dedicated reviewer access", () => {
 });
 
 describe("read-only reviewer dashboard", () => {
+  it("opens the dedicated reviewer link without hiding Apple sign-in or exposing a code", async () => {
+    const { db, env } = await fixture();
+    try {
+      const normal = await (await dashboardLogin(new Request(origin + "/dashboard/login"), env)).text();
+      expect(normal).toContain("<details><summary>Reviewer access</summary>");
+      const reviewer = await (await dashboardLogin(new Request(origin + "/dashboard/login?review=1"), env)).text();
+      expect(reviewer).toContain("<details open><summary>Reviewer access</summary>");
+      expect(reviewer).toContain("Sign in with Apple");
+      expect(reviewer).toContain("No username, Apple account, email code, or additional setup is required");
+      expect(reviewer).not.toContain(code);
+    } finally { db.close(); }
+  });
+
   it("preserves same-origin form posts and rejects opaque or missing origins", async () => {
     const { db, env } = await fixture();
     try {
@@ -141,7 +155,7 @@ describe("read-only reviewer dashboard", () => {
       expect((await dashboard(new Request(origin + "/dashboard"), env)).status).toBe(303);
       expect((await dashboardReviewLogin(post("/dashboard/login/review", { accessCode: code }, { origin: "https://evil.example" }), env)).status).toBe(403);
       expect((await dashboardReviewLogin(post("/dashboard/login/review", { accessCode: "wrong" }), env)).status).toBe(401);
-      const signedIn = await dashboardReviewLogin(post("/dashboard/login/review", { accessCode: code }), env);
+      const signedIn = await dashboardReviewLogin(post("/dashboard/login/review", { accessCode: ` \n${code}\t ` }), env);
       const cookie = signedIn.headers.get("set-cookie")!.split(";")[0];
       expect(cookie).not.toContain(code);
       expect(signedIn.headers.get("set-cookie")).toContain("HttpOnly; Secure; SameSite=Lax");

@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { reviewSeed } from "../src/reviewSeed.ts";
 
 const server = dirname(dirname(fileURLToPath(import.meta.url)));
+const authOnly = process.argv.includes("--auth-only");
 const saved = JSON.parse(readFileSync(join(server, ".review-access.json"), "utf8"));
 const config = readFileSync(join(server, "wrangler.toml"), "utf8");
 const origin = config.match(/^PUBLIC_ORIGIN\s*=\s*"([^"]+)"/m)?.[1];
@@ -25,6 +26,11 @@ const hidden = (html, name) => {
   assert(value, `Missing ${name} in form`); return value;
 };
 const execute = sql => {
+  if (!sql) return;
+  if (sql.length < 5000) {
+    execFileSync("npx", ["wrangler", "d1", "execute", "00food", "--remote", "--command", sql], { cwd: server, stdio: "ignore" });
+    return;
+  }
   const temporary = mkdtempSync(join(tmpdir(), "00food-review-smoke-"));
   try {
     const path = join(temporary, "cleanup.sql");
@@ -36,7 +42,7 @@ const reset = () => reviewSeed(saved.tenantId, hash(saved.accessCode), saved.exp
   saved.ids, new Date(saved.seededAt), true);
 let tokenHash;
 try {
-  execute(reset());
+  if (!authOnly) execute(reset());
   const registration = await fetch(origin + "/oauth/register", { method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ client_name: "Reviewer smoke test", redirect_uris: [callback] }) });
   status(registration, 201, "client registration");
@@ -80,32 +86,37 @@ try {
   assert(JSON.stringify(tools.filter(t => t.annotations.destructiveHint).map(t => t.name).sort()) ===
     JSON.stringify(["propose_food_estimate", "set_food_fruit_veg_portions", "submit_daily_feedback"]), "Overwrite annotations missing");
   const call = async (name, args = {}) => JSON.parse((await rpc("tools/call", { name, arguments: args })).content[0].text);
-  const pending = (await call("list_pending_foods")).foods;
-  assert(pending.some(f => f.id === saved.ids.estimate && f.state === "pending"), "Pending fixture missing");
-  assert((await call("get_pending_food", { id: saved.ids.estimate })).food.description.includes("Greek yogurt"), "Description missing");
-  const known = (await call("list_known_foods")).foods;
-  assert(known.length === 2 && known.some(f => f.name === "Banana oats"), "Library fixture missing");
-  await call("propose_food_estimate", { id: saved.ids.estimate, name: "Yogurt bowl", serving: "one bowl", kcal: 320,
-    fruitVegPortions: 1, reasoning: "Synthetic demo estimate from the described yogurt, banana, and oats." });
-  assert((await call("get_pending_food", { id: saved.ids.estimate })).food.state === "proposed", "Proposal not persisted");
-  assert((await call("set_food_fruit_veg_portions", { id: saved.ids.soup, fruitVegPortions: 2 })).food.fruitVegPortions === 2, "Produce correction failed");
-  assert((await call("list_pending_daily_feedback")).requests.some(r => r.id === saved.ids.daily), "Daily fixture missing");
-  const context = (await call("get_daily_feedback_request", { id: saved.ids.daily })).context;
-  const day = context.days.at(-1);
-  assert(day.foodKcal === 180 && day.fruitVegPortions === 2 && day.waterIntakeAtLeastMl === 2250, "Daily fixture totals differ");
-  assert(context.currentPlanDeficitPercent === 15 && day.calorieBudget.allowanceKcal === 1700, "Percentage budget differs");
-  await call("submit_daily_feedback", { id: saved.ids.daily, feedback: "Synthetic demo reflection. The food log is incomplete; recorded water meets the tracking goal." });
+  if (!authOnly) {
+    const pending = (await call("list_pending_foods")).foods;
+    assert(pending.some(f => f.id === saved.ids.estimate && f.state === "pending"), "Pending fixture missing");
+    assert((await call("get_pending_food", { id: saved.ids.estimate })).food.description.includes("Greek yogurt"), "Description missing");
+    const known = (await call("list_known_foods")).foods;
+    assert(known.length === 2 && known.some(f => f.name === "Banana oats"), "Library fixture missing");
+    await call("propose_food_estimate", { id: saved.ids.estimate, name: "Yogurt bowl", serving: "one bowl", kcal: 320,
+      fruitVegPortions: 1, reasoning: "Synthetic demo estimate from the described yogurt, banana, and oats." });
+    assert((await call("get_pending_food", { id: saved.ids.estimate })).food.state === "proposed", "Proposal not persisted");
+    assert((await call("set_food_fruit_veg_portions", { id: saved.ids.soup, fruitVegPortions: 2 })).food.fruitVegPortions === 2, "Produce correction failed");
+    assert((await call("list_pending_daily_feedback")).requests.some(r => r.id === saved.ids.daily), "Daily fixture missing");
+    const context = (await call("get_daily_feedback_request", { id: saved.ids.daily })).context;
+    const day = context.days.at(-1);
+    assert(day.foodKcal === 180 && day.fruitVegPortions === 2 && day.waterIntakeAtLeastMl === 2250, "Daily fixture totals differ");
+    assert(context.currentPlanDeficitPercent === 15 && day.calorieBudget.allowanceKcal === 1700, "Percentage budget differs");
+    await call("submit_daily_feedback", { id: saved.ids.daily, feedback: "Synthetic demo reflection. The food log is incomplete; recorded water meets the tracking goal." });
+  }
   const dashLogin = await post("/dashboard/login/review", { accessCode: saved.accessCode }, { origin });
   status(dashLogin, 303, "dashboard sign-in");
   const dashCookie = dashLogin.headers.get("set-cookie")?.split(";", 1)[0];
   const dash = await fetch(origin + "/dashboard", { headers: { cookie: dashCookie } });
   status(dash, 200, "dashboard");
   const html = await dash.text();
-  assert(html.includes("Yogurt bowl") && html.includes("Synthetic demo reflection"), "Dashboard results missing");
+  assert(authOnly ? html.includes("Dedicated demo account")
+    : html.includes("Yogurt bowl") && html.includes("Synthetic demo reflection"), "Dashboard results missing");
   const logout = await post("/dashboard/logout", {}, { origin, cookie: dashCookie });
   status(logout, 303, "dashboard logout");
-  console.log("Passed: reviewer OAuth/PKCE, ten annotated tools, pending foods, library, proposal, produce correction, daily context/reflection, read-only dashboard.");
+  console.log(authOnly
+    ? "Passed: existing reviewer credential, OAuth/PKCE, ten annotated tools, read-only dashboard and sign-out; no food fixtures changed."
+    : "Passed: reviewer OAuth/PKCE, ten annotated tools, pending foods, library, proposal, produce correction, daily context/reflection, read-only dashboard.");
 } finally {
-  execute(reset() + (tokenHash ? `\nUPDATE credentials SET revoked_at = '${new Date().toISOString()}' WHERE token_hash = '${tokenHash}' AND tenant_id = '${saved.tenantId}' AND kind = 'mcp';` : ""));
-  console.log("Synthetic fixtures reset; temporary MCP grant revoked if issued.");
+  execute((authOnly ? "" : reset()) + (tokenHash ? `\nUPDATE credentials SET revoked_at = '${new Date().toISOString()}' WHERE token_hash = '${tokenHash}' AND tenant_id = '${saved.tenantId}' AND kind = 'mcp';` : ""));
+  console.log(`${authOnly ? "Synthetic fixtures preserved" : "Synthetic fixtures reset"}; temporary MCP grant revoked if issued.`);
 }
