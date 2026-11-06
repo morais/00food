@@ -5,7 +5,7 @@
 ## Recommended setup: ChatGPT Work
 
 1. Sign in to 00Food with Apple, then open **Connect your agent** on the home screen or in Settings.
-2. In ChatGPT Plugins, choose **Add custom MCP server** and enter `https://api.00food.com/mcp`. Sign in with the same Apple account and approve the requested food permissions. Connect or rescan the server so its tools and events are available.
+2. Choose **ChatGPT** in the setup guide and tap **Add to ChatGPT** to open the [published 00Food plugin](https://chatgpt.com/plugins/plugin_asdk_app_6aca59ae4a548191a8f0d965ed5f56ba). Install it and connect 00Food when prompted. Sign in with the same Apple account and approve the requested food permissions; no custom server setup is needed.
 3. Start a Work chat on ChatGPT web, or select Work and Cloud in the desktop app. Add your 00Food plugin to that chat.
 4. Use **Copy agent instructions** in 00Food and paste the instructions into the chat. They tell the agent to check existing pending foods and subscribe to new estimate requests, clarifications, and food logs. The agent uses both the description and attached photo and proposes an estimate with an explanation. You review each proposal in the app before saving or logging it.
 5. Return to 00Food and refresh connection status. **Connected** means that the account connection is authorized. The individual **subscribed** lines show currently unexpired event subscriptions; they do not guarantee when the agent will respond. Connecting alone does not subscribe to events.
@@ -18,8 +18,18 @@ Reviews support light Markdown: short headings, bullet or numbered lists, bold/i
 
 Your AI service's availability, access requirements, and instructions affect responses. Current OpenAI instructions are at [MCP Events](https://developers.openai.com/plugins/build/mcp-events) and [plugin quickstart](https://developers.openai.com/plugins/quickstart).
 
+## Claude
+
+1. Choose **Claude** in **Connect your agent** and tap **Add to Claude** to open [00Food in the Claude Directory](https://claude.ai/directory/00food).
+2. Add the connector and connect 00Food when prompted. Sign in with the same Apple account you use in the iPhone app and approve the requested permissions.
+3. Start a Claude chat with the 00Food connector enabled. Copy the Claude instructions from the app and paste them into the chat. They ask Claude to check existing pending foods and propose estimates for your approval, without claiming to monitor in the background.
+4. When you add a food or clarification in 00Food, ask Claude to check pending requests. For example: **Check my pending foods in 00Food and propose estimates for me to review.**
+5. If you want daily reviews, enable requests in 00Food or request a past day, then ask Claude to check pending daily reviews and approve the additional permissions. Connecting Claude does not enable automatic background responses.
+
+Return to 00Food and refresh connection status to confirm the account is connected. Event subscriptions are not required for this on-demand workflow. You still review and approve food estimates in 00Food before saving or logging them.
+
 ## Other compatible agents
 
-Connect the remote MCP server and ask your agent to check pending foods or daily review requests. Agents without webhook events can catch up on new foods and clarifications with `list_food_events`. The webhook Events implementation currently accepts ChatGPT/OpenAI callback hosts only; support for other webhook hosts needs a separate integration change. Do not assume that any MCP connection supports automatic event responses.
+Expand **Other agents / custom server** in the setup guide to copy `https://api.00food.com/mcp`. Add it as a remote MCP server in your compatible agent, sign in with the same Apple account, and ask the agent to check pending foods or daily review requests. Agents without webhook events can catch up on new foods and clarifications with `list_food_events`. The webhook Events implementation currently accepts ChatGPT/OpenAI callback hosts only; support for other webhook hosts needs a separate integration change. Do not assume that any MCP connection supports automatic event responses.
 
 You can always log foods manually and reuse saved foods. Estimate requests can be saved offline and sent when the app reconnects; agent responses need a working connection and an available agent.
