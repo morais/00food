@@ -8,6 +8,7 @@ server/.dev.vars*
 !server/.dev.vars.example
 server/.env*
 server/.review-access*.json
+server/.backfills/
 !server/.env.example
 .env
 .env.*

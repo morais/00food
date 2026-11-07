@@ -32,11 +32,18 @@ Later sign-ins preserve the original value. MCP and dashboard sign-ins do not
 set it; neither sign-out nor expiry/revocation cleanup removes it. Account
 deletion removes it with the tenant.
 
-Historical backfill is deferred. Existing accounts start with NULL, and their
-next successful native sign-in records the first observation since tracking
-was introduced. Until backfill is resolved, NULL means unknown, not that the
-person has never used iOS. This marker records sign-in, not completion of the
-onboarding steps or Health permission choices.
+Existing accounts start with NULL. A successful native sign-in records the
+first observation since tracking was introduced; a historical backfill can
+instead use the earliest retained native app credential. These are first-known
+sign-in dates, not guaranteed first-ever dates, because older credentials may
+have been cleaned up. NULL means unknown, not that the person has never used
+iOS. This marker records sign-in, not completion of onboarding or Health
+permission choices.
+
+Backfills target reviewed accounts with app-credential evidence, preserve
+non-null markers, and exclude reviewer/demo accounts. Keep guarded SQL and
+before/after audit reports in ignored `.backfills/`, with directory mode 0700
+and file mode 0600. Historical account-creation timestamps are not rewritten.
 
 ## Web dashboard
 
