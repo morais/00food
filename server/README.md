@@ -23,6 +23,21 @@ Install `APPLE_PRIVATE_KEY` and `OAUTH_SIGNING_SECRET` as Wrangler secrets. Neve
 
 For local work, use a separate ignored `wrangler.toml` with `PUBLIC_ORIGIN = "http://localhost:8787"`, `workers_dev = true`, and no custom-domain route. Apply `npx wrangler d1 migrations apply 00food --local`, start `npm run dev`, and run `node scripts/smoke-local.mjs` in another terminal. The smoke test inserts disposable local credentials and checks profile saving, idempotent logging, photo upload, MCP photo retrieval, agent proposal, and user acceptance. Native Apple login needs a deployed HTTPS origin to test end to end.
 
+## First iOS sign-in
+
+Migration `0021_first_ios_sign_in.sql` adds nullable
+`tenants.first_ios_sign_in_at`. After a verified native Apple sign-in, issuing
+the app credential records the UTC timestamp atomically with that credential.
+Later sign-ins preserve the original value. MCP and dashboard sign-ins do not
+set it; neither sign-out nor expiry/revocation cleanup removes it. Account
+deletion removes it with the tenant.
+
+Historical backfill is deferred. Existing accounts start with NULL, and their
+next successful native sign-in records the first observation since tracking
+was introduced. Until backfill is resolved, NULL means unknown, not that the
+person has never used iOS. This marker records sign-in, not completion of the
+onboarding steps or Health permission choices.
+
 ## Web dashboard
 
 `GET /dashboard` opens a read-only view of the signed-in account's saved foods,

@@ -103,11 +103,21 @@ export async function issueCredential(
   const id = crypto.randomUUID();
   const now = new Date();
   const expiresAt = new Date(now.getTime() + (kind === "app" ? 90 : 365) * 86400000).toISOString();
-  await env.DB.prepare(`INSERT INTO credentials
+  const insert = env.DB.prepare(`INSERT INTO credentials
     (id, token_hash, tenant_id, kind, audience, scopes, label, created_at, expires_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
     id, tokenHash, tenantId, kind, audience(env, kind), scopes.join(" "), label.slice(0, 120), now.toISOString(), expiresAt,
-  ).run();
+  );
+  if (kind === "app") {
+    // Native sign-in issues this credential only after Apple verification.
+    // Commit the observation with the credential so neither can succeed alone.
+    // The conditional update preserves the first sign-in across later logins
+    // and credential cleanup, including concurrent sign-ins.
+    await env.DB.batch([insert, env.DB.prepare(`UPDATE tenants SET first_ios_sign_in_at = ?
+      WHERE id = ? AND first_ios_sign_in_at IS NULL`).bind(now.toISOString(), tenantId)]);
+  } else {
+    await insert.run();
+  }
   return { token, expiresAt };
 }
 
