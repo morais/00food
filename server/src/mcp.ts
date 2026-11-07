@@ -80,6 +80,25 @@ const ok = (id: unknown, result: unknown): Response => json({ jsonrpc: "2.0", id
 const error = (id: unknown, code: number, message: string): Response => json({ jsonrpc: "2.0", id, error: { code, message } });
 const content = (value: unknown): unknown => ({ content: [{ type: "text", text: JSON.stringify(value) }] });
 
+async function accountSetup(env: Env, tenantId: string) {
+  const row = await env.DB.prepare(`SELECT first_ios_sign_in_at,
+    EXISTS(SELECT 1 FROM profiles p WHERE p.tenant_id = t.id) AS has_profile
+    FROM tenants t WHERE t.id = ?`).bind(tenantId)
+    .first<{ first_ios_sign_in_at: string | null; has_profile: number }>();
+  if (!row) throw new Error("Account not found");
+  const iosSignInRecorded = row.first_ios_sign_in_at !== null;
+  const profileConfigured = Boolean(row.has_profile);
+  const status = profileConfigured ? "ready" : iosSignInRecorded ? "finish_ios_setup" : "ios_setup_unknown";
+  const guidance = status === "ready"
+    ? "The account has a profile. Continue with the requested food task; an empty food list does not mean the iPhone app needs installing."
+    : (status === "finish_ios_setup"
+      ? "An iPhone sign-in is recorded, but the initial profile is missing. Suggest opening 00Food on the iPhone and completing the initial profile using the same Apple account as this connection."
+      : "There is no recorded iPhone sign-in or profile; this does not prove the app has never been used. Ask whether 00Food is already set up on the person's iPhone. If needed, offer the App Store link, then have them open or install 00Food, sign in with the same Apple account as this connection, and complete the initial profile.")
+      + " Health access is optional for initial food diary setup. Keep this connection; no plugin reinstall or reconnect is needed. When the person returns, call the same food-list tool again to check setup. Offer this help without blocking access to any foods returned here.";
+  return { status, iosSignInRecorded, profileConfigured, guidance,
+    ...(status === "ready" ? {} : { appStoreUrl: "https://apps.apple.com/app/id6818843517" }) };
+}
+
 export async function routeMcp(req: Request, env: Env, principal: Principal): Promise<Response> {
   if (req.headers.get("origin") && req.headers.get("origin") !== new URL(req.url).origin) {
     return new Response(null, { status: 403 });
@@ -181,9 +200,12 @@ export async function routeMcp(req: Request, env: Env, principal: Principal): Pr
   try {
     switch (tool.name) {
     case "list_pending_foods": {
-      const rows = await env.DB.prepare(`SELECT * FROM pending_estimations WHERE tenant_id = ?
-        ORDER BY created_at DESC LIMIT 100`).bind(principal.tenantId).all();
-      return respondTool(content({ foods: rows.results.map(r => estimationView(r as never)) }));
+      const [rows, setup] = await Promise.all([
+        env.DB.prepare(`SELECT * FROM pending_estimations WHERE tenant_id = ?
+          ORDER BY created_at DESC LIMIT 100`).bind(principal.tenantId).all(),
+        accountSetup(env, principal.tenantId),
+      ]);
+      return respondTool(content({ foods: rows.results.map(r => estimationView(r as never)), setup }));
     }
     case "get_pending_food": {
       const { id } = z.strictObject({ id: uuid }).parse(args);
@@ -211,9 +233,12 @@ export async function routeMcp(req: Request, env: Env, principal: Principal): Pr
       return respondTool(content(await response.json()));
     }
     case "list_known_foods": {
-      const rows = await env.DB.prepare(`SELECT * FROM foods WHERE tenant_id = ?
-        ORDER BY use_count DESC, last_used_at DESC LIMIT 100`).bind(principal.tenantId).all();
-      return respondTool(content({ foods: rows.results.map(r => foodView(r as never)) }));
+      const [rows, setup] = await Promise.all([
+        env.DB.prepare(`SELECT * FROM foods WHERE tenant_id = ?
+          ORDER BY use_count DESC, last_used_at DESC LIMIT 100`).bind(principal.tenantId).all(),
+        accountSetup(env, principal.tenantId),
+      ]);
+      return respondTool(content({ foods: rows.results.map(r => foodView(r as never)), setup }));
     }
     case "set_food_fruit_veg_portions": {
       const { id, fruitVegPortions } = z.strictObject({ id: uuid,

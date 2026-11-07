@@ -86,6 +86,13 @@ try {
   assert(JSON.stringify(tools.filter(t => t.annotations.destructiveHint).map(t => t.name).sort()) ===
     JSON.stringify(["propose_food_estimate", "set_food_fruit_veg_portions", "submit_daily_feedback"]), "Overwrite annotations missing");
   const call = async (name, args = {}) => JSON.parse((await rpc("tools/call", { name, arguments: args })).content[0].text);
+  for (const name of ["list_pending_foods", "list_known_foods"]) {
+    const value = await call(name);
+    assert(Array.isArray(value.foods), `${name}: missing foods array`);
+    assert(value.setup?.status === "ready" && value.setup.profileConfigured === true,
+      `${name}: prepared reviewer account incorrectly requires iPhone setup`);
+    assert(!value.setup.appStoreUrl, `${name}: unexpected reviewer install prompt`);
+  }
   if (!authOnly) {
     const pending = (await call("list_pending_foods")).foods;
     assert(pending.some(f => f.id === saved.ids.estimate && f.state === "pending"), "Pending fixture missing");
@@ -114,7 +121,7 @@ try {
   const logout = await post("/dashboard/logout", {}, { origin, cookie: dashCookie });
   status(logout, 303, "dashboard logout");
   console.log(authOnly
-    ? "Passed: existing reviewer credential, OAuth/PKCE, ten annotated tools, read-only dashboard and sign-out; no food fixtures changed."
+    ? "Passed: existing reviewer credential, OAuth/PKCE, ten annotated tools, food-list setup guidance, read-only dashboard and sign-out; no food fixtures changed."
     : "Passed: reviewer OAuth/PKCE, ten annotated tools, pending foods, library, proposal, produce correction, daily context/reflection, read-only dashboard.");
 } finally {
   execute((authOnly ? "" : reset()) + (tokenHash ? `\nUPDATE credentials SET revoked_at = '${new Date().toISOString()}' WHERE token_hash = '${tokenHash}' AND tenant_id = '${saved.tenantId}' AND kind = 'mcp';` : ""));
