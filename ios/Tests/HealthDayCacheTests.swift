@@ -74,6 +74,23 @@ final class HealthDayCacheTests: XCTestCase {
     }
 
     @MainActor
+    func testSelectedDayBecomesEligibleForHistoricalWaterAtMidnight() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Europe/Lisbon"))
+        let selectedDate = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 10, day: 25)))
+        let midnight = try XCTUnwrap(calendar.date(byAdding: .day, value: 1, to: selectedDate))
+        let health = HealthEnergy(dayCache: cache)
+
+        health.resetReadingsForNewDay(on: midnight.addingTimeInterval(-1), calendar: calendar)
+        XCTAssertNil(health.completedDay(containing: selectedDate, calendar: calendar))
+
+        health.resetReadingsForNewDay(on: midnight, calendar: calendar)
+        XCTAssertEqual(health.completedDay(containing: selectedDate, calendar: calendar),
+                       HealthDaySnapshot.Day(date: selectedDate, calendar: calendar))
+        XCTAssertNil(health.completedDay(containing: midnight, calendar: calendar))
+    }
+
+    @MainActor
     func testHealthStartsWithTheEntireCachedBudgetAndWater() {
         var snapshot = HealthDaySnapshot()
         snapshot.allowance = .init(activeKcal: 954, restingAverageKcal: 1768, restingDaysUsed: 7)

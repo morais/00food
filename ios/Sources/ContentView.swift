@@ -256,6 +256,10 @@ struct HomeView: View {
         return yesterdayFeedback.map { !store.dailyFeedbackCardIsDismissed($0) } ?? true
     }
     private var selectedDayIsToday: Bool { Calendar.current.isDateInToday(selectedLogDate) }
+    private var selectedWaterDay: HealthDaySnapshot.Day? {
+        guard scenePhase == .active, health.waterRequested else { return nil }
+        return health.completedDay(containing: selectedLogDate)
+    }
     private var selectedFruitVegPortions: Int {
         min(5, selectedLogs.reduce(0) { $0 + $1.countedFruitVegPortions })
     }
@@ -341,7 +345,7 @@ struct HomeView: View {
                 try? await store.refreshConnections(force: true)
                 health.setHistoryStart(store.accountStartedAt)
                 await health.refresh()
-                await loadSelectedWater(on: selectedLogDate)
+                await loadSelectedWater()
             }
             .task {
                 try? await store.refreshConnections()
@@ -358,11 +362,8 @@ struct HomeView: View {
             }
             .onDisappear { showingSyncStatus = false }
             .onAppear { openPendingShortcut() }
-            .task(id: FoodDates.localDate(for: selectedLogDate)) {
-                await loadSelectedWater(on: selectedLogDate)
-            }
-            .onChange(of: health.waterRequested) { _, _ in
-                Task { await loadSelectedWater(on: selectedLogDate) }
+            .task(id: selectedWaterDay) {
+                await loadSelectedWater()
             }
             .onChange(of: shortcuts.pendingLaunch) { _, _ in openPendingShortcut() }
         }
@@ -938,21 +939,18 @@ struct HomeView: View {
         selectedLogDate = min(max(date, earliestLogDate), Calendar.current.startOfDay(for: Date()))
     }
 
-    private func loadSelectedWater(on date: Date) async {
+    private func loadSelectedWater() async {
+        guard !Task.isCancelled, let day = selectedWaterDay else { return }
         let requestID = UUID()
         selectedWaterRequestID = requestID
         selectedWaterMl = nil
         selectedWaterError = nil
-        guard !Calendar.current.isDateInToday(date) else { return }
-        let requestedDay = FoodDates.localDate(for: date)
         do {
-            let milliliters = try await health.waterMl(on: date)
-            guard !Task.isCancelled, selectedWaterRequestID == requestID,
-                  FoodDates.localDate(for: selectedLogDate) == requestedDay else { return }
+            let milliliters = try await health.waterMl(on: day.start)
+            guard !Task.isCancelled, selectedWaterRequestID == requestID, selectedWaterDay == day else { return }
             selectedWaterMl = milliliters
         } catch {
-            guard !Task.isCancelled, selectedWaterRequestID == requestID,
-                  FoodDates.localDate(for: selectedLogDate) == requestedDay else { return }
+            guard !Task.isCancelled, selectedWaterRequestID == requestID, selectedWaterDay == day else { return }
             selectedWaterError = error.localizedDescription
         }
     }

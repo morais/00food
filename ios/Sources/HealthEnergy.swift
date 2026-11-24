@@ -430,6 +430,11 @@ struct RestingEnergySummary {
         return try await waterMilliliters(from: start, to: min(nextDay, Date()))
     }
 
+    func completedDay(containing date: Date, calendar: Calendar = .current) -> HealthDaySnapshot.Day? {
+        let day = HealthDaySnapshot.Day(date: date, calendar: calendar)
+        return day.start < readingDay.start ? day : nil
+    }
+
     private func waterMilliliters(from start: Date, to end: Date) async throws -> Int {
         let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: [.strictStartDate])
         do {
