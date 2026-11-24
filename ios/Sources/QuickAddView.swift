@@ -31,7 +31,7 @@ struct QuickAddView: View {
 
     private var matches: [FoodItem] {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        return needle.isEmpty ? Array(store.recentFoods.prefix(25)) : store.foods.filter {
+        return needle.isEmpty ? Array(store.foodsByUsage.filter { $0.useCount > 0 }.prefix(25)) : store.foods.filter {
             $0.name.localizedCaseInsensitiveContains(needle)
         }
     }
@@ -109,7 +109,8 @@ struct QuickAddView: View {
     }
 
     private var foodList: some View {
-        List {
+        let matches = self.matches
+        return List {
             if selectedTab == .saved {
                 if searchVisible {
                     Section {

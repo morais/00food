@@ -40,11 +40,7 @@ import WatchConnectivity
             value.waterMl = health.waterMlToday
             value.fruitVegPortions = store.todaysLogs.reduce(0) { $0 + $1.countedFruitVegPortions }
             value.allowanceReady = health.allowanceIsReady
-            value.foods = Array(store.foods.filter { $0.dismissedAt == nil }.sorted {
-                if $0.useCount != $1.useCount { return $0.useCount > $1.useCount }
-                if $0.lastUsedAt != $1.lastUsedAt { return ($0.lastUsedAt ?? "") > ($1.lastUsedAt ?? "") }
-                return $0.name.localizedStandardCompare($1.name) == .orderedAscending
-            }.prefix(50))
+            value.foods = Array(store.foodsByUsage.prefix(50))
             value.loggedIds = store.todaysLogs.map(\.id)
             value.estimates = store.estimations.map {
                 WatchEstimate(id: $0.id, name: $0.proposedName ?? ($0.description.isEmpty ? "Food photo" : $0.description), state: $0.state)

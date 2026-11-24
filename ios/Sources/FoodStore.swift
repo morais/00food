@@ -286,11 +286,8 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         let day = FoodDates.localDate(for: date)
         return logs.filter { $0.localDate == day }.sorted { $0.loggedAt > $1.loggedAt }
     }
-    var recentFoods: [FoodItem] {
-        foods.filter { $0.useCount > 0 && $0.dismissedAt == nil }.sorted {
-            if $0.useCount != $1.useCount { return $0.useCount > $1.useCount }
-            return ($0.lastUsedAt ?? "") > ($1.lastUsedAt ?? "")
-        }
+    var foodsByUsage: [FoodItem] {
+        FoodUsageRanking.rank(foods, logs: logs)
     }
 
     func signIn(identityToken: String, code: String, nonce: String) async throws {
