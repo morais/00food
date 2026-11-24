@@ -15,6 +15,23 @@ struct ForecastCalibration {
         max(0, Int((Double(nominalGap) + correctionKcal).rounded()))
     }
 
+    func projectionDeficitPercent(for budget: CalorieBudget) -> Double? {
+        let gap = Double(projectionGap(budget.gapKcal))
+        // Express the curve as a percentage while keeping the actual food
+        // allowance fixed. This is not a new expenditure or budget estimate.
+        let impliedExpenditure = Double(budget.allowanceKcal) + gap
+        guard impliedExpenditure > 0 else { return nil }
+        return gap / impliedExpenditure * 100
+    }
+
+    var adjustmentDescription: String {
+        let correction = Int(correctionKcal.rounded())
+        guard correction != 0 else { return "Forecast adjustment: unchanged." }
+        let direction = correction < 0 ? "less" : "more"
+        let pace = correction < 0 ? "slower" : "faster"
+        return "Forecast adjustment: \(abs(correction).formatted()) kcal/day \(direction) deficit — \(pace) loss."
+    }
+
     static func make(weights: [HealthMeasurePoint], resting: [HealthMeasurePoint],
                      active: [HealthMeasurePoint], logs: [FoodLog], since accountStart: Date,
                      now: Date = Date(), calendar: Calendar = .current) -> Self? {

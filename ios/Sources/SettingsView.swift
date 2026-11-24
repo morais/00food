@@ -184,15 +184,24 @@ private struct DeveloperView: View {
                         .font(.footnote).foregroundStyle(.blue)
                     if calibrateForecasts {
                         if let calibration = health.forecastCalibration(using: store) {
-                            Text("Using \(calibration.energyDays) food + Health days and \(calibration.weightDays) weight days across \(calibration.weightWeeks) weeks. Forecast correction: \(Int(calibration.correctionKcal.rounded())) kcal/day.")
+                            Text("Using \(calibration.energyDays) food + Health days and \(calibration.weightDays) weight days across \(calibration.weightWeeks) weeks.")
                                 .font(.footnote).foregroundStyle(.secondary)
+                            Text(calibration.adjustmentDescription)
+                                .font(.footnote).foregroundStyle(.secondary)
+                            if let profile = store.profile,
+                               let percent = calibration.projectionDeficitPercent(for: health.representativeBudget(for: profile)) {
+                                Text("Selected pace: \(profile.deficitPercent)% deficit")
+                                    .font(.footnote).foregroundStyle(.secondary)
+                                Text("Forecast-implied deficit: \(percent.formatted(.number.precision(.fractionLength(1))))%")
+                                    .font(.footnote).foregroundStyle(.secondary)
+                            }
                         } else {
                             Text("Using the standard forecast until enough consistent history is available.")
                                 .font(.footnote).foregroundStyle(.secondary)
                         }
                     }
                 } header: { Text("Forecasts") } footer: {
-                    Text("Experimental, off by default and local to this iPhone. Changes only forecast curves, body-fat projections and estimated dates. Calorie allowances, your pace and logged totals never change.\n\nUses up to 42 completed days, with at least 28 days of history, food + paired resting/active Health energy on 90% of days, and 14 weight days across at least four weekly groups. Weekly medians and a robust trend fit compare observed weight change with the change implied by recorded energy balance. The few missing energy days use the recorded average. Corrections are capped at 15% of recorded TDEE or 300 kcal/day, whichever is smaller, and damped with shorter, sparser or noisier history. Missing, stale or very noisy history uses the standard forecast. Projections flatten if the adjusted gap is zero or negative; weight gain is not modeled.\n\nThese are experimental app heuristics, not a validated physiological model. Missing food logs and water changes can still distort estimates. Existing chart labels and explanations describe the standard model; this Developer option is the only explanation of the calibration.")
+                    Text("Experimental, off by default and local to this iPhone. Changes only forecast curves, body-fat projections and estimated dates. Calorie allowances, your pace and logged totals never change. The forecast-implied percentage divides the forecast gap by your unchanged calorie allowance plus that gap. It describes the percentage implied by the curve, not a measurement of true TDEE.\n\nUses up to 42 completed days, with at least 28 days of history, food + paired resting/active Health energy on 90% of days, and 14 weight days across at least four weekly groups. Weekly medians and a robust trend fit compare observed weight change with the change implied by recorded energy balance. The few missing energy days use the recorded average. Corrections are capped at 15% of recorded TDEE or 300 kcal/day, whichever is smaller, and damped with shorter, sparser or noisier history. Missing, stale or very noisy history uses the standard forecast. Projections flatten if the adjusted gap is zero or negative; weight gain is not modeled.\n\nThese are experimental app heuristics, not a validated physiological model. Missing food logs and water changes can still distort estimates. Existing chart labels and explanations describe the standard model; this Developer option is the only explanation of the calibration.")
                 }
                 Section {
                     Picker("Measurement system", selection: $unitPreference) {

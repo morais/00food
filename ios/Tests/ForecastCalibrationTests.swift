@@ -135,4 +135,26 @@ final class ForecastCalibrationTests: XCTestCase {
         let calibratedACE = try XCTUnwrap(ACEThresholdForecast.crossingDate(for: 23, in: calibratedFat))
         XCTAssertGreaterThan(calibratedACE, standardACE)
     }
+
+    func testDisplayedDeficitPercentageKeepsFoodAllowanceFixed() throws {
+        let budget = CalorieBudget(tdeeKcal: 2500, deficitPercent: 20)
+        let slower = ForecastCalibration(correctionKcal: -149, windowDays: 42, energyDays: 42, weightDays: 42, weightWeeks: 6)
+        let faster = ForecastCalibration(correctionKcal: 149, windowDays: 42, energyDays: 42, weightDays: 42, weightWeeks: 6)
+        XCTAssertEqual(try XCTUnwrap(slower.projectionDeficitPercent(for: budget)), 351.0 / 2351 * 100, accuracy: 0.00001)
+        XCTAssertEqual(try XCTUnwrap(faster.projectionDeficitPercent(for: budget)), 649.0 / 2649 * 100, accuracy: 0.00001)
+        XCTAssertEqual(budget.allowanceKcal, 2000)
+        XCTAssertEqual(budget.deficitPercent, 20)
+        XCTAssertTrue(slower.adjustmentDescription.contains("less deficit — slower loss"))
+        XCTAssertTrue(faster.adjustmentDescription.contains("more deficit — faster loss"))
+    }
+
+    func testDisplayedPercentageHandlesUnchangedAndFlatProjections() throws {
+        let budget = CalorieBudget(tdeeKcal: 2500, deficitPercent: 20)
+        let unchanged = ForecastCalibration(correctionKcal: 0, windowDays: 42, energyDays: 42, weightDays: 42, weightWeeks: 6)
+        let flat = ForecastCalibration(correctionKcal: -600, windowDays: 42, energyDays: 42, weightDays: 42, weightWeeks: 6)
+        XCTAssertEqual(unchanged.projectionDeficitPercent(for: budget), 20)
+        XCTAssertEqual(flat.projectionDeficitPercent(for: budget), 0)
+        XCTAssertNil(unchanged.projectionDeficitPercent(for: CalorieBudget(tdeeKcal: 0, deficitPercent: 0)))
+        XCTAssertEqual(unchanged.adjustmentDescription, "Forecast adjustment: unchanged.")
+    }
 }
