@@ -80,4 +80,17 @@ final class CalorieHistoryTests: XCTestCase {
         XCTAssertNil(CalorieBalanceAverage.lastSevenCompletedDays(in: points, now: date(17), calendar: calendar))
         XCTAssertNil(CalorieBalanceAverage.lastSevenCompletedDays(in: [], now: date(17), calendar: calendar))
     }
+
+    func testUnusedAllowanceIsDailyAverageAndRecordedDeficitIncludesIt() throws {
+        let points = (10...16).map { day in
+            DailyCalorieBalance(date: date(day), eaten: 2040, allowance: 2425, tdeeKcal: 3031)
+        }
+        let average = try XCTUnwrap(CalorieBalanceAverage.lastSevenCompletedDays(in: points,
+            now: date(17), calendar: calendar))
+        XCTAssertEqual(average.remainingKcalPerDay, 385)
+        XCTAssertEqual(average.recordedDeficitKcalPerDay, 991)
+        XCTAssertEqual(average.tdeeKcalPerDay, 3031)
+        XCTAssertEqual(average.eatenKcalPerDay, 2040)
+        XCTAssertEqual(average.tdeeDeficitPercent, 991.0 / 3031 * 100, accuracy: 0.00001)
+    }
 }

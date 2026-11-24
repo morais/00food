@@ -13,6 +13,10 @@ struct CalorieBalanceAverage {
     let remainingKcalPerDay: Double
     let remainingPercent: Double
     let tdeeDeficitPercent: Double
+    let tdeeKcalPerDay: Double
+    let eatenKcalPerDay: Double
+
+    var recordedDeficitKcalPerDay: Double { tdeeKcalPerDay - eatenKcalPerDay }
 
     static func lastSevenCompletedDays(in balances: [DailyCalorieBalance], now: Date = Date(),
                                        calendar: Calendar = .current) -> Self? {
@@ -26,7 +30,9 @@ struct CalorieBalanceAverage {
         let eaten = days.reduce(0.0) { $0 + Double($1.eaten) }
         return Self(dayCount: days.count, remainingKcalPerDay: remaining / Double(days.count),
                     remainingPercent: remaining / allowance * 100,
-                    tdeeDeficitPercent: (tdee - eaten) / tdee * 100)
+                    tdeeDeficitPercent: (tdee - eaten) / tdee * 100,
+                    tdeeKcalPerDay: tdee / Double(days.count),
+                    eatenKcalPerDay: eaten / Double(days.count))
     }
 
     var label: String {

@@ -60,6 +60,9 @@ final class ForecastCalibrationTests: XCTestCase {
         let result = try XCTUnwrap(calibration(history(variableGap: true)))
         XCTAssertEqual(result.correctionKcal, 0, accuracy: 0.001)
         XCTAssertEqual(result.projectionGap(500), 500)
+        let data = try XCTUnwrap(result.diagnostics)
+        XCTAssertEqual(data.recordedDeficitKcal, 400, accuracy: 0.001)
+        XCTAssertEqual(data.meanLoggedKcal, 2100, accuracy: 0.001)
     }
 
     func testInsufficientMissingOrStaleHistoryFallsBack() {
@@ -156,5 +159,35 @@ final class ForecastCalibrationTests: XCTestCase {
         XCTAssertEqual(flat.projectionDeficitPercent(for: budget), 0)
         XCTAssertNil(unchanged.projectionDeficitPercent(for: CalorieBudget(tdeeKcal: 0, deficitPercent: 0)))
         XCTAssertEqual(unchanged.adjustmentDescription, "Forecast adjustment: unchanged.")
+    }
+
+    func testDiagnosticsCompareRecordedFoodAndWeightOverTheFitPeriodBeforeDamping() throws {
+        let result = try XCTUnwrap(calibration(history()))
+        let data = try XCTUnwrap(result.diagnostics)
+        XCTAssertEqual(data.meanTDEEKcal, 2500, accuracy: 0.001)
+        XCTAssertEqual(data.meanLoggedKcal, 2000, accuracy: 0.001)
+        XCTAssertEqual(data.recordedDeficitKcal, 500, accuracy: 0.001)
+        XCTAssertEqual(data.weightEquivalentDeficitKcal, 250, accuracy: 0.001)
+        XCTAssertEqual(data.recordedDeficitPercent, 20, accuracy: 0.001)
+        XCTAssertEqual(data.weightEquivalentDeficitPercent, 10, accuracy: 0.001)
+        XCTAssertEqual(data.mismatchPercentagePoints, -10, accuracy: 0.001)
+        XCTAssertEqual(data.rawCorrectionKcal, -250, accuracy: 0.001)
+        XCTAssertEqual(result.correctionKcal, data.limitedCorrectionKcal * data.influence, accuracy: 0.001)
+        XCTAssertEqual(calendar.dateComponents([.day], from: data.fitStart, to: data.fitEnd).day, 35)
+        XCTAssertGreaterThan(data.fitStart, data.inputStart)
+        XCTAssertLessThan(data.fitEnd, data.inputEnd)
+    }
+
+    func testDiagnosticsUseActualIntakeAndDistinguishRawMismatchFromCappedCorrection() throws {
+        var input = history(observedGap: 100)
+        for index in input.logs.indices { input.logs[index].kcal = 1500 }
+        let result = try XCTUnwrap(calibration(input))
+        let data = try XCTUnwrap(result.diagnostics)
+        XCTAssertEqual(data.recordedDeficitKcal, 1000, accuracy: 0.001)
+        XCTAssertEqual(data.recordedDeficitPercent, 40, accuracy: 0.001)
+        XCTAssertEqual(data.weightEquivalentDeficitKcal, 100, accuracy: 0.001)
+        XCTAssertEqual(data.rawCorrectionKcal, -900, accuracy: 0.001)
+        XCTAssertEqual(data.limitedCorrectionKcal, -300, accuracy: 0.001)
+        XCTAssertEqual(result.correctionKcal, -200, accuracy: 0.001)
     }
 }

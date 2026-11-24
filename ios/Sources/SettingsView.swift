@@ -192,8 +192,9 @@ private struct DeveloperView: View {
                                let percent = calibration.projectionDeficitPercent(for: health.representativeBudget(for: profile)) {
                                 Text("Selected pace: \(profile.deficitPercent)% deficit")
                                     .font(.footnote).foregroundStyle(.secondary)
-                                Text("Forecast-implied deficit: \(percent.formatted(.number.precision(.fractionLength(1))))%")
+                                Text("Forecast at selected pace: \(percent.formatted(.number.precision(.fractionLength(1))))% deficit")
                                     .font(.footnote).foregroundStyle(.secondary)
+                                ForecastDiagnosticsView(profile: profile, calibration: calibration)
                             }
                         } else {
                             Text("Using the standard forecast until enough consistent history is available.")

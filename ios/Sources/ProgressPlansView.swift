@@ -158,25 +158,7 @@ struct ProgressPlansView: View {
     }
 
     private func dailyCalorieBalances(profile: FoodProfile) -> [DailyCalorieBalance] {
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
-        let windowStart = calendar.date(byAdding: .day, value: 1 - calorieHistoryDays, to: today) ?? today
-        let accountStart = calendar.startOfDay(for: store.accountStartedAt ?? today)
-        let first = max(windowStart, accountStart)
-        guard first <= today else { return [] }
-        var foodByDay: [String: Int] = [:]
-        for log in store.logs { foodByDay[log.localDate, default: 0] += log.kcal }
-        var days: [DailyCalorieBalance] = []
-        var date = first
-        while date <= today {
-            let key = FoodDates.localDate(for: date)
-            let budget = health.budget(for: profile, on: date)
-            days.append(DailyCalorieBalance(date: date, eaten: foodByDay[key] ?? 0,
-                                            allowance: budget.allowanceKcal, tdeeKcal: budget.tdeeKcal))
-            guard let next = calendar.date(byAdding: .day, value: 1, to: date) else { break }
-            date = next
-        }
-        return days
+        health.calorieHistory(profile: profile, store: store, daysIncludingToday: calorieHistoryDays)
     }
 
     private var fatCard: some View {

@@ -9,6 +9,7 @@ struct ForecastCalibration {
     let energyDays: Int
     let weightDays: Int
     let weightWeeks: Int
+    var diagnostics: ForecastCalibrationDiagnostics? = nil
 
     func projectionGap(_ nominalGap: Int) -> Int {
         // Existing projections model sustained loss, not weight gain.
@@ -56,6 +57,7 @@ struct ForecastCalibration {
         var foodByDay: [String: Double] = [:]
         for log in logs where log.kcal > 0 { foodByDay[log.localDate, default: 0] += Double(log.kcal) }
         var gaps: [Double?] = []
+        var tdeeByDay: [Double?] = []
         var tdeeTotals: [Double] = []
         for day in 0..<count {
             guard let date = calendar.date(byAdding: .day, value: day, to: start) else { return nil }
@@ -64,8 +66,9 @@ struct ForecastCalibration {
             if let basal = restingByDay[day], let activity = activeByDay[day],
                let food = foodByDay[key] {
                 gaps.append(basal + activity - food)
+                tdeeByDay.append(basal + activity)
                 tdeeTotals.append(basal + activity)
-            } else { gaps.append(nil) }
+            } else { gaps.append(nil); tdeeByDay.append(nil) }
         }
         let coverage = Double(tdeeTotals.count) / Double(count)
         guard coverage >= 0.9 else { return nil }
@@ -119,8 +122,32 @@ struct ForecastCalibration {
         let rawCorrection = min(limit, max(-limit, -slope * 7700))
         let confidence = min(0.75, Double(weeks.count - 2) / 6) * coverage
             * min(1, Double(dailyWeights.count) / 28) * max(0, 1 - scatter / 0.75)
+        // Diagnostics use the exact span fitted between the weekly medians.
+        // Do not mix a seven-day calorie average with a multiweek weight fit.
+        var cumulativeTDEE = [0.0]
+        let filledTDEE = tdeeByDay.map { $0 ?? meanTDEE }
+        for total in filledTDEE { cumulativeTDEE.append(cumulativeTDEE.last! + total) }
+        func tdeeThrough(_ day: Double) -> Double {
+            let whole = min(count - 1, max(0, Int(day)))
+            return cumulativeTDEE[whole] + filledTDEE[whole] * (day - Double(whole))
+        }
+        func dateAt(_ day: Double) -> Date {
+            let whole = Int(day)
+            let date = calendar.date(byAdding: .day, value: whole, to: start)!
+            let next = calendar.date(byAdding: .day, value: 1, to: date)!
+            return date.addingTimeInterval(next.timeIntervalSince(date) * (day - Double(whole)))
+        }
+        let fitDays = last.day - first.day
+        let fitGap = (energyThrough(last.day) - energyThrough(first.day)) / fitDays
+        let fitTDEE = (tdeeThrough(last.day) - tdeeThrough(first.day)) / fitDays
+        let diagnostics = ForecastCalibrationDiagnostics(inputStart: start, inputEnd: today,
+            fitStart: dateAt(first.day), fitEnd: dateAt(last.day),
+            meanTDEEKcal: fitTDEE, meanLoggedKcal: fitTDEE - fitGap,
+            rawCorrectionKcal: -slope * 7700, limitedCorrectionKcal: rawCorrection,
+            influence: confidence)
         return Self(correctionKcal: rawCorrection * confidence, windowDays: count,
-                    energyDays: tdeeTotals.count, weightDays: dailyWeights.count, weightWeeks: weeks.count)
+                    energyDays: tdeeTotals.count, weightDays: dailyWeights.count, weightWeeks: weeks.count,
+                    diagnostics: diagnostics)
     }
 
     private static func median(_ values: [Double]) -> Double {
@@ -128,4 +155,24 @@ struct ForecastCalibration {
         let middle = sorted.count / 2
         return sorted.count.isMultiple(of: 2) ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle]
     }
+}
+
+struct ForecastCalibrationDiagnostics {
+    let inputStart: Date
+    let inputEnd: Date // Exclusive: today's incomplete data is not included.
+    let fitStart: Date
+    let fitEnd: Date
+    let meanTDEEKcal: Double
+    let meanLoggedKcal: Double
+    let rawCorrectionKcal: Double
+    let limitedCorrectionKcal: Double
+    let influence: Double
+
+    var recordedDeficitKcal: Double { meanTDEEKcal - meanLoggedKcal }
+    // Energy-equivalent of the fitted weight trajectory under the app's model,
+    // before caps or damping; not a measurement of true expenditure or fat loss.
+    var weightEquivalentDeficitKcal: Double { recordedDeficitKcal + rawCorrectionKcal }
+    var recordedDeficitPercent: Double { recordedDeficitKcal / meanTDEEKcal * 100 }
+    var weightEquivalentDeficitPercent: Double { weightEquivalentDeficitKcal / meanTDEEKcal * 100 }
+    var mismatchPercentagePoints: Double { rawCorrectionKcal / meanTDEEKcal * 100 }
 }
