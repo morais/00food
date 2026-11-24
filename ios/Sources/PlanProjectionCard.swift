@@ -7,7 +7,9 @@ struct PlanProjectionCard: View {
     let firstDay: Date
     var onChangePlan: (() -> Void)? = nil
     @Environment(HealthEnergy.self) private var health
+    @Environment(FoodStore.self) private var store
     @Environment(\.foodUnits) private var units
+    @AppStorage(ForecastCalibration.preferenceKey) private var calibrateForecasts = false
 
     private static func spokenDay(_ date: Date) -> String { date.formatted(date: .abbreviated, time: .omitted) }
     private static func isMonthStart(_ date: Date) -> Bool { Calendar.current.component(.day, from: date) == 1 }
@@ -17,6 +19,8 @@ struct PlanProjectionCard: View {
         let title = DeficitLevel(rawValue: deficit)?.title ?? "Custom"
         let budget = health.representativeBudget(for: profile, deficitPercent: deficit)
         let gap = budget.gapKcal
+        let forecastGap = health.gapForForecast(profile: profile, store: store,
+                                              calibrationEnabled: calibrateForecasts)
         let expenditureExplanation = health.completedAverageTDEEKcal != nil
             ? "This illustration uses \(budget.tdeeKcal) kcal/day TDEE, averaged across \(health.completedTDEEDaysUsed) paired resting and active Health days from the last seven completed days: a \(gap) kcal/day gap."
             : "Until paired completed Health days are available, this illustration uses the \(budget.tdeeKcal) kcal/day resting estimate: a \(gap) kcal/day gap."
@@ -25,9 +29,9 @@ struct PlanProjectionCard: View {
         let startingWeight = health.smoothedWeightKg ?? health.usableLatestWeightKg ?? profile.weightKg
         let today = Calendar.current.startOfDay(for: Date())
         let sixMonths = Calendar.current.date(byAdding: .month, value: 6, to: today) ?? today
-        let projection = ProgressProjection.projectedWeight(from: startingWeight, gap: gap,
+        let projection = ProgressProjection.projectedWeight(from: startingWeight, gap: forecastGap,
                                          minimum: healthyRange.lowerBound, until: sixMonths)
-        let bmiEntryDate = ProgressProjection.estimatedBMIEntryDate(from: startingWeight, gap: gap,
+        let bmiEntryDate = ProgressProjection.estimatedBMIEntryDate(from: startingWeight, gap: forecastGap,
                                                  upperBound: healthyRange.upperBound, until: sixMonths)
         let fullProjection = projection.last?.date == sixMonths
         let chartTop = max(healthyRange.upperBound, profile.weightKg,

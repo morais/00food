@@ -173,10 +173,27 @@ private struct DeveloperView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage(OnboardingReplay.requestKey) private var replayOnNextLaunch = false
     @AppStorage(MeasurementPreference.key) private var unitPreference = MeasurementPreference.system.rawValue
+    @AppStorage(ForecastCalibration.preferenceKey) private var calibrateForecasts = false
 
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    Toggle("Calibrate forecasts from history", isOn: $calibrateForecasts)
+                    Link("Research background", destination: URL(string: "https://pubmed.ncbi.nlm.nih.gov/21562087/")!)
+                        .font(.footnote).foregroundStyle(.blue)
+                    if calibrateForecasts {
+                        if let calibration = health.forecastCalibration(using: store) {
+                            Text("Using \(calibration.energyDays) food + Health days and \(calibration.weightDays) weight days across \(calibration.weightWeeks) weeks. Forecast correction: \(Int(calibration.correctionKcal.rounded())) kcal/day.")
+                                .font(.footnote).foregroundStyle(.secondary)
+                        } else {
+                            Text("Using the standard forecast until enough consistent history is available.")
+                                .font(.footnote).foregroundStyle(.secondary)
+                        }
+                    }
+                } header: { Text("Forecasts") } footer: {
+                    Text("Experimental, off by default and local to this iPhone. Changes only forecast curves, body-fat projections and estimated dates. Calorie allowances, your pace and logged totals never change.\n\nUses up to 42 completed days, with at least 28 days of history, food + paired resting/active Health energy on 90% of days, and 14 weight days across at least four weekly groups. Weekly medians and a robust trend fit compare observed weight change with the change implied by recorded energy balance. The few missing energy days use the recorded average. Corrections are capped at 15% of recorded TDEE or 300 kcal/day, whichever is smaller, and damped with shorter, sparser or noisier history. Missing, stale or very noisy history uses the standard forecast. Projections flatten if the adjusted gap is zero or negative; weight gain is not modeled.\n\nThese are experimental app heuristics, not a validated physiological model. Missing food logs and water changes can still distort estimates. Existing chart labels and explanations describe the standard model; this Developer option is the only explanation of the calibration.")
+                }
                 Section {
                     Picker("Measurement system", selection: $unitPreference) {
                         ForEach(MeasurementPreference.allCases, id: \.rawValue) { preference in

@@ -4,6 +4,7 @@ import SwiftUI
 struct ProgressPlansView: View {
     @Environment(FoodStore.self) private var store
     @Environment(\.foodUnits) private var units
+    @AppStorage(ForecastCalibration.preferenceKey) private var calibrateForecasts = false
 
     // VoiceOver wording for chart marks. Projections are daily, so only the
     // first of each month is exposed to keep the chart navigable.
@@ -319,7 +320,7 @@ struct ProgressPlansView: View {
         let today = Calendar.current.startOfDay(for: Date())
         let sixMonths = Calendar.current.date(byAdding: .month, value: 6, to: today) ?? today
         return ProgressProjection.bodyFatProjection(anchor: anchor, startWeightKg: baseline.composition.weightKg,
-            gapKcal: health.representativeBudget(for: profile).gapKcal,
+            gapKcal: health.gapForForecast(profile: profile, store: store, calibrationEnabled: calibrateForecasts),
             minimumWeightKg: ProgressProjection.healthyWeightRange(for: profile.heightCm).lowerBound, until: sixMonths)
     }
 
