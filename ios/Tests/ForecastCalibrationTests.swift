@@ -107,8 +107,13 @@ final class ForecastCalibrationTests: XCTestCase {
         let shorter = try XCTUnwrap(calibration(history(days: 28)))
         let longer = try XCTUnwrap(calibration(history()))
         XCTAssertLessThan(abs(shorter.correctionKcal), abs(longer.correctionKcal))
-        let extreme = try XCTUnwrap(calibration(history(observedGap: 3000)))
-        XCTAssertLessThanOrEqual(abs(extreme.correctionKcal), 300)
+        for gap in [-3000.0, 3000] {
+            let extreme = try XCTUnwrap(calibration(history(observedGap: gap)))
+            let data = try XCTUnwrap(extreme.diagnostics)
+            XCTAssertEqual(abs(data.limitedCorrectionKcal), 1000, accuracy: 0.001)
+            XCTAssertEqual(abs(extreme.correctionKcal), 1000 * data.influence, accuracy: 0.001)
+            XCTAssertLessThanOrEqual(abs(extreme.correctionKcal), 1000)
+        }
     }
 
     func testLargeInconsistentWeeklySwingsUseStandardForecast() {
@@ -187,7 +192,7 @@ final class ForecastCalibrationTests: XCTestCase {
         XCTAssertEqual(data.recordedDeficitPercent, 40, accuracy: 0.001)
         XCTAssertEqual(data.weightEquivalentDeficitKcal, 100, accuracy: 0.001)
         XCTAssertEqual(data.rawCorrectionKcal, -900, accuracy: 0.001)
-        XCTAssertEqual(data.limitedCorrectionKcal, -300, accuracy: 0.001)
-        XCTAssertEqual(result.correctionKcal, -200, accuracy: 0.001)
+        XCTAssertEqual(data.limitedCorrectionKcal, -900, accuracy: 0.001)
+        XCTAssertEqual(result.correctionKcal, -600, accuracy: 0.001)
     }
 }

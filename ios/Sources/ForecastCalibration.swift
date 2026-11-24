@@ -118,7 +118,7 @@ struct ForecastCalibration {
         let intercept = median(weeks.indices.map { residuals[$0] - slope * weeks[$0].day })
         let scatter = median(weeks.indices.map { abs(residuals[$0] - (intercept + slope * weeks[$0].day)) })
         guard scatter <= 0.75 else { return nil }
-        let limit = min(300, meanTDEE * 0.15)
+        let limit = 1000.0
         let rawCorrection = min(limit, max(-limit, -slope * 7700))
         let confidence = min(0.75, Double(weeks.count - 2) / 6) * coverage
             * min(1, Double(dailyWeights.count) / 28) * max(0, 1 - scatter / 0.75)
