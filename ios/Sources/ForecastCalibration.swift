@@ -33,13 +33,23 @@ struct ForecastCalibration {
         return "Forecast adjustment: \(abs(correction).formatted()) kcal/day \(direction) deficit — \(pace) loss."
     }
 
+    // One shared completed-day window for the energy fit and composition split.
+    static func historyWindow(since accountStart: Date, now: Date = Date(),
+                              calendar: Calendar = .current) -> DateInterval? {
+        let today = calendar.startOfDay(for: now)
+        guard let earliest = calendar.date(byAdding: .day, value: -42, to: today) else { return nil }
+        let start = max(earliest, calendar.startOfDay(for: accountStart))
+        guard start < today else { return nil }
+        return DateInterval(start: start, end: today)
+    }
+
     static func make(weights: [HealthMeasurePoint], resting: [HealthMeasurePoint],
                      active: [HealthMeasurePoint], logs: [FoodLog], since accountStart: Date,
                      now: Date = Date(), calendar: Calendar = .current,
                      composition: BodyCompositionTrend? = nil) -> Self? {
-        let today = calendar.startOfDay(for: now)
-        guard let earliest = calendar.date(byAdding: .day, value: -42, to: today) else { return nil }
-        let start = max(earliest, calendar.startOfDay(for: accountStart))
+        guard let window = historyWindow(since: accountStart, now: now, calendar: calendar) else { return nil }
+        let start = window.start
+        let today = window.end
         let count = calendar.dateComponents([.day], from: start, to: today).day ?? 0
         guard count >= 28 else { return nil }
         func offset(_ date: Date) -> Int {
@@ -103,7 +113,7 @@ struct ForecastCalibration {
         // When paired fat readings support it, calibrate against changes in
         // tissue energy rather than treating every lost kg as 7,700 kcal.
         var usesComposition = false
-        if let composition {
+        if let composition, composition.window == window {
             var pairedWeeks: [Week] = []
             var pairedDays = 0
             for index in 0..<(count / 7) {

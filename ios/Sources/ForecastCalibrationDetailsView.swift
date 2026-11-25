@@ -151,9 +151,11 @@ struct ForecastCalibrationDetailsView: View {
     private var compositionCard: some View {
         ForecastDetailCard("Body-composition trend", symbol: "figure.stand") {
             if health.isRefreshingComposition {
-                ProgressView("Reading full Health history…").font(.subheadline)
+                ProgressView("Reading recent Health history…").font(.subheadline)
             }
             if let trend = health.compositionTrend {
+                Text("Window: \(day(trend.window.start)) – \(day(trend.window.end.addingTimeInterval(-1)))")
+                    .font(.subheadline).foregroundStyle(.secondary)
                 LazyVGrid(columns: columns, alignment: .leading, spacing: 20) {
                     metric("Fat", units.weight(abs(trend.fatChangeKgPerDay * 7)),
                            detail: trend.fatChangeKgPerDay < 0 ? "lost per week" : "gained per week")
@@ -163,14 +165,14 @@ struct ForecastCalibrationDetailsView: View {
                     metric("Paired readings", "\(trend.readings.count)", detail: "days across \(trend.weekCount) weeks")
                     metric("Trend influence", "\(number(trend.confidence * 100))%", detail: "Personal split vs Forbes")
                 }
-                note("\(day(trend.firstDate)) – \(day(trend.lastDate)). All readable paired weight/body-fat dates contribute, including dates before you joined 00Food. Older dates carry less weight.")
+                note("\(day(trend.firstDate)) – \(day(trend.lastDate)). Only paired weight/body-fat dates within the shared calibration window contribute. Older readings and today’s partial data are excluded.")
             } else {
                 Label("Using the Forbes split", systemImage: "chart.xyaxis.line")
                     .font(.subheadline.weight(.medium))
                 note("There is no reliable composition trend yet. The fat/fat-free mass split uses Forbes when body-fat data is available.")
             }
             if let error = health.compositionHistoryError {
-                Label("Full history could not be refreshed: \(error)", systemImage: "exclamationmark.circle")
+                Label("Recent history could not be refreshed: \(error)", systemImage: "exclamationmark.circle")
                     .font(.footnote).foregroundStyle(.secondary)
             }
         }
@@ -186,8 +188,8 @@ struct ForecastCalibrationDetailsView: View {
             }
             Divider()
             DisclosureGroup("History & smoothing") {
-                explanation("The energy fit uses up to 42 completed days, with at least 28 days of history, food plus paired resting/active Health energy on 90% of days, and 14 weight days across at least four weekly groups. Weekly medians and a robust trend fit compare observed change with recorded energy balance. The few missing energy days use the recorded average.")
-                explanation("The composition split uses all readable paired Health dates, weekly medians and a robust fit with a 90-day recency half-life. Older dates remain in the fit. It needs at least 14 paired days, four weekly groups, a 28-day span and a paired reading in the last seven days. Noisy or sparse history pulls the split toward Forbes.")
+                explanation("The energy fit uses up to 42 completed days (6 weeks), with at least 28 days of history, food plus paired resting/active Health energy on 90% of days, and 14 weight days across at least four weekly groups. Weekly medians and a robust trend fit compare observed change with recorded energy balance. The few missing energy days use the recorded average.")
+                explanation("The composition split uses the same recent window and weekly groups as the energy fit: up to 42 completed days (6 weeks), starting no earlier than your first use of 00Food. It uses weekly medians and a robust fit, with newer readings weighted more heavily. Earlier history and today’s readings are excluded. It needs at least 14 paired days, four weekly groups, a 28-day span and a paired reading in the last seven days. Noisy or sparse history pulls the split toward Forbes.")
             }
             Divider()
             DisclosureGroup("Fat & fat-free mass model") {
@@ -199,7 +201,7 @@ struct ForecastCalibrationDetailsView: View {
             DisclosureGroup("Limits & privacy") {
                 explanation("These diagnostics cannot separate food-estimation error, Watch error, water changes or model error. Missing food logs and water changes can still distort estimates.")
                 explanation("The trend does not establish that exercise caused muscle preservation. Fat-free mass includes water and other tissue.")
-                explanation("All full-history composition data stays on this device. Calorie allowances, selected pace and logged totals never change. Public chart labels describe the standard model; advanced calibration is explained only here in Developer settings.")
+                explanation("All composition history stays on this device. Calorie allowances, selected pace and logged totals never change. Public chart labels describe the standard model; advanced calibration is explained only here in Developer settings.")
             }
             .tint(.blue)
         }

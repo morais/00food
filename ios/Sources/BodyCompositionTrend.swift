@@ -1,6 +1,6 @@
 import Foundation
 
-// Experimental personal trend, learned from all readable paired Health dates.
+// Experimental personal trend, learned within the same completed-day window as the energy fit.
 // Fat-free mass is not a direct muscle measurement or evidence of exercise causality.
 struct BodyCompositionTrend: Sendable {
     // Hall's body-energy densities: 39.5 MJ/kg fat and 7.6 MJ/kg fat-free mass.
@@ -13,6 +13,7 @@ struct BodyCompositionTrend: Sendable {
         let body: ForbesBodyComposition
     }
     let readings: [Reading]
+    let window: DateInterval
     let firstDate: Date
     let lastDate: Date
     let weekCount: Int
@@ -23,13 +24,15 @@ struct BodyCompositionTrend: Sendable {
     let leanLossPerFatLoss: Double
 
     static func make(weights: [HealthMeasurePoint], bodyFat: [HealthMeasurePoint],
-                     now: Date = Date(), calendar: Calendar = .current) -> Self? {
+                     since accountStart: Date, now: Date = Date(), calendar: Calendar = .current) -> Self? {
+        guard let window = ForecastCalibration.historyWindow(since: accountStart, now: now, calendar: calendar) else { return nil }
+        let completedWeeks = (calendar.dateComponents([.day], from: window.start, to: window.end).day ?? 0) / 7
         let weightDays = HealthHistory.lastReadingEachDay(weights.filter {
-            $0.date <= now && $0.value.isFinite && (25...400).contains($0.value)
+            $0.date >= window.start && $0.date < window.end && $0.value.isFinite && (25...400).contains($0.value)
         }, calendar: calendar)
         let byDay = Dictionary(uniqueKeysWithValues: weightDays.map { (calendar.startOfDay(for: $0.date), $0.value) })
         let fatDays = HealthHistory.lastReadingEachDay(bodyFat.filter {
-            $0.date <= now && $0.value.isFinite && $0.value > 0 && $0.value < 100
+            $0.date >= window.start && $0.date < window.end && $0.value.isFinite && $0.value > 0 && $0.value < 100
         }, calendar: calendar)
         let paired = fatDays.compactMap { point -> Reading? in
             guard let weight = byDay[calendar.startOfDay(for: point.date)],
@@ -39,14 +42,14 @@ struct BodyCompositionTrend: Sendable {
         guard paired.count >= 14, let first = paired.first, let last = paired.last,
               (calendar.dateComponents([.day], from: first.date, to: last.date).day ?? 0) >= 28,
               (calendar.dateComponents([.day], from: last.date, to: now).day ?? 99) <= 7 else { return nil }
-        let anchor = calendar.startOfDay(for: last.date)
+        let anchor = window.end
         let groups = Dictionary(grouping: paired) { reading in
-            (calendar.dateComponents([.day], from: calendar.startOfDay(for: reading.date), to: anchor).day ?? 0) / 7
+            ((calendar.dateComponents([.day], from: calendar.startOfDay(for: reading.date), to: anchor).day ?? 0) - 1) / 7
         }
         struct Week { let x: Double; let weight: Double; let fat: Double; let importance: Double }
         let origin = calendar.startOfDay(for: first.date)
         var weeks: [Week] = []
-        for group in groups.values where group.count >= 2 {
+        for (index, group) in groups where index < completedWeeks && group.count >= 2 {
             let x = median(group.map { Double(calendar.dateComponents([.day], from: origin, to: calendar.startOfDay(for: $0.date)).day ?? 0) })
             let age = Double(calendar.dateComponents([.day], from: origin, to: anchor).day ?? 0) - x
             weeks.append(Week(x: x, weight: median(group.map { $0.body.weightKg }),
@@ -86,13 +89,12 @@ struct BodyCompositionTrend: Sendable {
         let confidence = min(1, (ending.x - beginning.x) / 56) * min(1, effectiveDays / 28)
             * max(0, 1 - max(fatScatter, leanScatter) / noiseLimit)
         guard confidence > 0 else { return nil }
-        return Self(readings: paired, firstDate: first.date, lastDate: last.date, weekCount: weeks.count,
+        return Self(readings: paired, window: window, firstDate: first.date, lastDate: last.date, weekCount: weeks.count,
                     fatChangeKgPerDay: fatSlope, leanChangeKgPerDay: leanSlope, confidence: confidence,
                     referenceFatMassKg: ending.fat, leanLossPerFatLoss: min(3, max(-1, leanSlope / fatSlope)))
     }
 
-    // Weekly aggregation for the recent energy fit uses exactly the same paired
-    // dates and window, independently of how much older history taught the split.
+    // Weekly aggregation uses the same completed-day buckets as the energy fit.
     func aggregate(from start: Date, to end: Date, calendar: Calendar = .current) -> Reading? {
         let points = readings.filter { $0.date >= start && $0.date < end }
         guard points.count >= 2,

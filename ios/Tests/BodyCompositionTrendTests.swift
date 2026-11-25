@@ -27,18 +27,20 @@ final class BodyCompositionTrendTests: XCTestCase {
         return result
     }
 
-    private func trend(_ input: History) -> BodyCompositionTrend? {
-        BodyCompositionTrend.make(weights: input.weights, bodyFat: input.fat, now: now, calendar: calendar)
+    private func trend(_ input: History, since start: Date? = nil) -> BodyCompositionTrend? {
+        BodyCompositionTrend.make(weights: input.weights, bodyFat: input.fat,
+                                  since: start ?? input.weights.first?.date ?? now, now: now, calendar: calendar)
     }
 
-    func testFullHistoryLearnsLeanPreservationAndUsesDatesBeforeTheEnergyWindow() throws {
+    func testSharedRecentWindowLearnsLeanPreservation() throws {
         let input = history()
         let model = try XCTUnwrap(trend(input))
-        XCTAssertEqual(model.readings.count, 140)
-        XCTAssertEqual(model.firstDate, input.fat.first?.date)
+        XCTAssertEqual(model.readings.count, 42)
+        XCTAssertEqual(model.firstDate, input.fat.suffix(42).first?.date)
         XCTAssertEqual(model.fatChangeKgPerDay, -0.04, accuracy: 0.000001)
         XCTAssertEqual(model.leanChangeKgPerDay, 0, accuracy: 0.000001)
-        XCTAssertEqual(model.confidence, 1, accuracy: 0.000001)
+        XCTAssertEqual(model.weekCount, 6)
+        XCTAssertEqual(model.confidence, 35.0 / 56, accuracy: 0.000001)
         XCTAssertNil(trend(History(weights: Array(input.weights.suffix(7)), fat: Array(input.fat.suffix(7)))))
         let body = try XCTUnwrap(model.readings.last?.body)
         let personalized = try XCTUnwrap(model.advance(body, deficitKcal: 15_000))
@@ -60,17 +62,17 @@ final class BodyCompositionTrendTests: XCTestCase {
         let after = try XCTUnwrap(model.advance(body, deficitKcal: 15_000))
         XCTAssertLessThan(after.bodyFatPercentage, body.bodyFatPercentage)
         XCTAssertGreaterThan(after.fatFreeMassKg, body.fatFreeMassKg)
-        XCTAssertLessThan(body.weightKg - after.weightKg, 0.3)
+        XCTAssertLessThan(body.weightKg - after.weightKg, 15_000 / 7700)
     }
 
-    func testRecentSpikeDoesNotReplaceTheFullTrendAndDuplicateDaysCountOnce() throws {
+    func testRecentSpikeDoesNotReplaceTheSixWeekTrendAndDuplicateDaysCountOnce() throws {
         var input = history()
         for index in (input.fat.count - 7)..<input.fat.count { input.fat[index] = .init(date: input.fat[index].date, value: input.fat[index].value + 2) }
-        let date = input.fat[20].date.addingTimeInterval(-60)
+        let date = input.fat[input.fat.count - 20].date.addingTimeInterval(-60)
         input.fat.append(.init(date: date, value: 99))
         input.fat.append(.init(date: now.addingTimeInterval(86400), value: 1))
         let model = try XCTUnwrap(trend(input))
-        XCTAssertEqual(model.readings.count, 140)
+        XCTAssertEqual(model.readings.count, 42)
         XCTAssertEqual(model.fatChangeKgPerDay, -0.04, accuracy: 0.005)
     }
 
@@ -130,7 +132,8 @@ final class BodyCompositionTrendTests: XCTestCase {
         let composed = try XCTUnwrap(ForecastCalibration.make(weights: input.weights, resting: energy.resting,
             active: energy.active, logs: energy.logs, since: accountStart, now: now, calendar: calendar, composition: model))
         XCTAssertLessThan(plain.correctionKcal, -40)
-        XCTAssertEqual(composed.correctionKcal, 0, accuracy: 0.001)
+        XCTAssertGreaterThan(composed.correctionKcal, plain.correctionKcal)
+        XCTAssertEqual(composed.correctionKcal, plain.correctionKcal * (1 - model.confidence), accuracy: 0.001)
         XCTAssertEqual(composed.diagnostics?.usesBodyComposition, true)
         let budget = CalorieBudget(tdeeKcal: 2500, deficitPercent: 20)
         XCTAssertEqual(budget.allowanceKcal, 2000)
@@ -144,21 +147,71 @@ final class BodyCompositionTrendTests: XCTestCase {
             active: energy.active, logs: energy.logs, since: input.weights.first!.date,
             now: now, calendar: calendar, composition: model))
         XCTAssertEqual(composed.diagnostics?.usesBodyComposition, true)
-        XCTAssertEqual(composed.correctionKcal, 0, accuracy: 1)
+        let tissueGap = -model.fatChangeKgPerDay * BodyCompositionTrend.fatKcalPerKg
+            - model.leanChangeKgPerDay * BodyCompositionTrend.leanKcalPerKg
+        let data = try XCTUnwrap(composed.diagnostics)
+        XCTAssertEqual(composed.correctionKcal, (tissueGap * model.confidence - 305) * data.influence, accuracy: 1)
+        XCTAssertGreaterThan(data.weightEquivalentDeficitKcal, 150)
     }
 
-    func testOldCompositionHistoryCanTeachSplitWithoutInventingRecentEnergyMeasurements() throws {
+    func testOldHistoryCannotRescueSparseRecentComposition() {
         var input = history(fatLoss: 500 / BodyCompositionTrend.fatKcalPerKg)
-        let cutoff = calendar.date(byAdding: .day, value: -42, to: now)!
+        let cutoff = calendar.date(byAdding: .day, value: -42, to: calendar.startOfDay(for: now))!
         input.fat = input.fat.enumerated().filter { $0.element.date < cutoff || $0.offset % 14 == 13 }.map(\.element)
+        XCTAssertNil(trend(input))
+    }
+
+    func testOlderOpposingTrendAndTodaysReadingsCannotChangeTheRecentFit() throws {
+        let recent = history(days: 42, fatLoss: 0.03, leanGain: 0.01)
+        var combined = recent
+        let old = history(days: 200, fatLoss: -0.1, leanGain: -0.02)
+        let cutoff = calendar.date(byAdding: .day, value: -42, to: calendar.startOfDay(for: now))!
+        combined.weights += old.weights.filter { $0.date < cutoff }
+        combined.fat += old.fat.filter { $0.date < cutoff }
+        combined.weights.append(.init(date: now, value: 100))
+        combined.fat.append(.init(date: now, value: 45))
+        let expected = try XCTUnwrap(trend(recent))
+        let actual = try XCTUnwrap(trend(combined, since: old.weights.first!.date))
+        XCTAssertEqual(actual.window, expected.window)
+        XCTAssertEqual(actual.readings.count, 42)
+        XCTAssertEqual(actual.weekCount, 6)
+        XCTAssertEqual(actual.fatChangeKgPerDay, expected.fatChangeKgPerDay, accuracy: 0.000001)
+        XCTAssertEqual(actual.leanChangeKgPerDay, expected.leanChangeKgPerDay, accuracy: 0.000001)
+        XCTAssertEqual(actual.confidence, expected.confidence, accuracy: 0.000001)
+    }
+
+    func testEnergyFitRejectsACompositionTrendFromADifferentWindow() throws {
+        let input = history()
         let model = try XCTUnwrap(trend(input))
         let energy = calibrationInputs(input, gap: 500)
+        let laterStart = calendar.date(byAdding: .day, value: -32, to: now)!
         let plain = try XCTUnwrap(ForecastCalibration.make(weights: input.weights, resting: energy.resting,
-            active: energy.active, logs: energy.logs, since: input.weights.first!.date, now: now, calendar: calendar))
-        let composed = try XCTUnwrap(ForecastCalibration.make(weights: input.weights, resting: energy.resting,
-            active: energy.active, logs: energy.logs, since: input.weights.first!.date,
-            now: now, calendar: calendar, composition: model))
-        XCTAssertEqual(composed.diagnostics?.usesBodyComposition, false)
-        XCTAssertEqual(composed.correctionKcal, plain.correctionKcal, accuracy: 0.001)
+            active: energy.active, logs: energy.logs, since: laterStart, now: now, calendar: calendar))
+        let mismatched = try XCTUnwrap(ForecastCalibration.make(weights: input.weights, resting: energy.resting,
+            active: energy.active, logs: energy.logs, since: laterStart, now: now, calendar: calendar, composition: model))
+        XCTAssertEqual(mismatched.diagnostics?.usesBodyComposition, false)
+        XCTAssertEqual(mismatched.correctionKcal, plain.correctionKcal, accuracy: 0.000001)
+    }
+
+    func testAccountStartBoundsBothFitsAndUsesTheSameCompletedWeekGroups() throws {
+        let input = history()
+        let start = calendar.date(byAdding: .day, value: -32, to: now)!
+        let model = try XCTUnwrap(trend(input, since: start))
+        let energy = calibrationInputs(input, gap: 500)
+        let calibration = try XCTUnwrap(ForecastCalibration.make(weights: input.weights, resting: energy.resting,
+            active: energy.active, logs: energy.logs, since: start, now: now, calendar: calendar, composition: model))
+        let data = try XCTUnwrap(calibration.diagnostics)
+        XCTAssertEqual(model.window.start, data.inputStart)
+        XCTAssertEqual(model.window.end, data.inputEnd)
+        XCTAssertEqual(model.readings.count, 32)
+        XCTAssertEqual(model.weekCount, 4)
+        XCTAssertEqual(model.weekCount, calibration.weightWeeks)
+        XCTAssertTrue(model.readings.allSatisfy { $0.date >= data.inputStart && $0.date < data.inputEnd })
+        // Longer pre-account history must not calibrate a new tracking period.
+        let newStart = calendar.date(byAdding: .day, value: -10, to: now)!
+        XCTAssertNil(trend(input, since: newStart))
+        XCTAssertNil(ForecastCalibration.make(weights: input.weights, resting: energy.resting,
+            active: energy.active, logs: energy.logs, since: newStart, now: now, calendar: calendar))
+        XCTAssertNil(trend(input, since: now.addingTimeInterval(86400)))
     }
 }

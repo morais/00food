@@ -27,7 +27,8 @@ struct RestingEnergySummary {
     var bodyFatHistory: [HealthMeasurePoint] = []
     private var loadedCompositionTrend: BodyCompositionTrend?
     var compositionTrend: BodyCompositionTrend? {
-        guard let trend = loadedCompositionTrend,
+        guard let trend = loadedCompositionTrend, let historyStart,
+              trend.window == ForecastCalibration.historyWindow(since: historyStart),
               (Calendar.current.dateComponents([.day], from: trend.lastDate, to: Date()).day ?? 99) <= 7 else { return nil }
         return trend
     }
@@ -256,22 +257,23 @@ struct RestingEnergySummary {
     }
 
     func refreshCompositionHistory() async {
-        guard available, weightRequested, bodyFatRequested, !isRefreshingComposition else { return }
+        guard available, weightRequested, bodyFatRequested, !isRefreshingComposition, let accountHistoryStart = historyStart,
+              let window = ForecastCalibration.historyWindow(since: accountHistoryStart) else { return }
+        let requestedAt = Date()
         isRefreshingComposition = true
         defer { isRefreshingComposition = false }
-        let accountHistoryStart = historyStart
         do {
-            // Read all permitted dates separately from chart history. Keeping
+            // Read the shared recent window separately from chart history. Keeping
             // this outside refreshValues prevents an optional failure from
             // interrupting publication of resting/active energy and allowances.
-            let weights = try await allCompositionReadings(of: bodyMass, unit: .gramUnit(with: .kilo), scale: 1)
-            let fat = try await allCompositionReadings(of: bodyFat, unit: .percent(), scale: 100)
-            let readAt = Date()
+            let weights = try await compositionReadings(of: bodyMass, in: window, unit: .gramUnit(with: .kilo), scale: 1)
+            let fat = try await compositionReadings(of: bodyFat, in: window, unit: .percent(), scale: 100)
             let calendar = Calendar.current
             let fitted = await Task.detached(priority: .utility) {
-                BodyCompositionTrend.make(weights: weights, bodyFat: fat, now: readAt, calendar: calendar)
+                BodyCompositionTrend.make(weights: weights, bodyFat: fat, since: accountHistoryStart, now: requestedAt, calendar: calendar)
             }.value
-            guard !Task.isCancelled, historyStart == accountHistoryStart else { return }
+            guard !Task.isCancelled, historyStart == accountHistoryStart,
+                  window == ForecastCalibration.historyWindow(since: accountHistoryStart) else { return }
             compositionWeights = weights
             loadedCompositionTrend = fitted
             compositionHistoryError = nil
@@ -285,10 +287,10 @@ struct RestingEnergySummary {
         compositionWeights.isEmpty ? weightHistory : compositionWeights
     }
 
-    private func allCompositionReadings(of type: HKQuantityType, unit: HKUnit, scale: Double) async throws -> [HealthMeasurePoint] {
+    private func compositionReadings(of type: HKQuantityType, in window: DateInterval, unit: HKUnit, scale: Double) async throws -> [HealthMeasurePoint] {
         try await HealthQueryResult.read(noData: [HealthMeasurePoint]()) {
             try await withCheckedThrowingContinuation { continuation in
-                let predicate = HKQuery.predicateForSamples(withStart: nil, end: Date(), options: [.strictEndDate])
+                let predicate = HKQuery.predicateForSamples(withStart: window.start, end: window.end, options: [.strictStartDate, .strictEndDate])
                 let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit,
                     sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: true)]) { _, samples, error in
                     if let error { continuation.resume(throwing: error); return }
