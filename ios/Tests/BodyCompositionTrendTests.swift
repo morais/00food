@@ -40,7 +40,7 @@ final class BodyCompositionTrendTests: XCTestCase {
         XCTAssertEqual(model.fatChangeKgPerDay, -0.04, accuracy: 0.000001)
         XCTAssertEqual(model.leanChangeKgPerDay, 0, accuracy: 0.000001)
         XCTAssertEqual(model.weekCount, 6)
-        XCTAssertEqual(model.confidence, 35.0 / 56, accuracy: 0.000001)
+        XCTAssertEqual(model.confidence, 1, accuracy: 0.000001)
         XCTAssertNil(trend(History(weights: Array(input.weights.suffix(7)), fat: Array(input.fat.suffix(7)))))
         let body = try XCTUnwrap(model.readings.last?.body)
         let personalized = try XCTUnwrap(model.advance(body, deficitKcal: 15_000))
@@ -196,7 +196,7 @@ final class BodyCompositionTrendTests: XCTestCase {
     func testDisplayedCompositionWeightsAndForbesSplitMatchTheActualModel() throws {
         let model = try XCTUnwrap(trend(history(leanGain: 0.01)))
         let weight = model.weighting
-        XCTAssertEqual(weight.historyFactor, 35.0 / 56, accuracy: 0.000001)
+        XCTAssertEqual(weight.historyFactor, 1, accuracy: 0.000001)
         XCTAssertEqual(model.confidence, weight.historyFactor * weight.readingFactor * weight.consistency)
         let body = try XCTUnwrap(model.readings.last?.body)
         let split = model.split(for: body)
@@ -211,6 +211,33 @@ final class BodyCompositionTrendTests: XCTestCase {
         XCTAssertEqual(leanLost / fatLost, split.usedLeanPerFat, accuracy: 0.000001)
         let lowerFat = try XCTUnwrap(ForbesBodyComposition(weightKg: body.weightKg - 5, fatMassKg: body.fatMassKg - 5))
         XCTAssertLessThan(model.split(for: lowerFat).personalShare, split.personalShare)
+    }
+
+    func testCompositionHistoryUsesTheSameUsableWeekRuleAsEnergyCalibration() throws {
+        for (days, weeks, expected) in [(32, 4, 4.0 / 6), (35, 5, 5.0 / 6), (42, 6, 1.0)] {
+            let input = history(days: days)
+            let model = try XCTUnwrap(trend(input))
+            let energy = calibrationInputs(input, gap: 500)
+            let result = try XCTUnwrap(ForecastCalibration.make(weights: input.weights, resting: energy.resting,
+                active: energy.active, logs: energy.logs, since: input.weights.first!.date,
+                now: now, calendar: calendar, composition: model))
+            let energyWeight = try XCTUnwrap(result.diagnostics?.weighting)
+            XCTAssertEqual(model.weekCount, weeks)
+            XCTAssertEqual(model.weighting.weeks, weeks)
+            XCTAssertEqual(model.weighting.historyFactor, expected, accuracy: 0.000001)
+            XCTAssertEqual(model.weighting.historyFactor, energyWeight.historyFactor)
+        }
+    }
+
+    func testThreeMissingFatDaysDoNotReduceFullSixWeekHistoryWeight() throws {
+        var input = history(days: 42)
+        input.fat = input.fat.enumerated().filter { ![4, 18, 32].contains($0.offset) }.map(\.element)
+        let model = try XCTUnwrap(trend(input))
+        XCTAssertEqual(model.readings.count, 39)
+        XCTAssertEqual(model.weekCount, 6)
+        XCTAssertEqual(model.weighting.historyFactor, 1)
+        XCTAssertEqual(model.weighting.readingFactor, 1)
+        XCTAssertEqual(model.confidence, 1, accuracy: 0.000001)
     }
 
     func testPairedHistoryCountsAreAvailableEvenWithoutAReliableTrend() throws {

@@ -76,7 +76,7 @@ struct BodyCompositionTrend: Sendable {
             let age = Double(calendar.dateComponents([.day], from: reading.date, to: now).day ?? 0)
             return total + pow(0.5, max(0, age) / 90)
         }
-        let weighting = BodyCompositionWeighting(spanDays: ending.x - beginning.x,
+        let weighting = BodyCompositionWeighting(weeks: weeks.count,
             effectiveDays: effectiveDays, scatterKg: max(fatScatter, leanScatter), noiseLimitKg: noiseLimit)
         let confidence = weighting.fraction
         guard confidence > 0 else { return nil }
@@ -201,11 +201,11 @@ extension BodyCompositionTrend {
 }
 
 struct BodyCompositionWeighting: Sendable {
-    let spanDays: Double
+    let weeks: Int
     let effectiveDays: Double
     let scatterKg: Double
     let noiseLimitKg: Double
-    var historyFactor: Double { min(1, spanDays / 56) }
+    var historyFactor: Double { ForecastCalibration.historyFactor(usableWeeks: weeks) }
     var readingFactor: Double { min(1, effectiveDays / 28) }
     var consistency: Double { max(0, 1 - scatterKg / noiseLimitKg) }
     var fraction: Double { historyFactor * readingFactor * consistency }

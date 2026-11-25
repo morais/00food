@@ -14,15 +14,9 @@ struct ForecastCalibrationDetailsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 paceCard
-                if let profile = store.profile,
-                   let average = CalorieBalanceAverage.lastSevenCompletedDays(in:
-                    health.calorieHistory(profile: profile, store: store, daysIncludingToday: 8)) {
-                    recentEnergyCard(average)
-                }
                 if let assessment {
                     comparisonCard(assessment)
                     adjustmentCard(assessment)
-                    coverageCard(assessment)
                 }
                 compositionCard
                 methodologyCard
@@ -81,21 +75,6 @@ struct ForecastCalibrationDetailsView: View {
         }
     }
 
-    private func recentEnergyCard(_ average: CalorieBalanceAverage) -> some View {
-        ForecastDetailCard("Last \(average.dayCount) completed days", symbol: "calendar") {
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 20) {
-                metric("Health TDEE", kcal(average.tdeeKcalPerDay), detail: "kcal/day")
-                metric("Logged food", kcal(average.eatenKcalPerDay), detail: "kcal/day")
-                metric(average.remainingKcalPerDay < 0 ? "Over allowance" : "Remaining allowance",
-                       kcal(abs(average.remainingKcalPerDay)),
-                       detail: "kcal/day · \(number(abs(average.remainingPercent), decimals: 1))% of allowance")
-                deficitMetric("Recorded balance", kcal: average.recordedDeficitKcalPerDay,
-                              percent: average.tdeeDeficitPercent)
-            }
-            note("These are the same averages and Health fallbacks used in Calories over time. Remaining calories are a daily average, not the total for the week.")
-        }
-    }
-
     private func comparisonCard(_ assessment: ForecastCalibrationAssessment) -> some View {
         let data = assessment.diagnostics
         return ForecastDetailCard(calibrationTitle(assessment.windowDays), symbol: "equal.square") {
@@ -113,20 +92,22 @@ struct ForecastCalibrationDetailsView: View {
                 deficitMetric("Recorded balance", kcal: data.recordedDeficitKcal,
                               percent: data.recordedDeficitPercent)
             }
-            Divider()
-            deficitMetric("Inferred deficit", kcal: data.weightEquivalentDeficitKcal,
-                          percent: data.weightEquivalentDeficitPercent)
-            Label(data.usesBodyComposition ? "Inferred from weight + body-fat changes" : "Inferred from weight changes",
-                  systemImage: "waveform.path")
-                .font(.subheadline.weight(.medium))
-            note("The inferred deficit is the energy gap that would explain your fitted body changes under this model. It is not measured calorie burn. Both deficit percentages use the same Health TDEE reference.")
             note("The trend is fitted between weekly medians, \(day(data.fitStart)) – \(day(data.fitEnd)). Energy and allowance values above are daily averages over that fitted span, using your current plan. Missing energy days use the recorded average.")
+            Divider()
+            coverageSummary(assessment)
         }
     }
 
     private func adjustmentCard(_ assessment: ForecastCalibrationAssessment) -> some View {
         let data = assessment.diagnostics
         return ForecastDetailCard("Forecast adjustment", symbol: "slider.horizontal.3") {
+            deficitMetric("Inferred deficit", kcal: data.weightEquivalentDeficitKcal,
+                          percent: data.weightEquivalentDeficitPercent)
+            Label(data.usesBodyComposition ? "Inferred from weight + body-fat changes" : "Inferred from weight changes",
+                  systemImage: "waveform.path")
+                .font(.subheadline.weight(.medium))
+            note("The inferred deficit is the energy gap that would explain your fitted body changes under this model. It is not measured calorie burn. It uses the same Health TDEE reference as the recorded balance in the calibration card.")
+            Divider()
             LazyVGrid(columns: columns, alignment: .leading, spacing: 20) {
                 metric("Raw mismatch", kcal(abs(data.rawCorrectionKcal)),
                        detail: "kcal/day \(direction(data.rawCorrectionKcal)) deficit")
@@ -152,7 +133,7 @@ struct ForecastCalibrationDetailsView: View {
                 DisclosureGroup("How the adjustment weight is calculated") {
                     VStack(alignment: .leading, spacing: 14) {
                         weightingRow("History length", weight.historyFactor,
-                                     "min(75%, (\(weight.weeks) weekly groups − 2) ÷ 6)")
+                                     "\(weight.weeks) usable weekly groups ÷ 6, up to 100%. A full six-week window gets full history weight.")
                         weightingRow("Food + energy coverage", weight.energyCoverage,
                                      "\(assessment.energyDays) of \(assessment.windowDays) completed days have food, resting energy and active energy.")
                         weightingRow("Weight readings", weight.weightCoverage,
@@ -167,7 +148,7 @@ struct ForecastCalibrationDetailsView: View {
         }
     }
 
-    private func coverageCard(_ assessment: ForecastCalibrationAssessment) -> some View {
+    private func coverageSummary(_ assessment: ForecastCalibrationAssessment) -> some View {
         let data = assessment.diagnostics
         let window = DateInterval(start: data.inputStart, end: data.inputEnd)
         let fatDays = HealthHistory.lastReadingEachDay(health.bodyFatForForecastCalibration.filter {
@@ -175,14 +156,19 @@ struct ForecastCalibrationDetailsView: View {
         }).count
         let paired = BodyCompositionTrend.pairedReadings(weights: health.weightsForForecastCalibration,
             bodyFat: health.bodyFatForForecastCalibration, within: window)
-        return ForecastDetailCard("Calibration history", symbol: "checkmark.rectangle.stack") {
+        return VStack(alignment: .leading, spacing: 16) {
+            Text("History coverage").font(.headline)
             LazyVGrid(columns: columns, alignment: .leading, spacing: 20) {
-                metric("Food + energy", "\(assessment.energyDays)", detail: "days with food logs + resting and active Health energy")
-                metric("Weight", "\(assessment.weightDays)", detail: "days · \(assessment.weightWeeks) weekly groups used in the fit")
-                metric("Body fat", "\(fatDays)", detail: "days with body-fat readings")
-                metric("Weight + body fat", "\(paired.count)", detail: "paired days for composition analysis")
+                coverageMetric("Food + energy", days: assessment.energyDays, total: assessment.windowDays,
+                               detail: "food logs + resting and active Health energy")
+                coverageMetric("Weight", days: assessment.weightDays, total: assessment.windowDays,
+                               detail: "\(assessment.weightWeeks) usable weekly groups")
+                coverageMetric("Body fat", days: fatDays, total: assessment.windowDays,
+                               detail: "body-fat readings")
+                coverageMetric("Weight + body fat", days: paired.count, total: assessment.windowDays,
+                               detail: "paired readings for composition analysis")
             }
-            note("Input window: \(day(window.start)) – \(day(window.end.addingTimeInterval(-1))). Readings are counted once per day. A body-fat reading alone cannot give fat mass; it needs a weight reading on the same day.")
+            note("Percentages show the share of input days with data, out of 100%. Readings are counted once per day. Fat mass needs weight and body fat on the same day. These coverage percentages are separate from the forecast weighting factors.")
         }
     }
 
@@ -234,8 +220,8 @@ struct ForecastCalibrationDetailsView: View {
         let weight = trend.weighting
         return DisclosureGroup("How the personal trend weight is calculated") {
             VStack(alignment: .leading, spacing: 14) {
-                weightingRow("History span", weight.historyFactor,
-                             "\(number(weight.spanDays, decimals: 1)) days between the first and last weekly medians ÷ 56, up to 100%.")
+                weightingRow("History length", weight.historyFactor,
+                             "\(weight.weeks) usable weekly groups ÷ 6, up to 100%. A full six-week window gets full history weight.")
                 weightingRow("Recent paired readings", weight.readingFactor,
                              "\(number(weight.effectiveDays, decimals: 1)) recency-weighted reading days ÷ 28, up to 100%. Each reading’s weight halves after 90 days; only the shared recent window is used.")
                 weightingRow("Trend consistency", weight.consistency,
@@ -268,6 +254,11 @@ struct ForecastCalibrationDetailsView: View {
             note(detail)
         }
         .accessibilityElement(children: .combine)
+    }
+
+    private func coverageMetric(_ title: String, days: Int, total: Int, detail: String) -> some View {
+        metric(title, percentage(total > 0 ? Double(days) / Double(total) : 0),
+               detail: "\(days) of \(total) days · \(detail)")
     }
 
     private func preciseWeight(_ kg: Double) -> String {

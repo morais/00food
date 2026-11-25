@@ -48,9 +48,9 @@ final class ForecastCalibrationTests: XCTestCase {
         let result = try XCTUnwrap(calibration(history))
         XCTAssertEqual(result.windowDays, 42)
         XCTAssertEqual(result.energyDays, 42)
-        XCTAssertEqual(result.correctionKcal, -250 * (4.0 / 6), accuracy: 0.001)
+        XCTAssertEqual(result.correctionKcal, -250, accuracy: 0.001)
         let budget = CalorieBudget(tdeeKcal: 2500, deficitPercent: 20)
-        XCTAssertEqual(result.projectionGap(budget.gapKcal), 333)
+        XCTAssertEqual(result.projectionGap(budget.gapKcal), 250)
         XCTAssertEqual(budget.allowanceKcal, 2000)
         XCTAssertEqual(budget.tdeeKcal, 2500)
         XCTAssertEqual(budget.deficitPercent, 20)
@@ -109,6 +109,19 @@ final class ForecastCalibrationTests: XCTestCase {
         XCTAssertLessThan(abs(shorter.correctionKcal), abs(longer.correctionKcal))
     }
 
+    func testUsableWeeklyHistoryScalesToTheWholeSixWeekWindow() throws {
+        for (days, weeks, expected) in [(28, 4, 4.0 / 6), (35, 5, 5.0 / 6), (42, 6, 1.0)] {
+            let result = try XCTUnwrap(calibration(history(days: days)))
+            let weight = try XCTUnwrap(result.diagnostics?.weighting)
+            XCTAssertEqual(weight.weeks, weeks)
+            XCTAssertEqual(weight.historyFactor, expected, accuracy: 0.000001)
+            XCTAssertEqual(weight.energyCoverage, 1)
+            XCTAssertEqual(weight.weightCoverage, 1)
+            XCTAssertEqual(weight.consistency, 1, accuracy: 0.000001)
+            XCTAssertEqual(result.correctionKcal, -250 * expected, accuracy: 0.000001)
+        }
+    }
+
     func testMismatchesOverOneThousandAreRejectedBeforeWeighting() throws {
         for observed in [-3000.0, 3000, -500.01, 1500.01] {
             let input = history(observedGap: observed)
@@ -138,7 +151,7 @@ final class ForecastCalibrationTests: XCTestCase {
         let data = try XCTUnwrap(result.diagnostics)
         let factors = try XCTUnwrap(data.weighting)
         XCTAssertEqual(factors.weeks, 6)
-        XCTAssertEqual(factors.historyFactor, 4.0 / 6, accuracy: 0.000001)
+        XCTAssertEqual(factors.historyFactor, 1, accuracy: 0.000001)
         XCTAssertEqual(factors.energyCoverage, 1)
         XCTAssertEqual(factors.weightCoverage, 1)
         XCTAssertEqual(factors.consistency, 1, accuracy: 0.000001)
@@ -234,6 +247,6 @@ final class ForecastCalibrationTests: XCTestCase {
         XCTAssertEqual(data.recordedDeficitPercent, 40, accuracy: 0.001)
         XCTAssertEqual(data.weightEquivalentDeficitKcal, 100, accuracy: 0.001)
         XCTAssertEqual(data.rawCorrectionKcal, -900, accuracy: 0.001)
-        XCTAssertEqual(result.correctionKcal, -600, accuracy: 0.001)
+        XCTAssertEqual(result.correctionKcal, -900, accuracy: 0.001)
     }
 }

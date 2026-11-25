@@ -5,6 +5,7 @@ import Foundation
 struct ForecastCalibration {
     static let preferenceKey = "developer.calibrateForecasts"
     static let maximumMismatchKcal = 1000.0
+    static let historyWeeks = 6
     let correctionKcal: Double
     let windowDays: Int
     let energyDays: Int
@@ -38,10 +39,15 @@ struct ForecastCalibration {
     static func historyWindow(since accountStart: Date, now: Date = Date(),
                               calendar: Calendar = .current) -> DateInterval? {
         let today = calendar.startOfDay(for: now)
-        guard let earliest = calendar.date(byAdding: .day, value: -42, to: today) else { return nil }
+        guard let earliest = calendar.date(byAdding: .day, value: -historyWeeks * 7, to: today) else { return nil }
         let start = max(earliest, calendar.startOfDay(for: accountStart))
         guard start < today else { return nil }
         return DateInterval(start: start, end: today)
+    }
+
+    // A full usable window has full history weight in both calibrations.
+    static func historyFactor(usableWeeks: Int) -> Double {
+        min(1, max(0, Double(usableWeeks) / Double(historyWeeks)))
     }
 
     static func make(weights: [HealthMeasurePoint], resting: [HealthMeasurePoint],
@@ -248,7 +254,7 @@ struct ForecastCalibrationWeighting {
     let energyCoverage: Double
     let weightDays: Int
     let scatterKg: Double
-    var historyFactor: Double { min(0.75, Double(weeks - 2) / 6) }
+    var historyFactor: Double { ForecastCalibration.historyFactor(usableWeeks: weeks) }
     var weightCoverage: Double { min(1, Double(weightDays) / 28) }
     var consistency: Double { max(0, 1 - scatterKg / 0.75) }
     var fraction: Double { historyFactor * energyCoverage * weightCoverage * consistency }
