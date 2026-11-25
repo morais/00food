@@ -19,7 +19,6 @@ struct ForecastCalibrationDetailsView: View {
                     adjustmentCard(assessment)
                 }
                 compositionCard
-                methodologyCard
                 sourcesCard
             }
             .padding()
@@ -32,7 +31,7 @@ struct ForecastCalibrationDetailsView: View {
     }
 
     private var paceCard: some View {
-        ForecastDetailCard("Resulting pace", symbol: "chart.line.uptrend.xyaxis") {
+        ForecastDetailCard("Resulting pace", symbol: "chart.line.uptrend.xyaxis", info: paceExplanation) {
             if let profile = store.profile {
                 let budget = health.representativeBudget(for: profile)
                 let percent = calibration?.projectionDeficitPercent(for: budget) ?? Double(profile.deficitPercent)
@@ -68,7 +67,6 @@ struct ForecastCalibrationDetailsView: View {
                         note("There is not enough consistent food and Health history to calibrate the energy gap yet.")
                     }
                 }
-                note("Only the forecast changes. Your calorie allowance, selected plan and logged totals stay the same.")
             } else {
                 note("Add your details to see the resulting forecast pace.")
             }
@@ -77,7 +75,7 @@ struct ForecastCalibrationDetailsView: View {
 
     private func comparisonCard(_ assessment: ForecastCalibrationAssessment) -> some View {
         let data = assessment.diagnostics
-        return ForecastDetailCard(calibrationTitle(assessment.windowDays), symbol: "equal.square") {
+        return ForecastDetailCard(calibrationTitle(assessment.windowDays), symbol: "equal.square", info: calibrationExplanation(data)) {
             Text("Inputs: \(day(data.inputStart)) – \(day(data.inputEnd.addingTimeInterval(-1)))")
                 .font(.subheadline).foregroundStyle(.secondary)
             LazyVGrid(columns: columns, alignment: .leading, spacing: 20) {
@@ -92,7 +90,6 @@ struct ForecastCalibrationDetailsView: View {
                 deficitMetric("Recorded balance", kcal: data.recordedDeficitKcal,
                               percent: data.recordedDeficitPercent)
             }
-            note("The trend is fitted between weekly medians, \(day(data.fitStart)) – \(day(data.fitEnd)). Energy and allowance values above are daily averages over that fitted span, using your current plan. Missing energy days use the recorded average.")
             Divider()
             coverageSummary(assessment)
         }
@@ -100,51 +97,33 @@ struct ForecastCalibrationDetailsView: View {
 
     private func adjustmentCard(_ assessment: ForecastCalibrationAssessment) -> some View {
         let data = assessment.diagnostics
-        return ForecastDetailCard("Forecast adjustment", symbol: "slider.horizontal.3") {
+        return ForecastDetailCard("Forecast adjustment", symbol: "slider.horizontal.3", info: adjustmentExplanation(data)) {
             deficitMetric("Inferred deficit", kcal: data.weightEquivalentDeficitKcal,
                           percent: data.weightEquivalentDeficitPercent)
             Label(data.usesBodyComposition ? "Inferred from weight + body-fat changes" : "Inferred from weight changes",
                   systemImage: "waveform.path")
                 .font(.subheadline.weight(.medium))
-            note("The inferred deficit is the energy gap that would explain your fitted body changes under this model. It is not measured calorie burn. It uses the same Health TDEE reference as the recorded balance in the calibration card.")
             Divider()
             LazyVGrid(columns: columns, alignment: .leading, spacing: 20) {
                 metric("Raw mismatch", kcal(abs(data.rawCorrectionKcal)),
                        detail: "kcal/day \(direction(data.rawCorrectionKcal)) deficit")
                 metric("Deficit difference", number(abs(data.mismatchPercentagePoints), decimals: 1),
-                       detail: "percentage points \(data.rawCorrectionKcal < 0 ? "lower" : "higher")")
+                       detail: "percentage points \(data.rawCorrectionKcal < 0 ? "lower" : "higher")",
+                       info: "\(number(data.recordedDeficitPercent, decimals: 1))% recorded → \(number(data.weightEquivalentDeficitPercent, decimals: 1))% inferred. The difference is in percentage points, not a relative percentage change. Both use the same Health TDEE reference.")
             }
-            note("\(number(data.recordedDeficitPercent, decimals: 1))% recorded → \(number(data.weightEquivalentDeficitPercent, decimals: 1))% inferred. The difference is in percentage points, not a relative percentage change.")
             Divider()
             if let calibration = assessment.calibration {
                 LazyVGrid(columns: columns, alignment: .leading, spacing: 20) {
                     metric("Mismatch applied", "\(number(data.influence * 100, decimals: 1))%",
-                           detail: "Share of the raw mismatch used")
+                           detail: "of the raw mismatch", info: adjustmentWeightExplanation(assessment))
                     metric("Applied to forecast", kcal(abs(calibration.correctionKcal)),
                            detail: "kcal/day \(direction(calibration.correctionKcal)) deficit", emphasis: true)
                 }
-                note("\(kcal(abs(data.rawCorrectionKcal))) × \(number(data.influence * 100, decimals: 1))% = \(kcal(abs(calibration.correctionKcal))) kcal/day. This weight tempers the adjustment; it is not a probability that the estimate is correct.")
             } else {
                 Label("Adjustment rejected", systemImage: "exclamationmark.triangle")
                     .font(.headline).foregroundStyle(.orange)
-                note("The raw mismatch exceeds ±1,000 kcal/day. No calibrated energy adjustment is calculated; the standard energy gap remains in use. Review the underlying food and Health data.")
+                note("Mismatch exceeds ±1,000 kcal/day. Using the standard energy gap.")
             }
-            if let weight = data.weighting {
-                DisclosureGroup("How the adjustment weight is calculated") {
-                    VStack(alignment: .leading, spacing: 14) {
-                        weightingRow("History length", weight.historyFactor,
-                                     "\(weight.weeks) usable weekly groups ÷ 6, up to 100%. A full six-week window gets full history weight.")
-                        weightingRow("Food + energy coverage", weight.energyCoverage,
-                                     "\(assessment.energyDays) of \(assessment.windowDays) completed days have food, resting energy and active energy.")
-                        weightingRow("Weight readings", weight.weightCoverage,
-                                     "\(weight.weightDays) days ÷ 28, up to 100%.")
-                        weightingRow("Trend consistency", weight.consistency,
-                                     "1 − \(preciseWeight(weight.scatterKg)) scatter ÷ \(preciseWeight(0.75)) tolerance, down to 0%.")
-                        note("\(percentage(weight.historyFactor)) × \(percentage(weight.energyCoverage)) × \(percentage(weight.weightCoverage)) × \(percentage(weight.consistency)) ≈ \(percentage(weight.fraction)). These are experimental weighting rules, not measured accuracy.")
-                    }.padding(.top, 12)
-                }
-            }
-            note("A raw mismatch above ±1,000 kcal/day is rejected before weighting. Values within the limit are used without a cap.")
         }
     }
 
@@ -157,23 +136,23 @@ struct ForecastCalibrationDetailsView: View {
         let paired = BodyCompositionTrend.pairedReadings(weights: health.weightsForForecastCalibration,
             bodyFat: health.bodyFatForForecastCalibration, within: window)
         return VStack(alignment: .leading, spacing: 16) {
-            Text("History coverage").font(.headline)
+            HStack {
+                Text("History coverage").font(.headline)
+                Spacer()
+                InfoDisclosure(title: "History coverage", message: "Percentages show the share of input days with data, out of 100%. Readings are counted once per day.\n\nFood + energy requires food logs, resting energy and active energy on the same day. Weight shows the usable weekly groups in the fit. Body fat counts days with body-fat readings; weight + body fat counts paired days for composition analysis. Fat mass needs both readings on the same day.\n\nThese coverage percentages are separate from the forecast weighting factors.")
+            }
             LazyVGrid(columns: columns, alignment: .leading, spacing: 20) {
-                coverageMetric("Food + energy", days: assessment.energyDays, total: assessment.windowDays,
-                               detail: "food logs + resting and active Health energy")
+                coverageMetric("Food + energy", days: assessment.energyDays, total: assessment.windowDays)
                 coverageMetric("Weight", days: assessment.weightDays, total: assessment.windowDays,
                                detail: "\(assessment.weightWeeks) usable weekly groups")
-                coverageMetric("Body fat", days: fatDays, total: assessment.windowDays,
-                               detail: "body-fat readings")
-                coverageMetric("Weight + body fat", days: paired.count, total: assessment.windowDays,
-                               detail: "paired readings for composition analysis")
+                coverageMetric("Body fat", days: fatDays, total: assessment.windowDays)
+                coverageMetric("Weight + body fat", days: paired.count, total: assessment.windowDays)
             }
-            note("Percentages show the share of input days with data, out of 100%. Readings are counted once per day. Fat mass needs weight and body fat on the same day. These coverage percentages are separate from the forecast weighting factors.")
         }
     }
 
     private var compositionCard: some View {
-        ForecastDetailCard("Body-composition trend", symbol: "figure.stand") {
+        ForecastDetailCard("Body-composition trend", symbol: "figure.stand", info: compositionExplanation) {
             if health.isRefreshingComposition {
                 ProgressView("Reading recent Health history…").font(.subheadline)
             }
@@ -187,48 +166,34 @@ struct ForecastCalibrationDetailsView: View {
                     metric("Fat-free mass", abs(lean) < 0.05 ? "Stable" : units.weight(abs(lean)),
                            detail: abs(lean) < 0.05 ? "approximately" : (lean < 0 ? "lost per week" : "gained per week"))
                     metric("Paired readings", "\(trend.readings.count)", detail: "days across \(trend.weekCount) weeks")
-                    metric("Personal trend weight", percentage(trend.confidence), detail: "Starting share from your fitted split")
+                    metric("Personal trend weight", percentage(trend.confidence), detail: "starting personal share",
+                           info: compositionWeightExplanation(trend))
                 }
-                note("This percentage controls how much your fitted fat/lean split contributes. The remainder comes from Forbes. It is not the percentage of weight lost as fat or an accuracy score.")
-                compositionWeightDetails(trend)
                 if let body = currentBody(for: trend) {
                     let split = trend.split(for: body)
                     Divider()
-                    Text("Compared with Forbes").font(.headline)
-                    note("Approximate fat-free mass change per \(units.weight(1)) of fat lost, at your current fat mass:")
+                    HStack {
+                        Text("Compared with Forbes").font(.headline)
+                        Spacer()
+                        InfoDisclosure(title: "Compared with Forbes", message: forbesExplanation(split))
+                    }
+                    note("Fat-free mass per \(units.weight(1)) fat lost")
                     LazyVGrid(columns: columns, alignment: .leading, spacing: 20) {
                         leanMetric("Forbes", kg: split.forbesLeanPerFat)
                         leanMetric("Your fitted split", kg: split.personalLeanPerFat)
                         leanMetric("Used for forecast", kg: split.usedLeanPerFat)
                     }
-                    note("Current blend: \(percentage(split.personalShare)) your fitted split + \(percentage(1 - split.personalShare)) Forbes. The personal share gradually decreases if projected fat mass falls below its recent reference. The fitted split is subject to the model’s existing bounds.")
+                    note("Blend: \(percentage(split.personalShare)) personal · \(percentage(1 - split.personalShare)) Forbes")
                 }
-                note("Only paired dates within the shared calibration window contribute. Older readings and today’s partial data are excluded. Fat-free mass includes water and other tissue; it is not a direct muscle measurement.")
             } else {
                 Label("Using the Forbes split", systemImage: "chart.xyaxis.line")
                     .font(.subheadline.weight(.medium))
-                note("There is no reliable composition trend yet. The fat/fat-free mass split uses Forbes when body-fat data is available.")
+                note("No reliable composition trend yet.")
             }
             if let error = health.compositionHistoryError {
                 Label("Recent history could not be refreshed: \(error)", systemImage: "exclamationmark.circle")
                     .font(.footnote).foregroundStyle(.secondary)
             }
-        }
-    }
-
-    private func compositionWeightDetails(_ trend: BodyCompositionTrend) -> some View {
-        let weight = trend.weighting
-        return DisclosureGroup("How the personal trend weight is calculated") {
-            VStack(alignment: .leading, spacing: 14) {
-                weightingRow("History length", weight.historyFactor,
-                             "\(weight.weeks) usable weekly groups ÷ 6, up to 100%. A full six-week window gets full history weight.")
-                weightingRow("Recent paired readings", weight.readingFactor,
-                             "\(number(weight.effectiveDays, decimals: 1)) recency-weighted reading days ÷ 28, up to 100%. Each reading’s weight halves after 90 days; only the shared recent window is used.")
-                weightingRow("Trend consistency", weight.consistency,
-                             "1 − \(preciseWeight(weight.scatterKg)) scatter ÷ \(preciseWeight(weight.noiseLimitKg)) tolerance. Scatter uses the noisier of the fat and fat-free mass fits.")
-                note("\(percentage(weight.historyFactor)) × \(percentage(weight.readingFactor)) × \(percentage(weight.consistency)) ≈ \(percentage(weight.fraction)). These experimental factors reduce the personal share for shorter, sparser or noisier history. The tolerance is the larger of \(units.weight(0.75)) and 1.5% of median weight.")
-                note("The energy fit separately uses this data weight to blend composition-based tissue energy with its weight-only estimate. This is independent of the adjustment share shown above.")
-            }.padding(.top, 12)
         }
     }
 
@@ -244,21 +209,9 @@ struct ForecastCalibrationDetailsView: View {
         metric(title, units.weight(abs(kg)), detail: abs(kg) < 0.005 ? "fat-free mass · approximately stable" : "fat-free mass \(kg < 0 ? "gained" : "lost")")
     }
 
-    private func weightingRow(_ title: String, _ fraction: Double, _ detail: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(title).fontWeight(.medium)
-                Spacer()
-                Text(percentage(fraction)).monospacedDigit()
-            }.font(.subheadline)
-            note(detail)
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    private func coverageMetric(_ title: String, days: Int, total: Int, detail: String) -> some View {
+    private func coverageMetric(_ title: String, days: Int, total: Int, detail: String? = nil) -> some View {
         metric(title, percentage(total > 0 ? Double(days) / Double(total) : 0),
-               detail: "\(days) of \(total) days · \(detail)")
+               detail: "\(days) of \(total) days" + (detail.map { " · " + $0 } ?? ""))
     }
 
     private func preciseWeight(_ kg: Double) -> String {
@@ -270,33 +223,98 @@ struct ForecastCalibrationDetailsView: View {
         days.isMultiple(of: 7) ? "Calibration · last \(days / 7) weeks" : "Calibration · last \(days) completed days"
     }
 
-    private var methodologyCard: some View {
-        ForecastDetailCard("How to read these estimates", symbol: "info.circle") {
-            note("Experimental, off by default and local to this iPhone. These app heuristics are not a validated physiological model.")
-            DisclosureGroup("Resulting pace & energy balance") {
-                explanation("The forecast-implied percentage divides the forecast gap by your unchanged calorie allowance plus that gap. It describes the percentage implied by the curve, not a measurement of true TDEE.")
-                explanation("Calibration compares Health energy minus actual logged food with the observed trend, not just your selected deficit. The future plan assumes you eat your selected allowance; it does not assume you keep leaving the recent unused calories.")
-                explanation("Projections flatten if the adjusted gap is zero or negative; weight gain is not modeled. Missing, stale or very noisy history uses the standard energy gap. A raw mismatch above ±1,000 kcal/day is rejected, rather than capped into a usable adjustment.")
-            }
-            Divider()
-            DisclosureGroup("History & smoothing") {
-                explanation("The energy fit uses up to 42 completed days (6 weeks), with at least 28 days of history, food plus paired resting/active Health energy on 90% of days, and 14 weight days across at least four weekly groups. Weekly medians and a robust trend fit compare observed change with recorded energy balance. The few missing energy days use the recorded average.")
-                explanation("The composition split uses the same recent window and weekly groups as the energy fit: up to 42 completed days (6 weeks), starting no earlier than your first use of 00Food. It uses weekly medians and a robust fit, with newer readings weighted more heavily. Earlier history and today’s readings are excluded. It needs at least 14 paired days, four weekly groups, a 28-day span and a paired reading in the last seven days. Noisy or sparse history pulls the split toward Forbes.")
-            }
-            Divider()
-            DisclosureGroup("Fat & fat-free mass model") {
-                explanation("The learned ratio is bounded between gaining 1 kg and losing 3 kg of fat-free mass per kg of fat lost. This is an experimental guardrail, not a physiological limit. The personal split gradually returns toward Forbes as projected fat mass leaves the current range.")
-                explanation("Recent paired composition data also improves the energy fit using about 9,440 kcal/kg fat and 1,816 kcal/kg fat-free mass. Otherwise the weight-only energy fit remains. Stable weight with falling fat can therefore be recognized as recomposition.")
-                explanation("Negative fat-free mass change in the existing forecast summary means a modeled gain.")
-            }
-            Divider()
-            DisclosureGroup("Limits & privacy") {
-                explanation("These diagnostics cannot separate food-estimation error, Watch error, water changes or model error. Missing food logs and water changes can still distort estimates.")
-                explanation("The trend does not establish that exercise caused muscle preservation. Fat-free mass includes water and other tissue.")
-                explanation("All composition history stays on this device. Calorie allowances, selected pace and logged totals never change. Public chart labels describe the standard model; advanced calibration is explained only here in Developer settings.")
-            }
-            .tint(.blue)
-        }
+    private var paceExplanation: String {
+        """
+        Experimental, off by default and local to this iPhone. These app heuristics are not a validated physiological model.
+
+        Only forecast curves, body-fat projections and estimated dates change. Your calorie allowance, selected plan and logged totals stay the same.
+
+        The forecast-implied percentage divides the forecast gap by your unchanged calorie allowance plus that gap. It describes the percentage implied by the curve, not a measurement of true TDEE.
+
+        Calibration compares Health energy minus actual logged food with the observed trend, not just your selected deficit. The future plan assumes you eat your selected allowance; it does not assume you keep leaving recent unused calories.
+
+        All composition history stays on this device. Public chart labels describe the standard model; advanced calibration is explained only here in Developer settings.
+        """
+    }
+
+    private func calibrationExplanation(_ data: ForecastCalibrationDiagnostics) -> String {
+        """
+        Uses up to 42 completed days (6 weeks), starting no earlier than your first use of 00Food. Earlier history and today’s partial data are excluded.
+
+        The trend is fitted between weekly medians, \(day(data.fitStart)) – \(day(data.fitEnd)). Energy and allowance values are daily averages over that fitted span, using your current plan. Health TDEE is resting plus active energy. Remaining allowance compares logged food with your current plan’s allowance; recorded balance compares it with TDEE before the plan’s deficit.
+
+        The fit needs at least 28 days of history, food plus paired resting/active Health energy on 90% of days, and 14 weight days across at least four weekly groups. Weekly medians and a robust trend fit compare observed change with recorded energy balance. The few missing energy days use the recorded average.
+        """
+    }
+
+    private func adjustmentExplanation(_ data: ForecastCalibrationDiagnostics) -> String {
+        """
+        The inferred deficit is the energy gap that would explain your fitted body changes under this model. It is not measured calorie burn. It uses the same Health TDEE reference as the recorded balance in the calibration card.
+
+        \(data.usesBodyComposition ? "This fit uses weight and body-fat changes." : "This fit uses weight changes; recent paired composition data is insufficient for the energy fit.") Recent paired composition data uses about 9,440 kcal/kg fat and 1,816 kcal/kg fat-free mass. Otherwise the weight-only energy fit remains. Stable weight with falling fat can therefore be recognized as recomposition.
+
+        Raw mismatch is inferred minus recorded deficit. Negative means less deficit and slower loss; positive means more deficit and faster loss. Only the displayed share of that mismatch is applied to the forecast.
+
+        A raw mismatch above ±1,000 kcal/day is rejected before weighting. Values within the limit are used without a cap. Missing, stale or very noisy history uses the standard energy gap. Projections flatten if the adjusted gap is zero or negative; weight gain is not modeled.
+
+        These diagnostics cannot separate food-estimation error, Watch error, water changes or model error. Missing food logs and water changes can still distort estimates.
+        """
+    }
+
+    private func adjustmentWeightExplanation(_ assessment: ForecastCalibrationAssessment) -> String {
+        let data = assessment.diagnostics
+        let applied = assessment.calibration.map { "\(kcal(abs(data.rawCorrectionKcal))) × \(percentage(data.influence)) ≈ \(kcal(abs($0.correctionKcal))) kcal/day \(direction($0.correctionKcal)) deficit." } ?? "No adjustment is applied because this mismatch was rejected."
+        guard let weight = data.weighting else { return applied }
+        return """
+        \(applied)
+
+        History length: \(percentage(weight.historyFactor)). \(weight.weeks) usable weekly groups ÷ 6, up to 100%. A full six-week window gets full history weight.
+
+        Food + energy coverage: \(percentage(weight.energyCoverage)). \(assessment.energyDays) of \(assessment.windowDays) completed days have food, resting energy and active energy.
+
+        Weight readings: \(percentage(weight.weightCoverage)). \(weight.weightDays) days ÷ 28, up to 100%.
+
+        Trend consistency: \(percentage(weight.consistency)). 1 − \(preciseWeight(weight.scatterKg)) scatter ÷ \(preciseWeight(0.75)) tolerance, down to 0%.
+
+        \(percentage(weight.historyFactor)) × \(percentage(weight.energyCoverage)) × \(percentage(weight.weightCoverage)) × \(percentage(weight.consistency)) ≈ \(percentage(weight.fraction)). These experimental weighting rules temper the adjustment; they are not measured accuracy or a probability that the estimate is correct.
+        """
+    }
+
+    private var compositionExplanation: String {
+        """
+        Uses the same recent window and weekly groups as the energy fit: up to 42 completed days (6 weeks), starting no earlier than your first use of 00Food. Only paired weight/body-fat dates contribute. Older readings and today’s partial data are excluded.
+
+        Weekly medians and a robust fit give the fat and fat-free mass trends. Newer readings carry more weight. At least 14 paired days, four weekly groups, a 28-day span and a paired reading in the last seven days are needed. Noisy or sparse history pulls the split toward Forbes; without a reliable personal trend, Forbes is used when body-fat data is available.
+
+        Fat-free mass includes water and other tissue. It is not a direct muscle measurement, and the trend does not establish that exercise caused muscle preservation. Negative fat-free mass change in the existing forecast summary means a modeled gain.
+        """
+    }
+
+    private func compositionWeightExplanation(_ trend: BodyCompositionTrend) -> String {
+        let weight = trend.weighting
+        return """
+        This percentage controls how much your fitted fat/lean split contributes. The remainder comes from Forbes. It is not the percentage of weight lost as fat or an accuracy score.
+
+        History length: \(percentage(weight.historyFactor)). \(weight.weeks) usable weekly groups ÷ 6, up to 100%. A full six-week window gets full history weight.
+
+        Recent paired readings: \(percentage(weight.readingFactor)). \(number(weight.effectiveDays, decimals: 1)) recency-weighted reading days ÷ 28, up to 100%. Each reading’s weight halves after 90 days; only the shared recent window is used.
+
+        Trend consistency: \(percentage(weight.consistency)). 1 − \(preciseWeight(weight.scatterKg)) scatter ÷ \(preciseWeight(weight.noiseLimitKg)) tolerance. Scatter uses the noisier of the fat and fat-free mass fits. The tolerance is the larger of \(units.weight(0.75)) and 1.5% of median weight.
+
+        \(percentage(weight.historyFactor)) × \(percentage(weight.readingFactor)) × \(percentage(weight.consistency)) ≈ \(percentage(weight.fraction)). These experimental factors reduce the personal share for shorter, sparser or noisier history.
+
+        The energy fit separately uses this data weight to blend composition-based tissue energy with its weight-only estimate. This is independent of the adjustment share.
+        """
+    }
+
+    private func forbesExplanation(_ split: BodyCompositionSplit) -> String {
+        """
+        Approximate fat-free mass change per \(units.weight(1)) of fat lost, at your current fat mass. These values describe a split, not a weekly rate.
+
+        Forbes is the standard model’s split. Your fitted split comes from the recent composition trend. Used for forecast blends the two: \(percentage(split.personalShare)) personal + \(percentage(1 - split.personalShare)) Forbes.
+
+        The personal share gradually decreases if projected fat mass falls below its recent reference. The learned ratio is bounded between gaining 1 kg and losing 3 kg of fat-free mass per kg of fat lost. This is an experimental guardrail, not a physiological limit.
+        """
     }
 
     private var sourcesCard: some View {
@@ -308,15 +326,20 @@ struct ForecastCalibrationDetailsView: View {
         .tint(.blue)
     }
 
-    private func metric(_ title: String, _ value: String, detail: String, emphasis: Bool = false) -> some View {
+    private func metric(_ title: String, _ value: String, detail: String, emphasis: Bool = false,
+                        info: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(.caption).foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(title).font(.caption).foregroundStyle(.secondary)
+                if let info { InfoDisclosure(title: title, message: info) }
+            }
+            .frame(minHeight: 30, alignment: .leading)
             Text(value).font(emphasis ? .title.bold() : .title2.weight(.semibold))
                 .monospacedDigit().foregroundStyle(emphasis ? Color.blue : Color.primary)
             Text(detail).font(.caption).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: info == nil ? .combine : .contain)
     }
 
     private func deficitMetric(_ title: String, kcal value: Double, percent: Double) -> some View {
@@ -326,10 +349,6 @@ struct ForecastCalibrationDetailsView: View {
 
     private func note(_ text: String) -> some View {
         Text(text).font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-    }
-
-    private func explanation(_ text: String) -> some View {
-        note(text).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
     }
 
     private func direction(_ value: Double) -> String { value < 0 ? "less" : "more" }
@@ -343,18 +362,24 @@ struct ForecastCalibrationDetailsView: View {
 private struct ForecastDetailCard<Content: View>: View {
     let title: String
     let symbol: String
+    let info: String?
     @ViewBuilder let content: Content
 
-    init(_ title: String, symbol: String, @ViewBuilder content: () -> Content) {
+    init(_ title: String, symbol: String, info: String? = nil, @ViewBuilder content: () -> Content) {
         self.title = title
         self.symbol = symbol
+        self.info = info
         self.content = content()
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Label(title, systemImage: symbol)
-                .font(.headline).accessibilityAddTraits(.isHeader)
+            HStack(alignment: .firstTextBaseline) {
+                Label(title, systemImage: symbol)
+                    .font(.headline).accessibilityAddTraits(.isHeader)
+                Spacer()
+                if let info { InfoDisclosure(title: title, message: info) }
+            }
             content
         }
         .frame(maxWidth: .infinity, alignment: .leading)
