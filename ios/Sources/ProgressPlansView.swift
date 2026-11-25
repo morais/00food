@@ -301,6 +301,12 @@ struct ProgressPlansView: View {
         let anchor = HealthMeasurePoint(date: baseline.date, value: baseline.composition.bodyFatPercentage)
         let today = Calendar.current.startOfDay(for: Date())
         let sixMonths = Calendar.current.date(byAdding: .month, value: 6, to: today) ?? today
+        if calibrateForecasts, let trend = health.compositionTrend {
+            return trend.projection(from: baseline.composition, startingAt: baseline.date, until: sixMonths,
+                gapKcal: health.gapForForecast(profile: profile, store: store, calibrationEnabled: true),
+                minimumWeightKg: ProgressProjection.healthyWeightRange(for: profile.heightCm).lowerBound)
+                .map { HealthMeasurePoint(date: $0.date, value: $0.body.bodyFatPercentage) }
+        }
         return ProgressProjection.bodyFatProjection(anchor: anchor, startWeightKg: baseline.composition.weightKg,
             gapKcal: health.gapForForecast(profile: profile, store: store, calibrationEnabled: calibrateForecasts),
             minimumWeightKg: ProgressProjection.healthyWeightRange(for: profile.heightCm).lowerBound, until: sixMonths)

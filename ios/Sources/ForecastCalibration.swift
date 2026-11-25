@@ -35,7 +35,8 @@ struct ForecastCalibration {
 
     static func make(weights: [HealthMeasurePoint], resting: [HealthMeasurePoint],
                      active: [HealthMeasurePoint], logs: [FoodLog], since accountStart: Date,
-                     now: Date = Date(), calendar: Calendar = .current) -> Self? {
+                     now: Date = Date(), calendar: Calendar = .current,
+                     composition: BodyCompositionTrend? = nil) -> Self? {
         let today = calendar.startOfDay(for: now)
         guard let earliest = calendar.date(byAdding: .day, value: -42, to: today) else { return nil }
         let start = max(earliest, calendar.startOfDay(for: accountStart))
@@ -99,6 +100,30 @@ struct ForecastCalibration {
                               kg: median(readings.map(\.value))))
         }
         weeks.sort { $0.day < $1.day }
+        // When paired fat readings support it, calibrate against changes in
+        // tissue energy rather than treating every lost kg as 7,700 kcal.
+        var usesComposition = false
+        if let composition {
+            var pairedWeeks: [Week] = []
+            var pairedDays = 0
+            for index in 0..<(count / 7) {
+                let first = count - (index + 1) * 7
+                let from = calendar.date(byAdding: .day, value: first, to: start)!
+                let to = calendar.date(byAdding: .day, value: 7, to: from)!
+                guard let reading = composition.aggregate(from: from, to: to, calendar: calendar) else { continue }
+                let dayStart = calendar.startOfDay(for: reading.date)
+                let nextDay = calendar.date(byAdding: .day, value: 1, to: dayStart)!
+                let day = Double(offset(reading.date)) + reading.date.timeIntervalSince(dayStart) / nextDay.timeIntervalSince(dayStart)
+                pairedWeeks.append(Week(day: day, kg: composition.energyEquivalentKg(reading.body)))
+                pairedDays += composition.readings.filter { $0.date >= from && $0.date < to }.count
+            }
+            pairedWeeks.sort { $0.day < $1.day }
+            if pairedDays >= 14, pairedWeeks.count >= 4, let first = pairedWeeks.first, let last = pairedWeeks.last,
+               last.day - first.day >= 21, last.day >= Double(count - 7) {
+                weeks = pairedWeeks
+                usesComposition = true
+            }
+        }
         guard weeks.count >= 4, let first = weeks.first, let last = weeks.last,
               last.day - first.day >= 21 else { return nil }
 
@@ -144,7 +169,7 @@ struct ForecastCalibration {
             fitStart: dateAt(first.day), fitEnd: dateAt(last.day),
             meanTDEEKcal: fitTDEE, meanLoggedKcal: fitTDEE - fitGap,
             rawCorrectionKcal: -slope * 7700, limitedCorrectionKcal: rawCorrection,
-            influence: confidence)
+            influence: confidence, usesBodyComposition: usesComposition)
         return Self(correctionKcal: rawCorrection * confidence, windowDays: count,
                     energyDays: tdeeTotals.count, weightDays: dailyWeights.count, weightWeeks: weeks.count,
                     diagnostics: diagnostics)
@@ -167,6 +192,7 @@ struct ForecastCalibrationDiagnostics {
     let rawCorrectionKcal: Double
     let limitedCorrectionKcal: Double
     let influence: Double
+    var usesBodyComposition: Bool = false
 
     var recordedDeficitKcal: Double { meanTDEEKcal - meanLoggedKcal }
     // Energy-equivalent of the fitted weight trajectory under the app's model,

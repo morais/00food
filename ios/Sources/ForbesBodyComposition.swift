@@ -3,7 +3,7 @@ import Foundation
 // Forbes partitions sustained weight loss between fat and fat-free mass:
 // dFM/dWeight = FM / (FM + 10.4 kg). No water/glycogen change is inferred.
 // https://doi.org/10.1017/S0007114507691946
-struct ForbesBodyComposition: Equatable {
+struct ForbesBodyComposition: Equatable, Sendable {
     let weightKg: Double
     let fatMassKg: Double
     var fatFreeMassKg: Double { weightKg - fatMassKg }
@@ -17,7 +17,9 @@ struct ForbesBodyComposition: Equatable {
         fatMassKg = weightKg * bodyFatPercentage / 100
     }
 
-    private init(weightKg: Double, fatMassKg: Double) {
+    init?(weightKg: Double, fatMassKg: Double) {
+        guard weightKg.isFinite, fatMassKg.isFinite, weightKg > 0,
+              fatMassKg >= 0, fatMassKg < weightKg else { return nil }
         self.weightKg = weightKg
         self.fatMassKg = fatMassKg
     }

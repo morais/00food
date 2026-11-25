@@ -29,19 +29,28 @@ struct PlanProjectionCard: View {
         let startingWeight = health.smoothedWeightKg ?? health.usableLatestWeightKg ?? profile.weightKg
         let today = Calendar.current.startOfDay(for: Date())
         let sixMonths = Calendar.current.date(byAdding: .month, value: 6, to: today) ?? today
-        let projection = ProgressProjection.projectedWeight(from: startingWeight, gap: forecastGap,
-                                         minimum: healthyRange.lowerBound, until: sixMonths)
-        let bmiEntryDate = ProgressProjection.estimatedBMIEntryDate(from: startingWeight, gap: forecastGap,
-                                                 upperBound: healthyRange.upperBound, until: sixMonths)
+        let bodyStart = health.bodyCompositionBaseline(for: profile).flatMap {
+            ForbesBodyComposition(weightKg: startingWeight, bodyFatPercentage: $0.composition.bodyFatPercentage)
+        }
+        let compositionProjection = bodyStart.flatMap { body in
+            (calibrateForecasts ? health.compositionTrend : nil)?.projection(from: body, startingAt: today,
+                until: sixMonths, gapKcal: forecastGap, minimumWeightKg: healthyRange.lowerBound)
+        }
+        let projection = compositionProjection?.map { HealthMeasurePoint(date: $0.date, value: $0.body.weightKg) }
+            ?? ProgressProjection.projectedWeight(from: startingWeight, gap: forecastGap,
+                                                 minimum: healthyRange.lowerBound, until: sixMonths)
+        let bmiEntryDate = if let compositionProjection {
+            BodyCompositionTrend.entryDate(in: compositionProjection, upperWeight: healthyRange.upperBound)
+        } else {
+            ProgressProjection.estimatedBMIEntryDate(from: startingWeight, gap: forecastGap,
+                                                    upperBound: healthyRange.upperBound, until: sixMonths)
+        }
         let fullProjection = projection.last?.date == sixMonths
         let chartTop = max(healthyRange.upperBound, profile.weightKg,
                            health.weightHistory.map(\.value).max() ?? 0,
                            projection.map(\.value).max() ?? 0) + 4
         let shownChange = (projection.first?.value ?? 0) - (projection.last?.value ?? 0)
-        let bodyStart = health.bodyCompositionBaseline(for: profile).flatMap {
-            ForbesBodyComposition(weightKg: startingWeight, bodyFatPercentage: $0.composition.bodyFatPercentage)
-        }
-        let bodyEnd = bodyStart?.losing(sustainedWeightKg: shownChange)
+        let bodyEnd = compositionProjection?.last?.body ?? bodyStart?.losing(sustainedWeightKg: shownChange)
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(title).font(.title3.bold())

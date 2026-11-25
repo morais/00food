@@ -1,6 +1,6 @@
 import Foundation
 
-struct HealthMeasurePoint: Identifiable {
+struct HealthMeasurePoint: Identifiable, Sendable {
     let date: Date
     let value: Double
     var id: Date { date }

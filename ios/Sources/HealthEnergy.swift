@@ -25,6 +25,15 @@ struct RestingEnergySummary {
     var latestBodyFatDate: Date?
     var weightHistory: [HealthMeasurePoint] = []
     var bodyFatHistory: [HealthMeasurePoint] = []
+    private var loadedCompositionTrend: BodyCompositionTrend?
+    var compositionTrend: BodyCompositionTrend? {
+        guard let trend = loadedCompositionTrend,
+              (Calendar.current.dateComponents([.day], from: trend.lastDate, to: Date()).day ?? 99) <= 7 else { return nil }
+        return trend
+    }
+    private(set) var isRefreshingComposition = false
+    private(set) var compositionHistoryError: String?
+    private var compositionWeights: [HealthMeasurePoint] = []
     var activeHistory: [HealthMeasurePoint] = []
     var restingHistory: [HealthMeasurePoint] = []
     var completedAverageTDEEKcal: Int?
@@ -160,6 +169,8 @@ struct RestingEnergySummary {
             bodyFatHistory = []
             activeHistory = []
             restingHistory = []
+            loadedCompositionTrend = nil
+            compositionWeights = []
         }
     }
 
@@ -238,6 +249,56 @@ struct RestingEnergySummary {
             do { try await Task.sleep(for: .seconds(1)) }
             catch { return }
             await refreshValues()
+        }
+        if UserDefaults.standard.bool(forKey: ForecastCalibration.preferenceKey) {
+            await refreshCompositionHistory()
+        }
+    }
+
+    func refreshCompositionHistory() async {
+        guard available, weightRequested, bodyFatRequested, !isRefreshingComposition else { return }
+        isRefreshingComposition = true
+        defer { isRefreshingComposition = false }
+        let accountHistoryStart = historyStart
+        do {
+            // Read all permitted dates separately from chart history. Keeping
+            // this outside refreshValues prevents an optional failure from
+            // interrupting publication of resting/active energy and allowances.
+            let weights = try await allCompositionReadings(of: bodyMass, unit: .gramUnit(with: .kilo), scale: 1)
+            let fat = try await allCompositionReadings(of: bodyFat, unit: .percent(), scale: 100)
+            let readAt = Date()
+            let calendar = Calendar.current
+            let fitted = await Task.detached(priority: .utility) {
+                BodyCompositionTrend.make(weights: weights, bodyFat: fat, now: readAt, calendar: calendar)
+            }.value
+            guard !Task.isCancelled, historyStart == accountHistoryStart else { return }
+            compositionWeights = weights
+            loadedCompositionTrend = fitted
+            compositionHistoryError = nil
+        } catch {
+            guard !Task.isCancelled, historyStart == accountHistoryStart else { return }
+            compositionHistoryError = error.localizedDescription
+        }
+    }
+
+    var weightsForForecastCalibration: [HealthMeasurePoint] {
+        compositionWeights.isEmpty ? weightHistory : compositionWeights
+    }
+
+    private func allCompositionReadings(of type: HKQuantityType, unit: HKUnit, scale: Double) async throws -> [HealthMeasurePoint] {
+        try await HealthQueryResult.read(noData: [HealthMeasurePoint]()) {
+            try await withCheckedThrowingContinuation { continuation in
+                let predicate = HKQuery.predicateForSamples(withStart: nil, end: Date(), options: [.strictEndDate])
+                let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit,
+                    sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: true)]) { _, samples, error in
+                    if let error { continuation.resume(throwing: error); return }
+                    let points = (samples as? [HKQuantitySample] ?? []).map {
+                        HealthMeasurePoint(date: $0.endDate, value: $0.quantity.doubleValue(for: unit) * scale)
+                    }
+                    continuation.resume(returning: HealthHistory.lastReadingEachDay(points))
+                }
+                store.execute(query)
+            }
         }
     }
 

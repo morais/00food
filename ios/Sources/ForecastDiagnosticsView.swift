@@ -24,6 +24,7 @@ struct ForecastDiagnosticsView: View {
                 let lastInputDay = Calendar.current.date(byAdding: .day, value: -1, to: data.inputEnd) ?? data.inputEnd
                 Text("Input days: \(day(data.inputStart)) – \(day(lastInputDay))")
                 Text("Weight fit: \(day(data.fitStart)) – \(day(data.fitEnd))")
+                Text(data.usesBodyComposition ? "Energy fit uses paired fat and fat-free mass trends." : "Energy fit uses weight only; recent paired composition data is insufficient.")
                 Text("Health TDEE: \(number(data.meanTDEEKcal)) kcal/day · Logged food: \(number(data.meanLoggedKcal)) kcal/day")
                 Text("Recorded: \(balance(data.recordedDeficitKcal, percent: data.recordedDeficitPercent))")
                 Text("Weight-trend equivalent: \(balance(data.weightEquivalentDeficitKcal, percent: data.weightEquivalentDeficitPercent))")
