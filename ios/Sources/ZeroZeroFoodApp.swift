@@ -1,3 +1,4 @@
+import AppIntents
 import SwiftUI
 
 @main struct ZeroZeroFoodApp: App {
@@ -16,6 +17,7 @@ import SwiftUI
 
     init() {
         let foodStore = FoodStore()
+        AppDependencyManager.shared.add(dependency: foodStore)
         AgentResponsePush.shared.store = foodStore
         let healthData = HealthEnergy()
         _store = State(initialValue: foodStore)

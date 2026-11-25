@@ -158,4 +158,35 @@ describe("late food logs and renewed daily reviews", () => {
       expect(db.prepare("SELECT created_at FROM food_logs").get()?.created_at).not.toBe(`${yesterday}T19:00:00Z`);
     } finally { db.close(); }
   });
+
+  it("only logs the confirmed revision of an estimate, once", async () => {
+    const { db, env, yesterday, post } = setup();
+    try {
+      const estimateId = crypto.randomUUID();
+      const path = `/v1/estimations/${estimateId}/accept`;
+      const original = "2026-01-02T12:00:00.000Z";
+      const revised = "2026-01-02T12:01:00.000Z";
+      db.prepare(`INSERT INTO pending_estimations (id, tenant_id, description, state, proposed_name,
+        proposed_serving, proposed_kcal, local_date, created_at, updated_at)
+        VALUES (?, 'tenant', 'Yesterday dinner', 'proposed', 'Dinner', '1 plate', 500, ?, ?, ?)`)
+        .run(estimateId, yesterday, original, original);
+
+      const batch = env.DB.batch.bind(env.DB);
+      env.DB.batch = (statements) => {
+        db.prepare("UPDATE pending_estimations SET proposed_kcal = 650, updated_at = ? WHERE id = ?")
+          .run(revised, estimateId);
+        env.DB.batch = batch;
+        return batch(statements);
+      };
+      expect((await post(path, { expectedUpdatedAt: original })).status).toBe(409);
+      expect((await post(path, { expectedUpdatedAt: original })).status).toBe(409);
+      expect(db.prepare("SELECT * FROM food_logs").all()).toHaveLength(0);
+      expect(db.prepare("SELECT * FROM food_events").all()).toHaveLength(0);
+
+      expect((await post(path, { expectedUpdatedAt: revised })).status).toBe(200);
+      expect((await post(path, { expectedUpdatedAt: revised })).status).toBe(409);
+      expect(db.prepare("SELECT kcal, local_date FROM food_logs").all()).toEqual([{ kcal: 650, local_date: yesterday }]);
+      expect(db.prepare("SELECT kind FROM food_events").all()).toEqual([{ kind: "food_logged" }]);
+    } finally { db.close(); }
+  });
 });

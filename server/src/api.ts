@@ -497,34 +497,46 @@ async function route(req: Request, env: Env, principal: Principal): Promise<Resp
   if (acceptMatch && method === "POST") {
     // New requests save their meal time before upload. Acceptance must not
     // replace it. Older pending requests can supply their original time here.
-    const input = z.strictObject({ loggedAt: z.iso.datetime({ offset: true }).optional() })
-      .parse(await body(req, 16000, true));
+    const input = z.strictObject({
+      loggedAt: z.iso.datetime({ offset: true }).optional(),
+      expectedUpdatedAt: z.iso.datetime({ offset: true }).optional(),
+    }).parse(await body(req, 16000, true));
     const row = await findEstimation(env, tenantId, acceptMatch[1]);
     if (!row || row.state !== "proposed" || !row.proposed_name || !row.proposed_serving || !row.proposed_kcal) {
       throw new APIError(409, "No estimate is ready for review");
     }
+    const changedMessage = "This estimate changed. Review the latest proposal before approving it.";
+    if (input.expectedUpdatedAt && row.updated_at !== input.expectedUpdatedAt) throw new APIError(409, changedMessage);
     const foodId = crypto.randomUUID();
     const logId = crypto.randomUUID();
     const now = new Date().toISOString();
     const loggedAt = row.logged_at ?? input.loggedAt ?? row.created_at;
     const portions = row.proposed_fruit_veg_portions ?? 0;
+    // Every write in the batch depends on claiming the proposal read above.
+    // A concurrent edit or approval leaves the batch with no side effects.
     const accepted = await env.DB.batch([
       env.DB.prepare(`INSERT INTO foods
         (id, tenant_id, name, serving, kcal, fruit_veg_portions, source, use_count, last_used_at, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, 'agent', 1, ?, ?, ?)`).bind(foodId, tenantId, row.proposed_name,
-          row.proposed_serving, row.proposed_kcal, portions, loggedAt, now, now),
+        SELECT ?, tenant_id, proposed_name, proposed_serving, proposed_kcal, ?, 'agent', 1, ?, ?, ?
+        FROM pending_estimations WHERE id = ? AND tenant_id = ? AND state = 'proposed' AND updated_at = ?
+          AND proposed_name = ? AND proposed_serving = ? AND proposed_kcal = ?
+          AND COALESCE(proposed_fruit_veg_portions, 0) = ?`).bind(foodId, portions, loggedAt, now, now,
+          row.id, tenantId, row.updated_at, row.proposed_name, row.proposed_serving, row.proposed_kcal, portions),
       env.DB.prepare(`INSERT INTO food_logs
         (id, tenant_id, food_id, food_name, serving, quantity, kcal, fruit_veg_portions, local_date, logged_at, created_at)
-        VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`).bind(logId, tenantId, foodId,
-          row.proposed_name, row.proposed_serving, row.proposed_kcal, portions, row.local_date, loggedAt, now),
-      env.DB.prepare("DELETE FROM pending_estimations WHERE id = ? AND tenant_id = ?").bind(row.id, tenantId),
+        SELECT ?, tenant_id, id, name, serving, 1, kcal, fruit_veg_portions, ?, ?, ?
+        FROM foods WHERE id = ? AND tenant_id = ?`).bind(logId, row.local_date, loggedAt, now, foodId, tenantId),
+      env.DB.prepare(`DELETE FROM pending_estimations WHERE id = ? AND tenant_id = ?
+        AND EXISTS (SELECT 1 FROM food_logs WHERE id = ? AND tenant_id = ?)`)
+        .bind(row.id, tenantId, logId, tenantId),
       env.DB.prepare(`INSERT INTO food_events (tenant_id, event_key, kind, subject_id, payload_json, created_at)
-        VALUES (?, ?, 'food_logged', ?, ?, ?)`).bind(tenantId, `log:${logId}`, logId,
+        SELECT tenant_id, ?, 'food_logged', id, ?, ? FROM food_logs WHERE id = ? AND tenant_id = ?`).bind(`log:${logId}`,
           JSON.stringify({ id: logId, foodId, foodName: row.proposed_name, serving: row.proposed_serving,
-            quantity: 1, kcal: row.proposed_kcal, fruitVegPortions: portions,
-            localDate: row.local_date, loggedAt }), now),
+            quantity: 1, kcal: row.proposed_kcal, fruitVegPortions: portions, localDate: row.local_date, loggedAt }),
+          now, logId, tenantId),
       webhookDeliveryInsert(env, tenantId, `log:${logId}`),
     ]);
+    if (accepted[0].meta.changes === 0) throw new APIError(409, changedMessage);
     await notifyFoodEvent(env, tenantId, accepted[accepted.length - 1].meta.changes > 0);
     if (row.photo_key) await env.PHOTOS?.delete(row.photo_key);
     return json({ foodId, logId });

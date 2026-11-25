@@ -479,13 +479,20 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
         }
     }
 
-    func accept(_ estimation: PendingEstimation) async throws {
+    func accept(_ estimation: PendingEstimation, matchingProposal: Bool = false) async throws {
         guard let loggedAt = estimation.mealTimestamp else {
             throw FoodServiceError(message: "The original meal time could not be read")
         }
-        let _: AcceptedResponse = try await call("/v1/estimations/\(estimation.id)/accept", method: "POST", body: [
+        var body = [
             "loggedAt": ISO8601DateFormatter().string(from: loggedAt),
-        ])
+        ]
+        if matchingProposal {
+            guard estimations.first(where: { $0.id == estimation.id }) == estimation else {
+                throw FoodServiceError(message: "This estimate changed. Ask for the latest estimate before approving it.")
+            }
+            body["expectedUpdatedAt"] = estimation.updatedAt
+        }
+        let _: AcceptedResponse = try await call("/v1/estimations/\(estimation.id)/accept", method: "POST", body: body)
         try await refresh(force: true)
     }
 
