@@ -4,6 +4,7 @@ import Foundation
 // Health expenditure reading, CalorieBudget, food log, or stored daily allowance.
 struct ForecastCalibration {
     static let preferenceKey = "developer.calibrateForecasts"
+    static let maximumMismatchKcal = 1000.0
     let correctionKcal: Double
     let windowDays: Int
     let energyDays: Int
@@ -47,6 +48,14 @@ struct ForecastCalibration {
                      active: [HealthMeasurePoint], logs: [FoodLog], since accountStart: Date,
                      now: Date = Date(), calendar: Calendar = .current,
                      composition: BodyCompositionTrend? = nil) -> Self? {
+        assess(weights: weights, resting: resting, active: active, logs: logs, since: accountStart,
+               now: now, calendar: calendar, composition: composition)?.calibration
+    }
+
+    static func assess(weights: [HealthMeasurePoint], resting: [HealthMeasurePoint],
+                     active: [HealthMeasurePoint], logs: [FoodLog], since accountStart: Date,
+                     now: Date = Date(), calendar: Calendar = .current,
+                     composition: BodyCompositionTrend? = nil) -> ForecastCalibrationAssessment? {
         guard let window = historyWindow(since: accountStart, now: now, calendar: calendar) else { return nil }
         let start = window.start
         let today = window.end
@@ -153,10 +162,10 @@ struct ForecastCalibration {
         let intercept = median(weeks.indices.map { residuals[$0] - slope * weeks[$0].day })
         let scatter = median(weeks.indices.map { abs(residuals[$0] - (intercept + slope * weeks[$0].day)) })
         guard scatter <= 0.75 else { return nil }
-        let limit = 1000.0
-        let rawCorrection = min(limit, max(-limit, -slope * 7700))
-        let confidence = min(0.75, Double(weeks.count - 2) / 6) * coverage
-            * min(1, Double(dailyWeights.count) / 28) * max(0, 1 - scatter / 0.75)
+        let rawCorrection = -slope * 7700
+        let weighting = ForecastCalibrationWeighting(weeks: weeks.count, energyCoverage: coverage,
+                                                    weightDays: dailyWeights.count, scatterKg: scatter)
+        let confidence = weighting.fraction
         // Diagnostics use the exact span fitted between the weekly medians.
         // Do not mix a seven-day calorie average with a multiweek weight fit.
         var cumulativeTDEE = [0.0]
@@ -178,11 +187,15 @@ struct ForecastCalibration {
         let diagnostics = ForecastCalibrationDiagnostics(inputStart: start, inputEnd: today,
             fitStart: dateAt(first.day), fitEnd: dateAt(last.day),
             meanTDEEKcal: fitTDEE, meanLoggedKcal: fitTDEE - fitGap,
-            rawCorrectionKcal: -slope * 7700, limitedCorrectionKcal: rawCorrection,
-            influence: confidence, usesBodyComposition: usesComposition)
-        return Self(correctionKcal: rawCorrection * confidence, windowDays: count,
-                    energyDays: tdeeTotals.count, weightDays: dailyWeights.count, weightWeeks: weeks.count,
-                    diagnostics: diagnostics)
+            rawCorrectionKcal: rawCorrection, influence: confidence,
+            usesBodyComposition: usesComposition, weighting: weighting)
+        // Reject implausible mismatches before damping; never clamp them into a usable correction.
+        let calibration = diagnostics.isRejected ? nil : Self(correctionKcal: rawCorrection * confidence,
+            windowDays: count, energyDays: tdeeTotals.count, weightDays: dailyWeights.count,
+            weightWeeks: weeks.count, diagnostics: diagnostics)
+        return ForecastCalibrationAssessment(calibration: calibration, diagnostics: diagnostics,
+            windowDays: count, energyDays: tdeeTotals.count, weightDays: dailyWeights.count,
+            weightWeeks: weeks.count)
     }
 
     private static func median(_ values: [Double]) -> Double {
@@ -200,15 +213,50 @@ struct ForecastCalibrationDiagnostics {
     let meanTDEEKcal: Double
     let meanLoggedKcal: Double
     let rawCorrectionKcal: Double
-    let limitedCorrectionKcal: Double
     let influence: Double
     var usesBodyComposition: Bool = false
+    var weighting: ForecastCalibrationWeighting? = nil
+
+    // A micro-kcal tolerance avoids rejecting an exact boundary through floating-point roundoff.
+    var isRejected: Bool { !rawCorrectionKcal.isFinite || abs(rawCorrectionKcal) > ForecastCalibration.maximumMismatchKcal + 1e-6 }
+
+    func allowanceBalance(deficitPercent: Int) -> ForecastAllowanceBalance {
+        ForecastAllowanceBalance(allowanceKcal: meanTDEEKcal * (1 - Double(deficitPercent) / 100),
+                                 loggedKcal: meanLoggedKcal)
+    }
 
     var recordedDeficitKcal: Double { meanTDEEKcal - meanLoggedKcal }
     // Energy-equivalent of the fitted weight trajectory under the app's model,
-    // before caps or damping; not a measurement of true expenditure or fat loss.
+    // before rejection or damping; not a measurement of true expenditure or fat loss.
     var weightEquivalentDeficitKcal: Double { recordedDeficitKcal + rawCorrectionKcal }
     var recordedDeficitPercent: Double { recordedDeficitKcal / meanTDEEKcal * 100 }
     var weightEquivalentDeficitPercent: Double { weightEquivalentDeficitKcal / meanTDEEKcal * 100 }
     var mismatchPercentagePoints: Double { rawCorrectionKcal / meanTDEEKcal * 100 }
+}
+
+struct ForecastCalibrationAssessment {
+    let calibration: ForecastCalibration?
+    let diagnostics: ForecastCalibrationDiagnostics
+    let windowDays: Int
+    let energyDays: Int
+    let weightDays: Int
+    let weightWeeks: Int
+}
+
+struct ForecastCalibrationWeighting {
+    let weeks: Int
+    let energyCoverage: Double
+    let weightDays: Int
+    let scatterKg: Double
+    var historyFactor: Double { min(0.75, Double(weeks - 2) / 6) }
+    var weightCoverage: Double { min(1, Double(weightDays) / 28) }
+    var consistency: Double { max(0, 1 - scatterKg / 0.75) }
+    var fraction: Double { historyFactor * energyCoverage * weightCoverage * consistency }
+}
+
+struct ForecastAllowanceBalance {
+    let allowanceKcal: Double
+    let loggedKcal: Double
+    var remainingKcal: Double { allowanceKcal - loggedKcal }
+    var remainingPercent: Double? { allowanceKcal > 0 ? remainingKcal / allowanceKcal * 100 : nil }
 }

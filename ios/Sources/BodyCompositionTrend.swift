@@ -20,6 +20,7 @@ struct BodyCompositionTrend: Sendable {
     let fatChangeKgPerDay: Double
     let leanChangeKgPerDay: Double
     let confidence: Double
+    let weighting: BodyCompositionWeighting
     let referenceFatMassKg: Double
     let leanLossPerFatLoss: Double
 
@@ -27,18 +28,7 @@ struct BodyCompositionTrend: Sendable {
                      since accountStart: Date, now: Date = Date(), calendar: Calendar = .current) -> Self? {
         guard let window = ForecastCalibration.historyWindow(since: accountStart, now: now, calendar: calendar) else { return nil }
         let completedWeeks = (calendar.dateComponents([.day], from: window.start, to: window.end).day ?? 0) / 7
-        let weightDays = HealthHistory.lastReadingEachDay(weights.filter {
-            $0.date >= window.start && $0.date < window.end && $0.value.isFinite && (25...400).contains($0.value)
-        }, calendar: calendar)
-        let byDay = Dictionary(uniqueKeysWithValues: weightDays.map { (calendar.startOfDay(for: $0.date), $0.value) })
-        let fatDays = HealthHistory.lastReadingEachDay(bodyFat.filter {
-            $0.date >= window.start && $0.date < window.end && $0.value.isFinite && $0.value > 0 && $0.value < 100
-        }, calendar: calendar)
-        let paired = fatDays.compactMap { point -> Reading? in
-            guard let weight = byDay[calendar.startOfDay(for: point.date)],
-                  let body = ForbesBodyComposition(weightKg: weight, bodyFatPercentage: point.value) else { return nil }
-            return Reading(date: point.date, body: body)
-        }
+        let paired = pairedReadings(weights: weights, bodyFat: bodyFat, within: window, calendar: calendar)
         guard paired.count >= 14, let first = paired.first, let last = paired.last,
               (calendar.dateComponents([.day], from: first.date, to: last.date).day ?? 0) >= 28,
               (calendar.dateComponents([.day], from: last.date, to: now).day ?? 99) <= 7 else { return nil }
@@ -86,12 +76,29 @@ struct BodyCompositionTrend: Sendable {
             let age = Double(calendar.dateComponents([.day], from: reading.date, to: now).day ?? 0)
             return total + pow(0.5, max(0, age) / 90)
         }
-        let confidence = min(1, (ending.x - beginning.x) / 56) * min(1, effectiveDays / 28)
-            * max(0, 1 - max(fatScatter, leanScatter) / noiseLimit)
+        let weighting = BodyCompositionWeighting(spanDays: ending.x - beginning.x,
+            effectiveDays: effectiveDays, scatterKg: max(fatScatter, leanScatter), noiseLimitKg: noiseLimit)
+        let confidence = weighting.fraction
         guard confidence > 0 else { return nil }
         return Self(readings: paired, window: window, firstDate: first.date, lastDate: last.date, weekCount: weeks.count,
-                    fatChangeKgPerDay: fatSlope, leanChangeKgPerDay: leanSlope, confidence: confidence,
+                    fatChangeKgPerDay: fatSlope, leanChangeKgPerDay: leanSlope, confidence: confidence, weighting: weighting,
                     referenceFatMassKg: ending.fat, leanLossPerFatLoss: min(3, max(-1, leanSlope / fatSlope)))
+    }
+
+    static func pairedReadings(weights: [HealthMeasurePoint], bodyFat: [HealthMeasurePoint],
+                               within window: DateInterval, calendar: Calendar = .current) -> [Reading] {
+        let weightDays = HealthHistory.lastReadingEachDay(weights.filter {
+            $0.date >= window.start && $0.date < window.end && $0.value.isFinite && (25...400).contains($0.value)
+        }, calendar: calendar)
+        let byDay = Dictionary(uniqueKeysWithValues: weightDays.map { (calendar.startOfDay(for: $0.date), $0.value) })
+        let fatDays = HealthHistory.lastReadingEachDay(bodyFat.filter {
+            $0.date >= window.start && $0.date < window.end && $0.value.isFinite && $0.value > 0 && $0.value < 100
+        }, calendar: calendar)
+        return fatDays.compactMap { point -> Reading? in
+            guard let weight = byDay[calendar.startOfDay(for: point.date)],
+                  let body = ForbesBodyComposition(weightKg: weight, bodyFatPercentage: point.value) else { return nil }
+            return Reading(date: point.date, body: body)
+        }
     }
 
     // Weekly aggregation uses the same completed-day buckets as the energy fit.
@@ -112,6 +119,12 @@ struct BodyCompositionTrend: Sendable {
         return body.weightKg * (1 - confidence) + measured * confidence
     }
 
+    func split(for body: ForbesBodyComposition) -> BodyCompositionSplit {
+        let share = confidence * min(1, body.fatMassKg / referenceFatMassKg)
+        return BodyCompositionSplit(personalShare: share, forbesLeanPerFat: 10.4 / max(body.fatMassKg, 1e-8),
+                                    personalLeanPerFat: leanLossPerFatLoss)
+    }
+
     func advance(_ body: ForbesBodyComposition, deficitKcal: Double) -> ForbesBodyComposition? {
         guard deficitKcal.isFinite, deficitKcal >= 0 else { return nil }
         var current = body
@@ -120,9 +133,7 @@ struct BodyCompositionTrend: Sendable {
             let energy = min(100, remaining)
             // Gradually return to Forbes outside the observed fat-mass range;
             // never promise indefinite lean preservation at very low fat mass.
-            let strength = confidence * min(1, current.fatMassKg / referenceFatMassKg)
-            let forbesRatio = 10.4 / max(current.fatMassKg, 1e-8)
-            let leanPerFat = max(-1, forbesRatio * (1 - strength) + leanLossPerFatLoss * strength)
+            let leanPerFat = split(for: current).usedLeanPerFat
             let fatLoss = energy / (Self.fatKcalPerKg + Self.leanKcalPerKg * leanPerFat)
             let leanLoss = fatLoss * leanPerFat
             guard let next = ForbesBodyComposition(weightKg: current.weightKg - fatLoss - leanLoss,
@@ -186,5 +197,25 @@ extension BodyCompositionTrend {
             date = next
         }
         return result
+    }
+}
+
+struct BodyCompositionWeighting: Sendable {
+    let spanDays: Double
+    let effectiveDays: Double
+    let scatterKg: Double
+    let noiseLimitKg: Double
+    var historyFactor: Double { min(1, spanDays / 56) }
+    var readingFactor: Double { min(1, effectiveDays / 28) }
+    var consistency: Double { max(0, 1 - scatterKg / noiseLimitKg) }
+    var fraction: Double { historyFactor * readingFactor * consistency }
+}
+
+struct BodyCompositionSplit {
+    let personalShare: Double
+    let forbesLeanPerFat: Double
+    let personalLeanPerFat: Double
+    var usedLeanPerFat: Double {
+        max(-1, forbesLeanPerFat * (1 - personalShare) + personalLeanPerFat * personalShare)
     }
 }

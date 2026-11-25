@@ -2,8 +2,12 @@ import Foundation
 
 @MainActor extension HealthEnergy {
     func forecastCalibration(using store: FoodStore) -> ForecastCalibration? {
+        forecastAssessment(using: store)?.calibration
+    }
+
+    func forecastAssessment(using store: FoodStore) -> ForecastCalibrationAssessment? {
         guard let start = store.accountStartedAt else { return nil }
-        return ForecastCalibration.make(weights: weightsForForecastCalibration, resting: restingHistory,
+        return ForecastCalibration.assess(weights: weightsForForecastCalibration, resting: restingHistory,
                                         active: activeHistory, logs: store.logs, since: start,
                                         composition: compositionTrend)
     }

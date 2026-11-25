@@ -193,6 +193,35 @@ final class BodyCompositionTrendTests: XCTestCase {
         XCTAssertEqual(mismatched.correctionKcal, plain.correctionKcal, accuracy: 0.000001)
     }
 
+    func testDisplayedCompositionWeightsAndForbesSplitMatchTheActualModel() throws {
+        let model = try XCTUnwrap(trend(history(leanGain: 0.01)))
+        let weight = model.weighting
+        XCTAssertEqual(weight.historyFactor, 35.0 / 56, accuracy: 0.000001)
+        XCTAssertEqual(model.confidence, weight.historyFactor * weight.readingFactor * weight.consistency)
+        let body = try XCTUnwrap(model.readings.last?.body)
+        let split = model.split(for: body)
+        XCTAssertEqual(split.forbesLeanPerFat, 10.4 / body.fatMassKg)
+        XCTAssertLessThan(split.personalLeanPerFat, 0)
+        XCTAssertEqual(split.usedLeanPerFat,
+            max(-1, split.forbesLeanPerFat * (1 - split.personalShare) + split.personalLeanPerFat * split.personalShare))
+        let energy = 1.0
+        let after = try XCTUnwrap(model.advance(body, deficitKcal: energy))
+        let fatLost = body.fatMassKg - after.fatMassKg
+        let leanLost = body.fatFreeMassKg - after.fatFreeMassKg
+        XCTAssertEqual(leanLost / fatLost, split.usedLeanPerFat, accuracy: 0.000001)
+        let lowerFat = try XCTUnwrap(ForbesBodyComposition(weightKg: body.weightKg - 5, fatMassKg: body.fatMassKg - 5))
+        XCTAssertLessThan(model.split(for: lowerFat).personalShare, split.personalShare)
+    }
+
+    func testPairedHistoryCountsAreAvailableEvenWithoutAReliableTrend() throws {
+        var input = history(days: 10)
+        input.fat.removeLast()
+        let window = try XCTUnwrap(ForecastCalibration.historyWindow(since: input.weights.first!.date, now: now, calendar: calendar))
+        let pairs = BodyCompositionTrend.pairedReadings(weights: input.weights, bodyFat: input.fat, within: window, calendar: calendar)
+        XCTAssertEqual(pairs.count, 9)
+        XCTAssertNil(trend(input))
+    }
+
     func testAccountStartBoundsBothFitsAndUsesTheSameCompletedWeekGroups() throws {
         let input = history()
         let start = calendar.date(byAdding: .day, value: -32, to: now)!

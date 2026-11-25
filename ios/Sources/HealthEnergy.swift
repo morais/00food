@@ -35,6 +35,7 @@ struct RestingEnergySummary {
     private(set) var isRefreshingComposition = false
     private(set) var compositionHistoryError: String?
     private var compositionWeights: [HealthMeasurePoint] = []
+    private var compositionBodyFat: [HealthMeasurePoint] = []
     var activeHistory: [HealthMeasurePoint] = []
     var restingHistory: [HealthMeasurePoint] = []
     var completedAverageTDEEKcal: Int?
@@ -172,6 +173,7 @@ struct RestingEnergySummary {
             restingHistory = []
             loadedCompositionTrend = nil
             compositionWeights = []
+            compositionBodyFat = []
         }
     }
 
@@ -275,6 +277,7 @@ struct RestingEnergySummary {
             guard !Task.isCancelled, historyStart == accountHistoryStart,
                   window == ForecastCalibration.historyWindow(since: accountHistoryStart) else { return }
             compositionWeights = weights
+            compositionBodyFat = fat
             loadedCompositionTrend = fitted
             compositionHistoryError = nil
         } catch {
@@ -285,6 +288,10 @@ struct RestingEnergySummary {
 
     var weightsForForecastCalibration: [HealthMeasurePoint] {
         compositionWeights.isEmpty ? weightHistory : compositionWeights
+    }
+
+    var bodyFatForForecastCalibration: [HealthMeasurePoint] {
+        compositionBodyFat.isEmpty ? bodyFatHistory : compositionBodyFat
     }
 
     private func compositionReadings(of type: HKQuantityType, in window: DateInterval, unit: HKUnit, scale: Double) async throws -> [HealthMeasurePoint] {

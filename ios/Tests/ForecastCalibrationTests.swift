@@ -103,17 +103,59 @@ final class ForecastCalibrationTests: XCTestCase {
         XCTAssertEqual(budget.allowanceKcal, 2500)
     }
 
-    func testLimitsAndMinimumHistoryGiveLessInfluenceToShorterHistory() throws {
+    func testShorterHistoryReceivesLessWeight() throws {
         let shorter = try XCTUnwrap(calibration(history(days: 28)))
         let longer = try XCTUnwrap(calibration(history()))
         XCTAssertLessThan(abs(shorter.correctionKcal), abs(longer.correctionKcal))
-        for gap in [-3000.0, 3000] {
-            let extreme = try XCTUnwrap(calibration(history(observedGap: gap)))
-            let data = try XCTUnwrap(extreme.diagnostics)
-            XCTAssertEqual(abs(data.limitedCorrectionKcal), 1000, accuracy: 0.001)
-            XCTAssertEqual(abs(extreme.correctionKcal), 1000 * data.influence, accuracy: 0.001)
-            XCTAssertLessThanOrEqual(abs(extreme.correctionKcal), 1000)
+    }
+
+    func testMismatchesOverOneThousandAreRejectedBeforeWeighting() throws {
+        for observed in [-3000.0, 3000, -500.01, 1500.01] {
+            let input = history(observedGap: observed)
+            XCTAssertNil(calibration(input))
+            let assessment = try XCTUnwrap(ForecastCalibration.assess(weights: input.weights,
+                resting: input.resting, active: input.active, logs: input.logs,
+                since: input.start, now: now, calendar: calendar))
+            XCTAssertNil(assessment.calibration)
+            XCTAssertTrue(assessment.diagnostics.isRejected)
+            XCTAssertGreaterThan(abs(assessment.diagnostics.rawCorrectionKcal), 1000)
+            XCTAssertEqual(assessment.energyDays, 42)
         }
+    }
+
+    func testValidBoundaryMismatchIsNotCappedAndWeightingRemainsUnchanged() throws {
+        for observed in [-500.0, 1500] {
+            let result = try XCTUnwrap(calibration(history(observedGap: observed)))
+            let data = try XCTUnwrap(result.diagnostics)
+            XCTAssertFalse(data.isRejected)
+            XCTAssertEqual(abs(data.rawCorrectionKcal), 1000, accuracy: 0.000001)
+            XCTAssertEqual(result.correctionKcal, data.rawCorrectionKcal * data.influence, accuracy: 0.000001)
+        }
+    }
+
+    func testDisplayedAdjustmentFactorsReproduceAppliedWeight() throws {
+        let result = try XCTUnwrap(calibration(history()))
+        let data = try XCTUnwrap(result.diagnostics)
+        let factors = try XCTUnwrap(data.weighting)
+        XCTAssertEqual(factors.weeks, 6)
+        XCTAssertEqual(factors.historyFactor, 4.0 / 6, accuracy: 0.000001)
+        XCTAssertEqual(factors.energyCoverage, 1)
+        XCTAssertEqual(factors.weightCoverage, 1)
+        XCTAssertEqual(factors.consistency, 1, accuracy: 0.000001)
+        XCTAssertEqual(data.influence, factors.historyFactor * factors.energyCoverage * factors.weightCoverage * factors.consistency)
+        XCTAssertEqual(result.correctionKcal, data.rawCorrectionKcal * factors.fraction)
+    }
+
+    func testCalibrationAllowanceBalanceUsesItsOwnFitPeriodAndCurrentPlan() throws {
+        let data = try XCTUnwrap(calibration(history())?.diagnostics)
+        let balance = data.allowanceBalance(deficitPercent: 15)
+        XCTAssertEqual(balance.allowanceKcal, 2125, accuracy: 0.000001)
+        XCTAssertEqual(balance.remainingKcal, 125, accuracy: 0.000001)
+        XCTAssertEqual(try XCTUnwrap(balance.remainingPercent), 125.0 / 2125 * 100, accuracy: 0.000001)
+        let over = data.allowanceBalance(deficitPercent: 30)
+        XCTAssertEqual(over.remainingKcal, -250, accuracy: 0.000001)
+        XCTAssertEqual(try XCTUnwrap(over.remainingPercent), -250.0 / 1750 * 100, accuracy: 0.000001)
+        XCTAssertNil(data.allowanceBalance(deficitPercent: 100).remainingPercent)
     }
 
     func testLargeInconsistentWeeklySwingsUseStandardForecast() {
@@ -177,13 +219,13 @@ final class ForecastCalibrationTests: XCTestCase {
         XCTAssertEqual(data.weightEquivalentDeficitPercent, 10, accuracy: 0.001)
         XCTAssertEqual(data.mismatchPercentagePoints, -10, accuracy: 0.001)
         XCTAssertEqual(data.rawCorrectionKcal, -250, accuracy: 0.001)
-        XCTAssertEqual(result.correctionKcal, data.limitedCorrectionKcal * data.influence, accuracy: 0.001)
+        XCTAssertEqual(result.correctionKcal, data.rawCorrectionKcal * data.influence, accuracy: 0.001)
         XCTAssertEqual(calendar.dateComponents([.day], from: data.fitStart, to: data.fitEnd).day, 35)
         XCTAssertGreaterThan(data.fitStart, data.inputStart)
         XCTAssertLessThan(data.fitEnd, data.inputEnd)
     }
 
-    func testDiagnosticsUseActualIntakeAndDistinguishRawMismatchFromCappedCorrection() throws {
+    func testDiagnosticsUseActualIntakeAndKeepValidRawMismatchUncapped() throws {
         var input = history(observedGap: 100)
         for index in input.logs.indices { input.logs[index].kcal = 1500 }
         let result = try XCTUnwrap(calibration(input))
@@ -192,7 +234,6 @@ final class ForecastCalibrationTests: XCTestCase {
         XCTAssertEqual(data.recordedDeficitPercent, 40, accuracy: 0.001)
         XCTAssertEqual(data.weightEquivalentDeficitKcal, 100, accuracy: 0.001)
         XCTAssertEqual(data.rawCorrectionKcal, -900, accuracy: 0.001)
-        XCTAssertEqual(data.limitedCorrectionKcal, -900, accuracy: 0.001)
         XCTAssertEqual(result.correctionKcal, -600, accuracy: 0.001)
     }
 }
