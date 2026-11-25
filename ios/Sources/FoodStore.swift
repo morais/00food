@@ -466,16 +466,17 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
 
     func clarifyEstimate(id: String, text: String) throws {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, trimmed.count <= 1000 else {
+        guard (1...1000).contains(trimmed.utf16.count) else {
             throw FoodServiceError(message: "Clarification must be between 1 and 1,000 characters")
+        }
+        guard let index = estimations.firstIndex(where: { $0.id == id }) else {
+            throw FoodServiceError(message: "This estimate is no longer open")
         }
         let clarificationId = UUID().uuidString.lowercased()
         try stage(.clarifyEstimate(id, clarificationId, trimmed)) {
-            if let index = estimations.firstIndex(where: { $0.id == id }) {
-                estimations[index].clarification = trimmed
-                estimations[index].state = "pending"
-                estimations[index].updatedAt = Self.now()
-            }
+            estimations[index].clarification = trimmed
+            if estimations[index].state != "uploading" { estimations[index].state = "pending" }
+            estimations[index].updatedAt = Self.now()
         }
     }
 
@@ -696,8 +697,13 @@ private struct ConnectionsResponse: Decodable { var connections: [MCPConnection]
                                           jpeg: photo)
             let _: EstimationResponse = try await call("/v1/estimations", method: "POST", raw: form)
         case .clarifyEstimate(let estimationId, let clarificationId, let text):
-            let _: EstimationResponse = try await call("/v1/estimations/\(estimationId)/clarifications",
-                                                       method: "POST", body: ["id": clarificationId, "text": text])
+            do {
+                let _: EstimationResponse = try await call("/v1/estimations/\(estimationId)/clarifications",
+                                                           method: "POST", body: ["id": clarificationId, "text": text])
+            } catch let error as FoodServiceError where error.status == 404 {
+                // The estimate can be approved or discarded elsewhere before an offline clarification syncs.
+                estimations.removeAll { $0.id == estimationId }
+            }
         case .deleteEstimate(let id):
             do { let _: OKResponse = try await call("/v1/estimations/\(id)", method: "DELETE") }
             catch let error as FoodServiceError where error.status == 404 { break }

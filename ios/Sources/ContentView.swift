@@ -638,7 +638,7 @@ struct HomeView: View {
                     HStack {
                         Image(systemName: item.hasPhoto ? "photo" : "text.bubble")
                         VStack(alignment: .leading) {
-                            Text(item.proposedName ?? (item.description.isEmpty ? "Food photo" : item.description))
+                            Text(item.displayName)
                                 .lineLimit(1).foregroundStyle(.primary)
                             estimateStatusBadge(for: item)
                         }

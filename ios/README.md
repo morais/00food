@@ -31,7 +31,7 @@ For TestFlight, create the app record in App Store Connect, use separate App Sto
 
 ## Agent response checks
 
-00Food provides Siri and Shortcuts actions to log a saved food by its full name, request a text estimate from the connected agent, report today’s logged calories, check pending estimates, and approve a ready estimate. Approval reads back the proposed food, amount, calories, and meal date before logging. It requires a server sync and a Worker that checks the confirmed proposal revision. Estimate requests and saved-food logs use the existing offline queue.
+00Food provides Siri and Shortcuts actions to log a saved food by its full name, request a text estimate from the connected agent, report today’s logged calories, check pending estimates, clarify an open estimate, and approve a ready estimate. Clarification can use the proposed food name or part of the original description when several estimates are open. Approval reads back the proposed food, amount, calories, and meal date before logging. It requires a server sync and a Worker that checks the confirmed proposal revision. Estimate requests, clarifications, and saved-food logs use the existing offline queue.
 
 The iOS 27.3 SDK also exposes these actions as Siri AI tools. Builds with older supported SDKs use the same actions through App Shortcuts. If your local `project.yml` predates this feature, copy the three Siri compilation settings from the iPhone app target in `project.yml.sample`, then regenerate the Xcode project. Test conversational requests on a supported device using a development-signed build or internal TestFlight.
 

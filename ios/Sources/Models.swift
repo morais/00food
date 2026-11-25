@@ -271,6 +271,10 @@ struct PendingEstimation: Codable, Identifiable, Equatable {
     var proposedFruitVegPortions: Int? = nil
     var loggedAt: String? = nil
 
+    var displayName: String {
+        proposedName ?? (description.isEmpty ? String(localized: "Food photo") : description)
+    }
+
     var mealTimestamp: Date? {
         if let timestamp = FoodDates.parseTimestamp(loggedAt) { return timestamp }
         // Older queued requests have only their creation time and chosen day.

@@ -156,6 +156,73 @@ struct ApproveFoodEstimateIntent: AppIntent {
     }
 }
 
+struct ClarifyFoodEstimateIntent: AppIntent {
+    static let title: LocalizedStringResource = "Clarify a Food Estimate"
+    static let description = IntentDescription("Sends a correction or extra portion or ingredient details about an existing open 00Food estimate to the connected agent.")
+    static let authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
+
+    @Parameter(title: "Clarification", description: "The new details or correction to send to the agent.")
+    var clarification: String
+
+    @Parameter(title: "Open estimate", description: "The proposed food name or part of the original meal description. Leave blank if only one estimate is open.")
+    var estimateName: String?
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Clarify \(\.$estimateName) with \(\.$clarification)")
+    }
+
+    @Dependency private var store: FoodStore
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        try await store.prepareForFoodIntent(refresh: true)
+        guard !store.estimations.isEmpty else { return .result(dialog: "There are no open food estimates in 00Food.") }
+
+        let session = store.token
+        var requestedName = estimateName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if requestedName.isEmpty && store.estimations.count > 1 {
+            let examples = store.estimations.prefix(3).map { String($0.displayName.prefix(80)) }.formatted(.list(type: .and))
+            let answer: String? = try await $estimateName.requestValue("Which estimate should I clarify? Open estimates include \(examples).")
+            requestedName = answer?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !requestedName.isEmpty else { return .result(dialog: "Say the name of the estimate to clarify.") }
+        }
+        guard store.token == session else {
+            throw FoodServiceError(message: "The 00Food account changed. Try again from the current account.")
+        }
+
+        let matches = Self.matches(in: store.estimations, name: requestedName)
+        guard let estimate = matches.first else { return .result(dialog: "I couldn’t find an open estimate for \(requestedName).") }
+        guard matches.count == 1 else {
+            return .result(dialog: "Several open estimates match. Give a more specific name or choose the estimate in 00Food.")
+        }
+
+        try store.clarifyEstimate(id: estimate.id, text: clarification)
+        if store.isOffline {
+            return .result(dialog: "Saved your clarification. It will send when 00Food syncs.")
+        }
+        let synced = (try? await store.refreshAndWait(quiet: true)) != nil
+        if store.token == session {
+            guard store.estimations.contains(where: { $0.id == estimate.id }) else {
+                return .result(dialog: "That estimate is now closed.")
+            }
+            if synced { return .result(dialog: "Sent your clarification to your connected agent.") }
+        }
+        return .result(dialog: "Saved your clarification in 00Food.")
+    }
+
+    static func matches(in estimates: [PendingEstimation], name: String) -> [PendingEstimation] {
+        guard !name.isEmpty else { return estimates }
+        let exact = estimates.filter {
+            $0.displayName.compare(name, options: .caseInsensitive) == .orderedSame ||
+            $0.description.compare(name, options: .caseInsensitive) == .orderedSame
+        }
+        if !exact.isEmpty { return exact }
+        return estimates.filter {
+            $0.displayName.localizedCaseInsensitiveContains(name) || $0.description.localizedCaseInsensitiveContains(name)
+        }
+    }
+}
+
 struct FoodAppShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(intent: LogSavedFoodIntent(), phrases: ["Log a saved food in \(.applicationName)"],
@@ -168,6 +235,8 @@ struct FoodAppShortcuts: AppShortcutsProvider {
                     shortTitle: "Pending Estimates", systemImageName: "list.bullet")
         AppShortcut(intent: ApproveFoodEstimateIntent(), phrases: ["Approve a food estimate in \(.applicationName)"],
                     shortTitle: "Approve Estimate", systemImageName: "checkmark.circle")
+        AppShortcut(intent: ClarifyFoodEstimateIntent(), phrases: ["Clarify a food estimate in \(.applicationName)"],
+                    shortTitle: "Clarify Estimate", systemImageName: "text.bubble")
     }
 }
 
@@ -206,4 +275,6 @@ extension GetTodayLoggedCaloriesIntent: ToolIntent {}
 extension GetPendingFoodEstimatesIntent: ToolIntent {}
 @available(iOS 27.3, *)
 extension ApproveFoodEstimateIntent: ToolIntent {}
+@available(iOS 27.3, *)
+extension ClarifyFoodEstimateIntent: ToolIntent {}
 #endif
